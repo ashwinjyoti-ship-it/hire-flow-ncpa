@@ -5,7 +5,7 @@
   "type": "module",
   "description": "NCPA Venue for Hire — internal operations application (Cloudflare Pages + Workers + D1 + R2)",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite",
