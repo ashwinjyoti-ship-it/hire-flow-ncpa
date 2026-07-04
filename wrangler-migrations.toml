@@ -1,0 +1,5 @@
+# Migration directory config for `wrangler d1 migrations`.
+# Applies SQL files under ./migrations to the ncpa-hire-db D1 database.
+d1_databases = [
+  { binding = "DB", database_name = "ncpa-hire-db", database_id = "5b9c56c3-3a10-4d4c-a17b-65fc4cda4816", migrations_dir = "migrations" },
+]

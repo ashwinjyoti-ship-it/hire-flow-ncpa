@@ -1,0 +1,27 @@
+{
+  // Cloudflare Pages project: ncpa-hire
+  // Serves the built SPA (dist/) + API via Pages Functions (functions/api/**)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ncpa-hire",
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2025-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ncpa-hire-db",
+      "database_id": "5b9c56c3-3a10-4d4c-a17b-65fc4cda4816"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "ncpa-hire-files"
+    }
+  ],
+  "vars": {
+    "APP_URL": "https://ncpa-hire.pages.dev",
+    "MAIL_FROM": "NCPA Venue Hire <noreply@ncpa-hire.pages.dev>",
+    "TZ": "Asia/Kolkata"
+  }
+}

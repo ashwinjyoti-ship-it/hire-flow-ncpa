@@ -1,0 +1,23 @@
+# Local development secrets — copy to .dev.vars and fill in.
+# .dev.vars is gitignored and NEVER committed.
+
+# Cloudflare (optional for local; wrangler uses its own auth)
+# CLOUDFLARE_API_TOKEN=
+# CLOUDFLARE_ACCOUNT_ID=
+
+# App crypto
+SESSION_SECRET=change-me-to-a-long-random-string-for-local-dev-only
+
+# Resend (email). Leave blank to no-op (log instead of send).
+# Set via admin Settings UI in production, or here for local dev.
+RESEND_API_KEY=
+
+# Resend "from" address (a verified domain in Resend)
+MAIL_FROM=NCPA Venue Hire <noreply@example.com>
+
+# App URL (used for email links / audit)
+APP_URL=http://localhost:8788
+
+# Bootstrap admin (one-time, via `npm run bootstrap:admin`). Leave blank otherwise.
+# BOOTSTRAP_ADMIN_EMAIL=
+# BOOTSTRAP_ADMIN_PASSWORD=
