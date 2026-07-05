@@ -77,8 +77,8 @@ export function EventDetailPage() {
   return (
     <div>
       <PageHeader
-        title={e.title}
-        subtitle={e.organisation_name ?? undefined}
+        title={e.organisation_name ?? "—"}
+        subtitle={e.title}
         actions={
           <>
             <StatusBadge status={e.status} size="md" />
@@ -86,6 +86,24 @@ export function EventDetailPage() {
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
               </Link>
+            )}
+            {canChangeStatus && (e.status === "confirmed" || e.status === "approved" || e.status === "tentative") && (
+              <button
+                type="button"
+                onClick={() => { setStatusModal("cancelled"); setReason(""); }}
+                className="carved-btn rounded-full bg-status-cancelled/15 px-4 py-2 text-sm font-semibold text-status-cancelled etched hover:bg-status-cancelled/25"
+              >
+                Cancel event
+              </button>
+            )}
+            {canChangeStatus && (e.status === "enquiry" || e.status === "tentative" || e.status === "approved") && (
+              <button
+                type="button"
+                onClick={() => { setStatusModal("regret"); setReason(""); }}
+                className="carved-btn rounded-full bg-status-regret/15 px-4 py-2 text-sm font-semibold text-status-regret etched hover:bg-status-regret/25"
+              >
+                Mark as Regret
+              </button>
             )}
           </>
         }
@@ -158,22 +176,38 @@ export function EventDetailPage() {
               </div>
               <div className="mb-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
                 <SummaryItem label="Shows" value={String(vb.number_of_shows ?? 1)} />
-                <SummaryItem label="AC Start" value={(vb.ac_start as string) ?? "—"} />
-                <SummaryItem label="AC End" value={(vb.ac_end as string) ?? "—"} />
-                <SummaryItem label="Duration" value={vb.event_duration_minutes ? `${vb.event_duration_minutes} min` : "—"} />
+                <SummaryItem label="Booking" value={String(vb.booking_status ?? "—")} />
               </div>
               {vb.schedule_entries.length > 0 ? (
                 <div className="rounded-lg bg-marble-shadow/30 p-3">
                   <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</div>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {vb.schedule_entries.map((se) => {
-                      const entry = se as { id: string; activity_type: string; activity_date: string; start_time: string | null; end_time: string | null; notes: string | null };
+                      const entry = se as {
+                        id: string; activity_type: string; activity_date: string;
+                        start_time: string | null; end_time: string | null;
+                        with_ac_start: string | null; with_ac_end: string | null; with_ac_minutes: number | null;
+                        without_ac_start: string | null; without_ac_end: string | null; without_ac_minutes: number | null;
+                        notes: string | null;
+                      };
                       return (
-                        <div key={entry.id} className="flex items-center gap-3 text-xs text-ink-secondary etched">
-                          <span className="inline-block w-24 font-medium capitalize text-sage-text">{entry.activity_type.replace(/_/g, " ")}</span>
-                          <span>{formatDate(entry.activity_date)}</span>
-                          {entry.start_time && <span>{entry.start_time}{entry.end_time ? `–${entry.end_time}` : ""}</span>}
-                          {entry.notes && <span className="text-ink-muted">· {entry.notes}</span>}
+                        <div key={entry.id} className="rounded-md bg-marble-highlight/50 px-2 py-1.5">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-ink-secondary etched">
+                            <span className="inline-block w-24 font-medium capitalize text-sage-text">{entry.activity_type.replace(/_/g, " ")}</span>
+                            <span>{formatDate(entry.activity_date)}</span>
+                            {entry.start_time && <span>{entry.start_time}{entry.end_time ? `–${entry.end_time}` : ""}</span>}
+                            {entry.notes && <span className="text-ink-muted">· {entry.notes}</span>}
+                          </div>
+                          {(entry.with_ac_start || entry.without_ac_start) && (
+                            <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
+                              {entry.with_ac_start && (
+                                <span>With AC: {entry.with_ac_start}{entry.with_ac_end ? `–${entry.with_ac_end}` : ""}{entry.with_ac_minutes != null ? ` (${Math.floor(entry.with_ac_minutes / 60)}h ${entry.with_ac_minutes % 60}m)` : ""}</span>
+                              )}
+                              {entry.without_ac_start && (
+                                <span>Without AC: {entry.without_ac_start}{entry.without_ac_end ? `–${entry.without_ac_end}` : ""}{entry.without_ac_minutes != null ? ` (${Math.floor(entry.without_ac_minutes / 60)}h ${entry.without_ac_minutes % 60}m)` : ""}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

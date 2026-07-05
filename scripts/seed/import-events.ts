@@ -63,13 +63,14 @@ function dateStr(v: unknown): string | null {
 
 function mapStatus(workbookStatus: string | null, sheetName: string): string {
   const s = workbookStatus?.toLowerCase().trim() ?? "";
-  if (sheetName === "Regrets") return "cancelled";
+  if (sheetName === "Regrets") return "regret";
   if (sheetName === "Tentative Events") return "tentative";
   if (s.includes("confirm")) return "confirmed";
-  if (s.includes("regret")) return "cancelled";
+  if (s.includes("regret")) return "regret";
+  if (s.includes("cancel")) return "cancelled";
   if (s.includes("tentative")) return "tentative";
-  if (s.includes("waitlist")) return "waitlisted";
-  return "inquiry";
+  if (s.includes("waitlist") || s.includes("availab") || s.includes("approval")) return "tentative";
+  return "enquiry";
 }
 
 function slug(s: string): string {

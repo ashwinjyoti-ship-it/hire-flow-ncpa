@@ -6,6 +6,7 @@ import { settingsRoutes } from "./lib/secrets";
 import { organisationRoutes } from "./routes/organisations";
 import { eventRoutes } from "./routes/events";
 import { calendarRoutes } from "./routes/calendar";
+import { lookupRoutes } from "./routes/lookups";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -53,6 +54,9 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Calendar routes (schedule entries in a date range).
   app.route("/calendar", calendarRoutes);
+
+  // Lookup (dropdown_options) admin CRUD — public reads still go to GET /lookups above.
+  app.route("/lookups", lookupRoutes);
 
   return app;
 }

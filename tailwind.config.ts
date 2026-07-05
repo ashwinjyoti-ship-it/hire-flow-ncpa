@@ -51,19 +51,22 @@ export default {
         },
         // Status overlay (data-semantic; applied to small dots/pills/labels ONLY)
         status: {
-          inquiry: "#B0AAA0", // muted blue-grey
-          availability: "#7DA9B8", // light blue
-          awaitingApproval: "#EDC47F", // muted amber
-          waitlisted: "#B4A0E7", // muted purple
+          enquiry: "#B0AAA0", // muted blue-grey (was 'inquiry')
           tentative: "#EB9651", // muted orange
+          approved: "#8FA079", // deeper soft sage (VFH gate)
           confirmed: "#9CAF88", // sage green
-          inProgress: "#7FAEAB", // restrained blue-green
-          completed: "#726F68", // dark neutral grey
-          closed: "#A8A29A", // muted stone grey
-          cancelled: "#E0857B", // muted red
-          rejected: "#C797BB", // muted magenta
-          approved: "#8FA079", // deeper soft sage
-          draft: "#C3BFB6", // faint grey
+          regret: "#C797BB", // muted magenta (declined enquiry)
+          cancelled: "#E0857B", // muted red (booking called off)
+          // Legacy aliases retained for any leftover references:
+          inquiry: "#B0AAA0",
+          availability: "#7DA9B8",
+          awaitingApproval: "#EDC47F",
+          waitlisted: "#B4A0E7",
+          inProgress: "#7FAEAB",
+          completed: "#726F68",
+          closed: "#A8A29A",
+          rejected: "#C797BB",
+          draft: "#C3BFB6",
         },
       },
       fontFamily: {

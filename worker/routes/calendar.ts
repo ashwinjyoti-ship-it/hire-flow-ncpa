@@ -26,7 +26,6 @@ calendarRoutes.get("/", requireUser, async (c) => {
     "se.activity_date >= ?",
     "se.activity_date <= ?",
     "e.is_archived = 0",
-    "e.status NOT IN ('draft')",
   ];
   const binds: unknown[] = [from, to];
 

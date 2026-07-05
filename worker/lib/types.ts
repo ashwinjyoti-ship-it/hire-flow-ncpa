@@ -36,6 +36,13 @@ export const ScheduleEntryInput = z.object({
   activity_date: z.string().min(1),
   start_time: z.string().nullish(),
   end_time: z.string().nullish(),
+  // AC timing sub-windows (rental duration/day = with_ac + without_ac).
+  with_ac_start: z.string().nullish(),
+  with_ac_end: z.string().nullish(),
+  with_ac_minutes: z.number().int().nonnegative().nullish(),
+  without_ac_start: z.string().nullish(),
+  without_ac_end: z.string().nullish(),
+  without_ac_minutes: z.number().int().nonnegative().nullish(),
   notes: z.string().nullish(),
 });
 export type ScheduleEntryInputT = z.infer<typeof ScheduleEntryInput>;
@@ -45,9 +52,6 @@ export const VenueBookingInput = z.object({
   venue: z.string().min(1),
   booking_status: z.enum(["tentative", "confirmed", "cancelled"]).default("tentative"),
   number_of_shows: z.number().int().min(1).default(1),
-  ac_start: z.string().nullish(),
-  ac_end: z.string().nullish(),
-  event_duration_minutes: z.number().int().positive().nullish(),
   requirements: z.record(z.unknown()).nullish(),
   notes: z.string().nullish(),
   schedule_entries: z.array(ScheduleEntryInput).default([]),
@@ -58,14 +62,13 @@ export type VenueBookingInputT = z.infer<typeof VenueBookingInput>;
 export const EventInput = z.object({
   title: z.string().min(1),
   description: z.string().nullish(),
-  organisation_id: z.string().nullish(),
+  // Organisation is the anchor of the record — every event hangs off one org.
+  organisation_id: z.string().min(1, "Organisation is required"),
   primary_contact_id: z.string().nullish(),
   event_type: z.enum(["EE", "FR", "VFH", "Free Event"]).nullish(),
   hiring_category: z.string().nullish(),
-  vertical: z.string().nullish(),
   program_officer: z.string().nullish(),
   event_owner: z.string().nullish(),
-  collaboration_details: z.string().nullish(),
   event_start_date: z.string().nullish(),
   event_end_date: z.string().nullish(),
   enquiry_source: z.string().nullish(),

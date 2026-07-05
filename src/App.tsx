@@ -4,7 +4,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { RequireAuth } from "./components/auth/RequireAuth";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CalendarPage } from "./pages/CalendarPage";
-import { EventsListPage } from "./pages/EventsListPage";
 import { EventDetailPage } from "./pages/EventDetailPage";
 import { EventEditPage } from "./pages/EventEditPage";
 import { OrganisationsPage } from "./pages/OrganisationsPage";
@@ -27,7 +26,8 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/events" element={<EventsListPage />} />
+        {/* Events tab dropped — Calendar page is the hub (Month/Week/Day/Timeline/List). */}
+        <Route path="/events" element={<Navigate to="/calendar" replace />} />
         <Route path="/events/new" element={<EventEditPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route path="/events/:id/edit" element={<EventEditPage />} />

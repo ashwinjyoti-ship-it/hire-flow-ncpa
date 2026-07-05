@@ -1,13 +1,34 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
-import { apiPost, apiPut } from "../lib/api";
+import { apiGet, apiPost, apiPut } from "../lib/api";
 import { useLookups } from "../lib/use-lookups";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
+
+type OrgListItem = { id: string; name: string };
+
+/** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
+function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if (sh == null || sm == null || eh == null || em == null) return null;
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  let mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60; // overnight wrap
+  if (mins === 0) return 0;
+  return mins;
+}
+function fmtHrMin(mins: number | null): string {
+  if (mins == null) return "—";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h ? `${h}h ${m ? `${String(m).padStart(2, "0")}m` : ""}`.trim() : `${m}m`;
+}
 
 export function EventEditPage() {
   const { id } = useParams();
@@ -21,21 +42,19 @@ export function EventEditPage() {
   const [form, setForm] = useState<EventInputT>({
     title: "",
     description: null,
-    organisation_id: null,
+    organisation_id: "",
     primary_contact_id: null,
     event_type: null,
     hiring_category: null,
-    vertical: null,
     program_officer: null,
     event_owner: null,
-    collaboration_details: null,
     event_start_date: null,
     event_end_date: null,
     enquiry_source: null,
     priority: "medium",
     requirements: null,
     notes: null,
-    venue_bookings: [{ venue: "", booking_status: "tentative", number_of_shows: 1, ac_start: null, ac_end: null, event_duration_minutes: null, requirements: null, notes: null, schedule_entries: [] }],
+    venue_bookings: [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }],
   });
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
@@ -45,14 +64,21 @@ export function EventEditPage() {
 
   const save = useMutation<void, Error, void>({
     mutationFn: async () => {
+      // If organisation_id is a temporary "new:<name>" token, create the org first.
+      let orgId = form.organisation_id;
+      if (orgId.startsWith("new:")) {
+        const name = orgId.slice(4).trim();
+        const created = await apiPost<{ id: string }>("/organisations", { name });
+        orgId = created.id;
+      }
+      const payload = { ...form, organisation_id: orgId };
       if (isEdit && id) {
-        // Omit venue_bookings on edit (managed via separate sub-routes later).
-        const { venue_bookings: _vb, ...rest } = form;
+        const { venue_bookings: _vb, ...rest } = payload;
         void _vb;
         await apiPut(`/events/${id}`, rest);
         return;
       }
-      const res = await apiPost<{ id: string }>("/events", form);
+      const res = await apiPost<{ id: string }>("/events", payload);
       lastCreatedId = res.id;
     },
     onSuccess: () => navigate(`/events/${lastCreatedId ?? id}`),
@@ -69,7 +95,7 @@ export function EventEditPage() {
   const addVenue = () => {
     setForm((f) => ({
       ...f,
-      venue_bookings: [...f.venue_bookings, { venue: "", booking_status: "tentative", number_of_shows: 1, ac_start: null, ac_end: null, event_duration_minutes: null, requirements: null, notes: null, schedule_entries: [] }],
+      venue_bookings: [...f.venue_bookings, { venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }],
     }));
   };
   const removeVenue = (idx: number) => setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.filter((_, i) => i !== idx) }));
@@ -78,21 +104,38 @@ export function EventEditPage() {
 
   const addScheduleEntry = (vIdx: number) =>
     updateVenue(vIdx, {
-      schedule_entries: [...(form.venue_bookings[vIdx]?.schedule_entries ?? []), { activity_type: "show", activity_date: form.event_start_date ?? "", start_time: null, end_time: null, notes: null }],
+      schedule_entries: [...(form.venue_bookings[vIdx]?.schedule_entries ?? []), {
+        activity_type: "show", activity_date: form.event_start_date ?? "", start_time: null, end_time: null,
+        with_ac_start: null, with_ac_end: null, with_ac_minutes: null,
+        without_ac_start: null, without_ac_end: null, without_ac_minutes: null,
+        notes: null,
+      }],
     });
   const removeScheduleEntry = (vIdx: number, sIdx: number) =>
     updateVenue(vIdx, { schedule_entries: (form.venue_bookings[vIdx]?.schedule_entries ?? []).filter((_, i) => i !== sIdx) });
   const updateScheduleEntry = (vIdx: number, sIdx: number, patch: Partial<ScheduleEntryInputT>) =>
-    updateVenue(vIdx, { schedule_entries: (form.venue_bookings[vIdx]?.schedule_entries ?? []).map((se, i) => (i === sIdx ? { ...se, ...patch } : se)) });
+    updateVenue(vIdx, {
+      schedule_entries: (form.venue_bookings[vIdx]?.schedule_entries ?? []).map((se, i) => {
+        if (i !== sIdx) return se;
+        const merged = { ...se, ...patch };
+        // Auto-recompute AC durations whenever their start/end changes.
+        const withMin = diffMinutes(merged.with_ac_start, merged.with_ac_end);
+        const withoutMin = diffMinutes(merged.without_ac_start, merged.without_ac_end);
+        return { ...merged, with_ac_minutes: withMin, without_ac_minutes: withoutMin };
+      }),
+    });
 
   // ---- Requirements helpers (conditional fields) ----
   const reqs = (form.requirements ?? {}) as Record<string, unknown>;
   const setReq = (key: string, value: unknown) => update({ requirements: { ...reqs, [key]: value } });
   const loadersRequired = Boolean(reqs.loaders_required) || (typeof reqs.loaders_required === "string" && reqs.loaders_required === "Required");
-  const videoRecording = Boolean(reqs.video_recording) || (typeof reqs.video_recording === "string" && reqs.video_recording === "Required");
+  const videoRecording = Boolean(reqs.video_recording) || (typeof reqs.video_recording === "string" && reqs.video_recording === "Yes");
   const pianoRequired = Boolean(reqs.piano_required) || (typeof reqs.piano_required === "string" && reqs.piano_required === "Required");
   const cateringRequired = Boolean(reqs.catering_required) || (typeof reqs.catering_required === "string" && reqs.catering_required === "Yes");
+  const decoratorRequired = Boolean(reqs.decorator_required) || (typeof reqs.decorator_required === "string" && reqs.decorator_required === "Yes");
   const liquorLicence = typeof reqs.liquor_licence === "string" ? reqs.liquor_licence === "Required" : Boolean(reqs.liquor_licence);
+
+  const canSave = form.title.trim().length > 0 && !!form.organisation_id && !!form.venue_bookings[0]?.venue.trim();
 
   return (
     <div>
@@ -114,11 +157,17 @@ export function EventEditPage() {
 
       {error && <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">{error}</div>}
 
-      {/* Step 1: Event & Client */}
+      {/* Step 1: Event & Client — Organisation first (record anchor), then Event Name */}
       {step === 0 && (
         <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
-          <Field label="Event Title *">
-            <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" />
+          <Field label="Organisation Name *">
+            <OrganisationCombobox
+              value={form.organisation_id}
+              onChange={(v) => update({ organisation_id: v })}
+            />
+          </Field>
+          <Field label="Event Name *">
+            <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" placeholder="e.g. Symphony Concert Series" />
           </Field>
           <Field label="Description">
             <textarea value={form.description ?? ""} onChange={(e) => update({ description: e.target.value || null })} className="carved input" rows={3} />
@@ -136,9 +185,6 @@ export function EventEditPage() {
             </Field>
             <Field label="Hiring Category">
               <input type="text" value={form.hiring_category ?? ""} onChange={(e) => update({ hiring_category: e.target.value || null })} className="carved input" />
-            </Field>
-            <Field label="Vertical">
-              <input type="text" value={form.vertical ?? ""} onChange={(e) => update({ vertical: e.target.value || null })} className="carved input" />
             </Field>
             <Field label="Program Officer">
               <select value={form.program_officer ?? ""} onChange={(e) => update({ program_officer: e.target.value || null })} className="carved input">
@@ -158,20 +204,20 @@ export function EventEditPage() {
                 {sources.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
               </select>
             </Field>
-            <Field label="Start Date">
+            <Field label="Operating Window — Start Date">
               <input type="date" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
             </Field>
-            <Field label="End Date">
+            <Field label="Operating Window — End Date">
               <input type="date" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
             </Field>
           </div>
-          <Field label="Collaboration Details">
-            <input type="text" value={form.collaboration_details ?? ""} onChange={(e) => update({ collaboration_details: e.target.value || null })} className="carved input" />
-          </Field>
+          <p className="text-[11px] text-ink-muted etched">
+            The operating window is the full duration the organisation is at NCPA. Specific venue dates/AC timings are captured in Step 2.
+          </p>
         </div>
       )}
 
-      {/* Step 2: Venues & Schedule */}
+      {/* Step 2: Venues & Schedule — AC timing captured per activity (with-AC + without-AC windows) */}
       {step === 1 && (
         <div className="space-y-4">
           {form.venue_bookings.map((vb, vIdx) => (
@@ -199,53 +245,72 @@ export function EventEditPage() {
                 <Field label="Number of Shows">
                   <input type="number" min={1} value={vb.number_of_shows} onChange={(e) => updateVenue(vIdx, { number_of_shows: Number(e.target.value) })} className="carved input" />
                 </Field>
-                <Field label="AC Start">
-                  <input type="time" value={vb.ac_start ?? ""} onChange={(e) => updateVenue(vIdx, { ac_start: e.target.value || null })} className="carved input" />
-                </Field>
-                <Field label="AC End">
-                  <input type="time" value={vb.ac_end ?? ""} onChange={(e) => updateVenue(vIdx, { ac_end: e.target.value || null })} className="carved input" />
-                </Field>
-                <Field label="Duration (minutes)">
-                  <input type="number" min={1} value={vb.event_duration_minutes ?? ""} onChange={(e) => updateVenue(vIdx, { event_duration_minutes: e.target.value ? Number(e.target.value) : null })} className="carved input" />
-                </Field>
               </div>
 
-              {/* Schedule entries */}
+              {/* Schedule entries — each carries With-AC and Without-AC windows (auto-durations). */}
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Schedule Entries</span>
-                  <button type="button" onClick={() => addScheduleEntry(vIdx)} className="text-xs text-sage-text hover:underline">+ Add entry</button>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Schedule Details</span>
+                  <button type="button" onClick={() => addScheduleEntry(vIdx)} className="text-xs text-sage-text hover:underline">+ Add details</button>
                 </div>
-                <div className="space-y-2">
-                  {vb.schedule_entries.map((se, sIdx) => (
-                    <div key={sIdx} className="grid grid-cols-2 items-end gap-2 md:grid-cols-5">
-                      <Field label="Activity">
-                        <select value={se.activity_type} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_type: e.target.value as ScheduleEntryInputT["activity_type"] })} className="carved input">
-                          {ACTIVITY_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Date">
-                        <input type="date" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
-                      </Field>
-                      <Field label="Start">
-                        <input type="time" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
-                      </Field>
-                      <Field label="End">
-                        <input type="time" value={se.end_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { end_time: e.target.value || null })} className="carved input" />
-                      </Field>
-                      <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-xs text-status-cancelled hover:underline">Remove</button>
-                    </div>
-                  ))}
-                  {vb.schedule_entries.length === 0 && <p className="text-xs text-ink-muted etched">No schedule entries yet. Add setup, rehearsal, show, dismantling, or technical meeting dates.</p>}
+                <div className="space-y-3">
+                  {vb.schedule_entries.map((se, sIdx) => {
+                    const withMin = se.with_ac_minutes ?? diffMinutes(se.with_ac_start, se.with_ac_end);
+                    const withoutMin = se.without_ac_minutes ?? diffMinutes(se.without_ac_start, se.without_ac_end);
+                    const total = (withMin ?? 0) + (withoutMin ?? 0);
+                    return (
+                      <div key={sIdx} className="rounded-xl bg-marble-shadow/30 p-3">
+                        <div className="mb-2 grid grid-cols-2 items-end gap-2 md:grid-cols-4">
+                          <Field label="Activity">
+                            <select value={se.activity_type} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_type: e.target.value as ScheduleEntryInputT["activity_type"] })} className="carved input">
+                              {ACTIVITY_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Date">
+                            <input type="date" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
+                          </Field>
+                          <Field label="Activity Start">
+                            <input type="time" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
+                          </Field>
+                          <Field label="Activity End">
+                            <input type="time" value={se.end_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { end_time: e.target.value || null })} className="carved input" />
+                          </Field>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="rounded-lg bg-marble-highlight/50 p-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">With AC</div>
+                            <div className="grid grid-cols-3 items-end gap-2">
+                              <Field label="Start"><input type="time" value={se.with_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_start: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="End"><input type="time" value={se.with_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_end: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="Duration"><input readOnly value={fmtHrMin(withMin)} className="carved input bg-transparent" /></Field>
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-marble-highlight/50 p-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">Without AC</div>
+                            <div className="grid grid-cols-3 items-end gap-2">
+                              <Field label="Start"><input type="time" value={se.without_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_start: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="End"><input type="time" value={se.without_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_end: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="Duration"><input readOnly value={fmtHrMin(withoutMin)} className="carved input bg-transparent" /></Field>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-[11px] text-ink-muted etched">
+                          <span>Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{fmtHrMin(total)}</strong></span>
+                          <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {vb.schedule_entries.length === 0 && <p className="text-xs text-ink-muted etched">No details yet. Add setup, rehearsal, show, dismantling, or technical meeting with their AC timings.</p>}
                 </div>
               </div>
             </div>
           ))}
-          <button type="button" onClick={addVenue} className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">+ Add another venue</button>
+          <button type="button" onClick={addVenue} className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">+ Add venue</button>
         </div>
       )}
 
-      {/* Step 3: Requirements (with conditional fields) */}
+      {/* Step 3: Requirements */}
       {step === 2 && (
         <div className="space-y-4">
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
@@ -283,12 +348,21 @@ export function EventEditPage() {
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Recording & Special</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Video Recording">
-                <YesNoSelect value={(reqs.video_recording as string) ?? ""} onChange={(v) => setReq("video_recording", v || null)} />
+                <YesNoSelect value={(reqs.video_recording as string) ?? ""} onChange={(v) => setReq("video_recording", v || null)} yesValue="Yes" noValue="No" />
               </Field>
               {videoRecording && (
-                <Field label="No. of Cameras (conditional)">
-                  <input type="number" min={0} value={(reqs.camera_count as string) ?? ""} onChange={(e) => setReq("camera_count", e.target.value || null)} className="carved input" />
-                </Field>
+                <>
+                  <Field label="No. of Cameras (conditional)">
+                    <input type="number" min={0} value={(reqs.camera_count as string) ?? ""} onChange={(e) => setReq("camera_count", e.target.value || null)} className="carved input" />
+                  </Field>
+                  <Field label="Recording Type (conditional)">
+                    <select value={(reqs.recording_type as string) ?? ""} onChange={(e) => setReq("recording_type", e.target.value || null)} className="carved input">
+                      <option value="">Select…</option>
+                      <option value="Archival">Archival</option>
+                      <option value="Broadcast">Broadcast (chargeable)</option>
+                    </select>
+                  </Field>
+                </>
               )}
               <Field label="Piano Required">
                 <input type="text" placeholder="e.g. Yamaha Grand" value={(reqs.piano_required as string) ?? ""} onChange={(e) => setReq("piano_required", e.target.value || null)} className="carved input" />
@@ -313,14 +387,14 @@ export function EventEditPage() {
             </div>
           </section>
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering</h3>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering / Decorator</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Catering Required">
                 <YesNoSelect value={(reqs.catering_required as string) ?? ""} onChange={(v) => setReq("catering_required", v || null)} yesValue="Yes" noValue="No" />
               </Field>
               {cateringRequired && (
                 <>
-                  <Field label="Catering Provider (conditional)">
+                  <Field label="Caterer (conditional)">
                     <select value={(reqs.catering_provider as string) ?? ""} onChange={(e) => setReq("catering_provider", e.target.value || null)} className="carved input">
                       <option value="">Select…</option>
                       {(lookups?.lookups.caterer ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
@@ -330,6 +404,17 @@ export function EventEditPage() {
                     <input type="number" min={0} value={(reqs.no_of_pax as string) ?? ""} onChange={(e) => setReq("no_of_pax", e.target.value || null)} className="carved input" />
                   </Field>
                 </>
+              )}
+              <Field label="Decorator">
+                <YesNoSelect value={(reqs.decorator_required as string) ?? ""} onChange={(v) => setReq("decorator_required", v || null)} yesValue="Yes" noValue="No" />
+              </Field>
+              {decoratorRequired && (
+                <Field label="Decorator Name (conditional)">
+                  <select value={(reqs.decorator_name as string) ?? ""} onChange={(e) => setReq("decorator_name", e.target.value || null)} className="carved input">
+                    <option value="">Select…</option>
+                    {(lookups?.lookups.decorator ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                  </select>
+                </Field>
               )}
             </div>
           </section>
@@ -350,7 +435,7 @@ export function EventEditPage() {
         </div>
       )}
 
-      {/* Step 4: Documents — placeholder (Phase 7 R2 upload) */}
+      {/* Step 4: Documents — placeholder */}
       {step === 3 && (
         <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-center">
           <p className="text-sm text-ink-secondary etched">Document uploads are added after the event is created (Phase 7 — R2 storage).</p>
@@ -363,20 +448,19 @@ export function EventEditPage() {
         <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Review</h3>
           <dl className="grid gap-3 text-sm md:grid-cols-2">
-            <ReviewItem label="Title" value={form.title} />
+            <ReviewItem label="Organisation" value={form.organisation_id.startsWith("new:") ? `${form.organisation_id.slice(4)} (new)` : form.organisation_id} />
+            <ReviewItem label="Event Name" value={form.title} />
             <ReviewItem label="Type" value={form.event_type} />
             <ReviewItem label="Program Officer" value={form.program_officer} />
             <ReviewItem label="Owner" value={form.event_owner} />
-            <ReviewItem label="Dates" value={form.event_start_date ? `${form.event_start_date}${form.event_end_date ? " → " + form.event_end_date : ""}` : null} />
+            <ReviewItem label="Operating Window" value={form.event_start_date ? `${form.event_start_date}${form.event_end_date ? " → " + form.event_end_date : ""}` : null} />
             <ReviewItem label="Venues" value={`${form.venue_bookings.length} booking(s): ${form.venue_bookings.map((v) => v.venue || "(unset)").join(", ")}`} />
-            <ReviewItem label="Schedule entries" value={`${form.venue_bookings.reduce((acc, vb) => acc + vb.schedule_entries.length, 0)} total`} />
+            <ReviewItem label="Schedule details" value={`${form.venue_bookings.reduce((acc, vb) => acc + vb.schedule_entries.length, 0)} total`} />
             <ReviewItem label="VFH approval" value={isVfh ? "Will apply (VFH)" : "Not applicable"} />
           </dl>
-          {form.notes !== null && (
-            <Field label="Notes">
-              <textarea value={form.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} className="carved input" rows={2} placeholder="Event-level notes…" />
-            </Field>
-          )}
+          <Field label="Notes">
+            <textarea value={form.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} className="carved input" rows={2} placeholder="Event-level notes…" />
+          </Field>
         </div>
       )}
 
@@ -402,7 +486,7 @@ export function EventEditPage() {
           <button
             type="button"
             onClick={() => save.mutate()}
-            disabled={save.isPending || !form.title.trim() || !form.venue_bookings[0]?.venue.trim()}
+            disabled={save.isPending || !canSave}
             className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
           >
             {save.isPending ? "Saving…" : isEdit ? "Save changes" : "Create event"}
@@ -411,6 +495,78 @@ export function EventEditPage() {
       </div>
 
       <style>{`.carved.input { width:100%; border-radius:12px; background:rgba(244,244,242,0.4); padding:8px 14px; font-size:14px; color:#5C5850; outline:none; }`}</style>
+    </div>
+  );
+}
+
+/** Organisation combobox — searches existing orgs by prefix; offers "Create new" when no match. */
+function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  // Decode the current value into a display string.
+  const displayName = useMemo(() => {
+    if (!value) return "";
+    if (value.startsWith("new:")) return value.slice(4);
+    return value; // existing id — we'll resolve to name below
+  }, [value]);
+
+  const { data } = useQuery<{ organisations: OrgListItem[] }>({
+    queryKey: ["org-search", query],
+    queryFn: () => apiGet(`/organisations?q=${encodeURIComponent(query)}`),
+    enabled: open && query.length > 0,
+    staleTime: 10_000,
+  });
+
+  const { data: resolved } = useQuery<{ organisations: OrgListItem[] }>({
+    queryKey: ["org-search", "selected", value],
+    queryFn: () => apiGet(`/organisations?q=${encodeURIComponent(displayName)}`),
+    enabled: open && !!value && !value.startsWith("new:"),
+  });
+
+  const results = data?.organisations ?? [];
+  const inputText = query || (resolved?.organisations?.[0]?.name ?? displayName);
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={inputText}
+        placeholder="Start typing the organisation name…"
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange(""); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="carved input"
+      />
+      {open && (query || !value) && (
+        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl bg-marble-highlight shadow-lg">
+          {results.length > 0 ? (
+            results.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); setQuery(""); setOpen(false); }}
+                className="block w-full px-4 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40"
+              >
+                {o.name}
+              </button>
+            ))
+          ) : (
+            query.trim().length > 0 && (
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(""); setOpen(false); }}
+                className="block w-full px-4 py-2 text-left text-sm text-sage-text hover:bg-marble-shadow/40"
+              >
+                + Create new: “{query.trim()}”
+              </button>
+            )
+          )}
+          {query.trim().length === 0 && results.length === 0 && (
+            <div className="px-4 py-2 text-xs text-ink-muted etched">Type to search existing organisations.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
