@@ -47,7 +47,7 @@ export function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Today section */}
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Today</h2>
             <Link to="/calendar" className="text-xs text-sage-text hover:underline">Calendar →</Link>
@@ -71,7 +71,7 @@ export function DashboardPage() {
         </section>
 
         {/* Recent events needing attention */}
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Active Events</h2>
             <Link to="/events" className="text-xs text-sage-text hover:underline">All events →</Link>
@@ -101,7 +101,7 @@ export function DashboardPage() {
 
 function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href: string }) {
   return (
-    <Link to={href} className="carved-card rounded-2xl bg-marble-highlight/50 p-4 transition-colors hover:bg-marble-highlight/80">
+    <Link to={href} className="carved-card rounded-2xl bg-marble-highlight/40 p-4 transition-colors hover:bg-marble-highlight/80">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
         <StatusBadge status={status} />

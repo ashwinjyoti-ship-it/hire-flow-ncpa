@@ -35,17 +35,14 @@ body {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9), 0 -0.5px 0 rgba(80, 78, 82, 0.12);
 }
 
-/* ---- Marble stage + drifting veins ---- */
+/* ---- Marble stage + drifting veins (per design.md §6, verbatim) ---- */
 .marble-stage {
   position: fixed;
   inset: 0;
   z-index: -3;
-  background-image: radial-gradient(
-      160% 130% at 18% -5%,
-      rgba(255, 255, 255, 0.75) 0%,
-      rgba(255, 255, 255, 0) 50%
-    ),
-    linear-gradient(155deg, #fefefe 0%, #fafaf8 55%, #f4f4f2 100%);
+  background-image:
+    radial-gradient(160% 130% at 18% -5%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 50%),
+    linear-gradient(155deg, #FEFEFE 0%, #FAFAF8 55%, #F4F4F2 100%);
   background-blend-mode: screen, normal;
 }
 
@@ -60,7 +57,7 @@ body {
   will-change: transform;
 }
 
-/* Vein Layer 1 — seed 12, opacity 0.12, 52s drift */
+/* Vein Layer 1 — primary veins (design.md §6 verbatim: seed 12, opacity 0.12). */
 .vein-1 {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='1100'><filter id='n1'><feTurbulence type='fractalNoise' baseFrequency='0.004 0.008' numOctaves='4' seed='12' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.75 0 0 0 0  0 0.76 0 0 0  0 0 0.79 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0 0 0 0 1 0 0 0 0 0 0 0 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n1)' opacity='0.12'/></svg>");
   background-size: 1100px 1100px;
@@ -68,7 +65,7 @@ body {
   animation: drift1 52s ease-in-out alternate infinite;
 }
 
-/* Vein Layer 2 — seed 47, opacity 0.10, 61s drift (coprime → ~53 min before repeat) */
+/* Vein Layer 2 — secondary veins (design.md §6 verbatim: seed 47, opacity 0.10). */
 .vein-2 {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.006 0.013' numOctaves='4' seed='47' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.80 0 0 0 0  0 0.81 0 0 0  0 0 0.83 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n2)' opacity='0.10'/></svg>");
   background-size: 800px 800px;
@@ -99,6 +96,8 @@ body {
     transform: translate3d(10px, -9px, 0) scale(1) rotate(0.25deg);
   }
 }
+
+/* Layer 3 removed — back to the design.md's two-layer system. */
 
 @media (prefers-reduced-motion: reduce) {
   .vein-1,

@@ -89,7 +89,7 @@ export function LoginPage() {
         </div>
 
         {phase === "credentials" ? (
-          <form onSubmit={onLogin} className="carved-card rounded-2xl bg-marble-highlight/60 p-6 backdrop-blur-sm">
+          <form onSubmit={onLogin} className="carved-card rounded-2xl bg-marble-highlight/50 p-6 backdrop-blur-sm">
             <label className="mb-4 block">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage etched">Email</span>
               <input
@@ -127,7 +127,7 @@ export function LoginPage() {
             </button>
           </form>
         ) : (
-          <form onSubmit={onMfa} className="carved-card rounded-2xl bg-marble-highlight/60 p-6 backdrop-blur-sm">
+          <form onSubmit={onMfa} className="carved-card rounded-2xl bg-marble-highlight/50 p-6 backdrop-blur-sm">
             <p className="mb-4 text-xs text-ink-secondary etched">
               Open your authenticator app (Google Authenticator, 1Password, etc.) and enter the 6-digit code.
             </p>

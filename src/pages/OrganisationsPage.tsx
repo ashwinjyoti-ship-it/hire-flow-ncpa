@@ -21,7 +21,7 @@ export function OrganisationsPage() {
   return (
     <div>
       <PageHeader title="Organisations & Clients" subtitle={`${data?.organisations.length ?? 0} organisations`} />
-      <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-4">
+      <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/40 p-4">
         <input
           type="search"
           value={q}
@@ -34,11 +34,11 @@ export function OrganisationsPage() {
       {isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (data?.organisations.length ?? 0) === 0 ? (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-center text-sm text-ink-muted etched">
+        <div className="carved-card rounded-2xl bg-marble-highlight/40 p-8 text-center text-sm text-ink-muted etched">
           No organisations found.
         </div>
       ) : (
-        <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
+        <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/40">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ink-muted/10 text-left text-[11px] uppercase tracking-wider text-ink-muted etched">

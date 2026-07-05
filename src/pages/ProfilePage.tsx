@@ -101,7 +101,7 @@ export function ProfilePage() {
       <PageHeader title="Profile & Security" subtitle="Manage your account, password, and multi-factor authentication" />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+        <section className="carved-card rounded-2xl bg-marble-highlight/40 p-6">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">Account</h2>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -119,7 +119,7 @@ export function ProfilePage() {
           </dl>
         </section>
 
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+        <section className="carved-card rounded-2xl bg-marble-highlight/40 p-6">
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-sage etched">Multi-Factor Authentication</h2>
           <p className="mb-4 text-xs text-ink-muted etched">
             {mfaStatus?.enrolled

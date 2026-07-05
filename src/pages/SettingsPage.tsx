@@ -116,7 +116,7 @@ export function SettingsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
           {/* Resend / email configuration */}
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Email — Resend</h2>
               <ConfiguredBadge configured={data?.resend.configured ?? false} />
@@ -192,7 +192,7 @@ export function SettingsPage() {
           </section>
 
           {/* Mail-from address */}
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-6">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">From Address</h2>
             <p className="mb-4 text-xs text-ink-muted etched">The sender address for outgoing notifications. Use a verified domain in Resend.</p>
             {isAdmin ? (

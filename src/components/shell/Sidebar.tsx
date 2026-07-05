@@ -13,7 +13,7 @@ const NAV = [
 export function Sidebar() {
   return (
     <nav className="sticky top-24 hidden w-56 shrink-0 lg:block" aria-label="Primary">
-      <div className="carved-header rounded-2xl bg-marble-highlight/50 p-3 backdrop-blur-sm">
+      <div className="carved-header rounded-2xl bg-marble-highlight/40 p-3 backdrop-blur-sm">
         <ul className="space-y-1">
           {NAV.map((item) => (
             <li key={item.to}>

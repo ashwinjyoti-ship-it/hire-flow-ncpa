@@ -41,7 +41,7 @@ export function EventsListPage() {
       />
 
       {/* Filters */}
-      <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-4">
+      <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/40 p-4">
         <div className="grid gap-3 md:grid-cols-5">
           <FilterInput label="Search" value={filters.q} onChange={(v) => setFilters((f) => ({ ...f, q: v }))} placeholder="Title, org, code…" />
           <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilters((f) => ({ ...f, status: v }))} options={[{ value: "", label: "All" }, ...statuses.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))]} />
@@ -54,11 +54,11 @@ export function EventsListPage() {
       {isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (data?.events.length ?? 0) === 0 ? (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-center text-sm text-ink-muted etched">
+        <div className="carved-card rounded-2xl bg-marble-highlight/40 p-8 text-center text-sm text-ink-muted etched">
           No events match these filters.
         </div>
       ) : (
-        <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
+        <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/40">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ink-muted/10 text-left text-[11px] uppercase tracking-wider text-ink-muted etched">

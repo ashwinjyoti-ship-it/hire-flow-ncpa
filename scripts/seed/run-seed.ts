@@ -15,8 +15,12 @@ import { SqlBatch, queryAll, sqlStr, type SeedEnv } from "./d1-client";
 import { seedEventsFromExcel } from "./import-events";
 
 function parseEnv(): SeedEnv {
-  const arg = process.argv.find((a) => a.startsWith("--env="));
-  const env = arg ? arg.replace("--env=", "") : "local";
+  // Accept both "--env=local" and "--env local" forms.
+  let env = "local";
+  const idx = process.argv.indexOf("--env");
+  if (idx !== -1 && process.argv[idx + 1]) env = process.argv[idx + 1]!;
+  const eqArg = process.argv.find((a) => a.startsWith("--env="));
+  if (eqArg) env = eqArg.replace("--env=", "");
   if (env !== "local" && env !== "preview" && env !== "remote") {
     throw new Error(`Unknown --env: ${env}. Use local|preview|remote.`);
   }

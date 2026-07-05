@@ -7,7 +7,7 @@ export function Topbar() {
   const { user } = useAuth();
 
   return (
-    <header className="carved-header mx-auto mt-6 w-full max-w-[1600px] rounded-2xl bg-marble-highlight/60 px-6 py-3 backdrop-blur-sm">
+    <header className="carved-header mx-auto mt-6 w-full max-w-[1600px] rounded-2xl bg-marble-highlight/50 px-6 py-3 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-4">
         <Link to="/dashboard" className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-btn text-sage-text carved-btn-sage">

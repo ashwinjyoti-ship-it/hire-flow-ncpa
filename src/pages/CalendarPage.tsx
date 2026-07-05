@@ -68,7 +68,7 @@ export function CalendarPage() {
       <PageHeader title="Calendar" subtitle={title} />
 
       {/* Controls */}
-      <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
+      <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/50 p-3 backdrop-blur-sm">
         <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
           {(["month", "week", "day", "venue"] as const).map((v) => (
             <button
@@ -175,7 +175,7 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
               </div>
               <div className="space-y-1.5">
                 {entries.slice(0, 3).map((e) => (
-                  <button key={e.id} type="button" onClick={() => onPick(e)} className="carved-card flex w-full items-center gap-1.5 rounded-md bg-marble-highlight/60 px-2 py-1 text-left">
+                  <button key={e.id} type="button" onClick={() => onPick(e)} className="carved-card flex w-full items-center gap-1.5 rounded-md bg-marble-highlight/50 px-2 py-1 text-left">
                     <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "draft"]} />
                     <span className="truncate text-[11px] font-medium text-ink-secondary etched">{e.title}</span>
                   </button>
@@ -199,7 +199,7 @@ function WeekDayList({ byDate, days, start, today, onPick }: { byDate: Record<st
         const key = isoDate(d);
         const entries = byDate[key] ?? [];
         return (
-          <section key={key} className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
+          <section key={key} className="carved-card rounded-2xl bg-marble-highlight/40 p-4">
             <div className={"mb-3 text-sm font-semibold etched-deep " + (key === today ? "text-sage-text" : "text-ink-primary")}>
               {d.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "short", timeZone: "Asia/Kolkata" })}
               {key === today && <span className="ml-2 text-[11px] uppercase tracking-wider text-sage">Today</span>}
@@ -241,7 +241,7 @@ function VenueTimeline({ byDate, venues, start, onPick }: { byDate: Record<strin
     }
   }
   return (
-    <div className="carved-card overflow-x-auto scroll-slim rounded-2xl bg-marble-highlight/50 p-4">
+    <div className="carved-card overflow-x-auto scroll-slim rounded-2xl bg-marble-highlight/40 p-4">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr>

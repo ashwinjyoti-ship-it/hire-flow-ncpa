@@ -1,4 +1,4 @@
-/** Procedural marble backdrop: stage + two drifting vein layers. No raster. */
+/** Procedural marble backdrop: stage + two drifting vein layers (per design.md). */
 export function MarbleBackdrop() {
   return (
     <>

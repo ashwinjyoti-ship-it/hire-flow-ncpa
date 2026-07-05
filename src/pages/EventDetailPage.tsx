@@ -92,7 +92,7 @@ export function EventDetailPage() {
       />
 
       {/* Header summary */}
-      <div className="carved-card mb-6 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/50 p-5 md:grid-cols-5">
+      <div className="carved-card mb-6 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/40 p-5 md:grid-cols-5">
         <SummaryItem label="Type" value={e.event_type ?? "—"} />
         <SummaryItem label="Dates" value={e.event_start_date ? `${formatDate(e.event_start_date)}${e.event_end_date && e.event_end_date !== e.event_start_date ? " → " + formatDate(e.event_end_date) : ""}` : "—"} />
         <SummaryItem label="Owner" value={e.event_owner ?? "—"} />
@@ -131,11 +131,11 @@ export function EventDetailPage() {
 
       {tab === "overview" && (
         <div className="grid gap-6 md:grid-cols-2">
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Description</h3>
             <p className="whitespace-pre-wrap text-sm text-ink-secondary etched">{e.description || e.notes || "No description provided."}</p>
           </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Completion</h3>
             <div className="space-y-3">
               <ProgressBar label="Operations" value={e.ops_completion} />
@@ -149,7 +149,7 @@ export function EventDetailPage() {
       {tab === "venues" && (
         <div className="space-y-4">
           {data?.venue_bookings.map((vb, idx) => (
-            <section key={vb.id as string} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <section key={vb.id as string} className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-ink-primary etched-deep">
                   <span className="text-sage">Venue {idx + 1}:</span> {vb.venue as string}
@@ -188,7 +188,7 @@ export function EventDetailPage() {
       )}
 
       {tab === "conflicts" && (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <div className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
           {(conflictsData?.conflicts.length ?? 0) === 0 ? (
             <p className="text-sm text-ink-muted etched">No venue conflicts detected.</p>
           ) : (
@@ -205,7 +205,7 @@ export function EventDetailPage() {
       )}
 
       {tab === "activity" && (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <div className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
           <ol className="space-y-3">
             {data?.activity.map((a) => (
               <li key={a.id as string} className="flex items-start gap-3 text-sm">
@@ -254,7 +254,7 @@ export function EventDetailPage() {
 
       {/* Status actions */}
       {canChangeStatus && allowedTransitions.length > 0 && (
-        <div className="carved-card mt-6 flex flex-wrap gap-2 rounded-2xl bg-marble-highlight/50 p-4">
+        <div className="carved-card mt-6 flex flex-wrap gap-2 rounded-2xl bg-marble-highlight/40 p-4">
           <span className="self-center text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Change status:</span>
           {allowedTransitions.map((s) => (
             <button

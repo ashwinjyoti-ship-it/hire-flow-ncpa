@@ -116,7 +116,7 @@ export function EventEditPage() {
 
       {/* Step 1: Event & Client */}
       {step === 0 && (
-        <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
+        <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/40 p-6">
           <Field label="Event Title *">
             <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" />
           </Field>
@@ -175,7 +175,7 @@ export function EventEditPage() {
       {step === 1 && (
         <div className="space-y-4">
           {form.venue_bookings.map((vb, vIdx) => (
-            <div key={vIdx} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <div key={vIdx} className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-ink-primary etched-deep">Venue Booking {vIdx + 1}</h3>
                 {form.venue_bookings.length > 1 && (
@@ -248,13 +248,13 @@ export function EventEditPage() {
       {/* Step 3: Requirements (with conditional fields) */}
       {step === 2 && (
         <div className="space-y-4">
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Sound</h3>
             <Field label="Sound Requirements">
               <textarea value={(reqs.sound as string) ?? ""} onChange={(e) => setReq("sound", e.target.value || null)} className="carved input" rows={2} />
             </Field>
           </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Staffing & Facilities</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Green Rooms Required">
@@ -279,7 +279,7 @@ export function EventEditPage() {
               )}
             </div>
           </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Recording & Special</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Video Recording">
@@ -312,7 +312,7 @@ export function EventEditPage() {
               )}
             </div>
           </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Catering Required">
@@ -333,7 +333,7 @@ export function EventEditPage() {
               )}
             </div>
           </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <section className="carved-card rounded-2xl bg-marble-highlight/40 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Operations</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Parking Requirements">
@@ -352,7 +352,7 @@ export function EventEditPage() {
 
       {/* Step 4: Documents — placeholder (Phase 7 R2 upload) */}
       {step === 3 && (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-center">
+        <div className="carved-card rounded-2xl bg-marble-highlight/40 p-8 text-center">
           <p className="text-sm text-ink-secondary etched">Document uploads are added after the event is created (Phase 7 — R2 storage).</p>
           <p className="mt-2 text-xs text-ink-muted etched">You can continue to review and save the event now.</p>
         </div>
@@ -360,7 +360,7 @@ export function EventEditPage() {
 
       {/* Step 5: Review */}
       {step === 4 && (
-        <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
+        <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/40 p-6">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Review</h3>
           <dl className="grid gap-3 text-sm md:grid-cols-2">
             <ReviewItem label="Title" value={form.title} />
