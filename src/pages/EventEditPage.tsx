@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
-import { useLookups } from "../lib/use-lookups";
+import { useLookups, formatDuration } from "../lib/use-lookups";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
@@ -23,12 +23,7 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
   if (mins === 0) return 0;
   return mins;
 }
-function fmtHrMin(mins: number | null): string {
-  if (mins == null) return "—";
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h ? `${h}h ${m ? `${String(m).padStart(2, "0")}m` : ""}`.trim() : `${m}m`;
-}
+// (formatDuration is imported from lib/use-lookups for consistent hh/d rendering)
 
 export function EventEditPage() {
   const { id } = useParams();
@@ -45,7 +40,6 @@ export function EventEditPage() {
     organisation_id: "",
     primary_contact_id: null,
     event_type: null,
-    hiring_category: null,
     program_officer: null,
     event_owner: null,
     event_start_date: null,
@@ -56,6 +50,9 @@ export function EventEditPage() {
     notes: null,
     venue_bookings: [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }],
   });
+  // Single-day toggle: when checked, end date is hidden and submitted as null.
+  // Defaults ON (most events are single-day). Synced from existing form data on edit.
+  const [singleDay, setSingleDay] = useState(true);
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -68,7 +65,7 @@ export function EventEditPage() {
         const created = await apiPost<{ id: string }>("/organisations", { name });
         orgId = created.id;
       }
-      const payload = { ...form, organisation_id: orgId };
+      const payload = { ...form, organisation_id: orgId, event_end_date: singleDay ? null : form.event_end_date };
       if (isEdit && id) {
         const { venue_bookings: _vb, ...rest } = payload;
         void _vb;
@@ -123,14 +120,18 @@ export function EventEditPage() {
     });
 
   // ---- Requirements helpers (conditional fields) ----
+  // NOTE: must compare against the actual yes-value, NOT Boolean(value) —
+  // Boolean("No") is truthy in JS, which previously kept conditional fields
+  // visible after the user selected "No".
   const reqs = (form.requirements ?? {}) as Record<string, unknown>;
   const setReq = (key: string, value: unknown) => update({ requirements: { ...reqs, [key]: value } });
-  const loadersRequired = Boolean(reqs.loaders_required) || (typeof reqs.loaders_required === "string" && reqs.loaders_required === "Required");
-  const videoRecording = Boolean(reqs.video_recording) || (typeof reqs.video_recording === "string" && reqs.video_recording === "Yes");
-  const pianoRequired = Boolean(reqs.piano_required) || (typeof reqs.piano_required === "string" && reqs.piano_required === "Required");
-  const cateringRequired = Boolean(reqs.catering_required) || (typeof reqs.catering_required === "string" && reqs.catering_required === "Yes");
-  const decoratorRequired = Boolean(reqs.decorator_required) || (typeof reqs.decorator_required === "string" && reqs.decorator_required === "Yes");
-  const liquorLicence = typeof reqs.liquor_licence === "string" ? reqs.liquor_licence === "Required" : Boolean(reqs.liquor_licence);
+  const isYes = (v: unknown, yesValue = "Required") => v === yesValue || v === "Yes";
+  const loadersRequired = isYes(reqs.loaders_required);
+  const videoRecording = isYes(reqs.video_recording, "Yes");
+  const pianoRequired = isYes(reqs.piano_required);
+  const cateringRequired = isYes(reqs.catering_required, "Yes");
+  const decoratorRequired = isYes(reqs.decorator_required, "Yes");
+  const liquorLicence = isYes(reqs.liquor_licence);
 
   const canSave = form.title.trim().length > 0 && !!form.organisation_id && !!form.venue_bookings[0]?.venue.trim();
 
@@ -180,8 +181,11 @@ export function EventEditPage() {
               </select>
               {isVfh && <p className="mt-1 text-[11px] text-status-awaitingApproval etched">VFH selected — approval workflow will apply.</p>}
             </Field>
-            <Field label="Hiring Category">
-              <input type="text" value={form.hiring_category ?? ""} onChange={(e) => update({ hiring_category: e.target.value || null })} className="carved input" />
+            <Field label="Enquiry Source">
+              <select value={form.enquiry_source ?? ""} onChange={(e) => update({ enquiry_source: e.target.value || null })} className="carved input">
+                <option value="">Select…</option>
+                {sources.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+              </select>
             </Field>
             <Field label="Program Officer">
               <select value={form.program_officer ?? ""} onChange={(e) => update({ program_officer: e.target.value || null })} className="carved input">
@@ -195,18 +199,33 @@ export function EventEditPage() {
                 {owners.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
               </select>
             </Field>
-            <Field label="Enquiry Source">
-              <select value={form.enquiry_source ?? ""} onChange={(e) => update({ enquiry_source: e.target.value || null })} className="carved input">
-                <option value="">Select…</option>
-                {sources.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-              </select>
-            </Field>
-            <Field label="Operating Window — Start Date">
-              <input type="date" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
-            </Field>
-            <Field label="Operating Window — End Date">
-              <input type="date" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
-            </Field>
+          </div>
+
+          {/* Operating window — start/end on one row; end hidden for single-day events. */}
+          <div>
+            <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-sage etched">
+              <input
+                type="checkbox"
+                checked={singleDay}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setSingleDay(next);
+                  if (next) update({ event_end_date: null });
+                }}
+                className="h-3.5 w-3.5 rounded border-ink-muted"
+              />
+              Single-day event
+            </label>
+            <div className={"mt-2 grid gap-4 " + (singleDay ? "grid-cols-1" : "md:grid-cols-2")}>
+              <Field label="Operating Window — Start Date">
+                <input type="date" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
+              </Field>
+              {!singleDay && (
+                <Field label="Operating Window — End Date">
+                  <input type="date" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
+                </Field>
+              )}
+            </div>
           </div>
           <p className="text-[11px] text-ink-muted etched">
             The operating window is the full duration the organisation is at NCPA. Specific venue dates/AC timings are captured in Step 2.
@@ -236,7 +255,6 @@ export function EventEditPage() {
                   <select value={vb.booking_status} onChange={(e) => updateVenue(vIdx, { booking_status: e.target.value as VenueBookingInputT["booking_status"] })} className="carved input">
                     <option value="tentative">Tentative</option>
                     <option value="confirmed">Confirmed</option>
-                    <option value="cancelled">Cancelled</option>
                   </select>
                 </Field>
                 <Field label="Number of Shows">
@@ -279,7 +297,7 @@ export function EventEditPage() {
                             <div className="grid grid-cols-3 items-end gap-2">
                               <Field label="Start"><input type="time" value={se.with_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_start: e.target.value || null })} className="carved input" /></Field>
                               <Field label="End"><input type="time" value={se.with_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_end: e.target.value || null })} className="carved input" /></Field>
-                              <Field label="Duration"><input readOnly value={fmtHrMin(withMin)} className="carved input bg-transparent" /></Field>
+                              <Field label="Duration"><input readOnly value={formatDuration(withMin)} className="carved input bg-transparent" /></Field>
                             </div>
                           </div>
                           <div className="rounded-lg bg-marble-highlight/50 p-2">
@@ -287,12 +305,12 @@ export function EventEditPage() {
                             <div className="grid grid-cols-3 items-end gap-2">
                               <Field label="Start"><input type="time" value={se.without_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_start: e.target.value || null })} className="carved input" /></Field>
                               <Field label="End"><input type="time" value={se.without_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_end: e.target.value || null })} className="carved input" /></Field>
-                              <Field label="Duration"><input readOnly value={fmtHrMin(withoutMin)} className="carved input bg-transparent" /></Field>
+                              <Field label="Duration"><input readOnly value={formatDuration(withoutMin)} className="carved input bg-transparent" /></Field>
                             </div>
                           </div>
                         </div>
                         <div className="mt-2 flex items-center justify-between text-[11px] text-ink-muted etched">
-                          <span>Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{fmtHrMin(total)}</strong></span>
+                          <span>Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{formatDuration(total)}</strong></span>
                           <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
                         </div>
                       </div>

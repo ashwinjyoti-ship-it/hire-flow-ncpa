@@ -35,3 +35,22 @@ export function formatINR(amount: number | null | undefined): string {
   if (amount === null || amount === undefined) return "—";
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 }
+
+/**
+ * Format a duration given in MINUTES as a compact human string.
+ * Uses days / hours / minutes (no leading-zero sub-units):
+ *   30 -> "30m", 90 -> "1h 30m", 1500 -> "1d 1h", 1440 -> "1d"
+ * Returns "—" for null/undefined.
+ */
+export function formatDuration(mins: number | null | undefined): string {
+  if (mins == null) return "—";
+  const days = Math.floor(mins / (24 * 60));
+  const rem = mins - days * 24 * 60;
+  const h = Math.floor(rem / 60);
+  const m = rem % 60;
+  const parts: string[] = [];
+  if (days) parts.push(`${days}d`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${String(m).padStart(2, "0")}m`);
+  return parts.length ? parts.join(" ") : "0m";
+}
