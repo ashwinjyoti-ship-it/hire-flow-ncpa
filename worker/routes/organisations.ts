@@ -1,6 +1,6 @@
 /**
  * Organisation & contact API routes.
- *   GET    /organisations              — list (with search)
+ *   GET    /organisations              — list (distinct by name, with search + enriched facets)
  *   GET    /organisations/:id          — detail (with contacts + event count)
  *   POST   /organisations              — create
  *   PUT    /organisations/:id          — update
@@ -16,22 +16,88 @@ import { makeId } from "../lib/id";
 
 export const organisationRoutes = new Hono<AuthEnv>();
 
-// GET / — list with optional prefix search (used by the form's org combobox)
+// GET / — list with optional prefix search (used by the form's org combobox AND the
+// Organisations page). Returns one row per DISTINCT org name (case-insensitive),
+// merging the 4 Excel-spelling duplicates (113 rows → 109 distinct orgs), and
+// derives the enriched fields the faceted page needs from existing columns.
 organisationRoutes.get("/", requireUser, async (c) => {
   const q = c.req.query("q")?.trim();
-  let sql = `SELECT o.id, o.name, o.org_type, o.is_archived,
-             (SELECT COUNT(*) FROM events e WHERE e.organisation_id = o.id) AS event_count,
-             (SELECT name FROM contacts WHERE organisation_id = o.id AND is_primary = 1 LIMIT 1) AS primary_contact
-             FROM organisations o WHERE o.is_archived = 0`;
+  // Aggregate per canonical name (LOWER(TRIM(name))). Pick the lexicographically
+  // smallest id as the representative so the row is stable across requests.
+  const sql = `SELECT
+        MIN(o.id)                              AS id,
+        MIN(o.name)                            AS name,
+        MIN(o.org_type)                        AS org_type,
+        MIN(o.is_archived)                     AS is_archived,
+        MIN(o.updated_at)                      AS updated_at,
+        SUM((SELECT COUNT(*) FROM events e WHERE e.organisation_id = o.id)) AS event_count,
+        MIN((SELECT name FROM contacts WHERE organisation_id = o.id AND is_primary = 1 LIMIT 1)) AS primary_contact_name,
+        MIN((SELECT email FROM contacts WHERE organisation_id = o.id AND is_primary = 1 LIMIT 1)) AS primary_contact_email,
+        MAX((SELECT MAX(e.event_start_date) FROM events e WHERE e.organisation_id = o.id)) AS last_event_date
+      FROM organisations o
+      WHERE o.is_archived = 0`;
   const binds: unknown[] = [];
+  let where = "";
   if (q) {
-    sql += ` AND LOWER(o.name) LIKE ?`;
+    where = ` AND LOWER(o.name) LIKE ?`;
     binds.push(`%${q.toLowerCase()}%`);
   }
-  sql += ` ORDER BY o.name LIMIT 200`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json({ organisations: results });
+  const groupOrder = ` GROUP BY LOWER(TRIM(o.name)) ORDER BY MIN(o.name) LIMIT 200`;
+  const { results } = await c.env.DB.prepare(sql + where + groupOrder).bind(...binds).all();
+
+  // `last_activity_at` should reflect past engagement, not future bookings — a
+  // Dec-2026 event doesn't make an org "active this week" in July. So we take
+  // the last event date only if it's on or before today; otherwise fall back to
+  // the row's updated_at (seed/import touch time). Both are normalised to ISO.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const orgs = (results ?? []).map((r: Record<string, unknown>) => {
+    const lastEvt = toIso((r.last_event_date as string | null) ?? null);
+    const lastActivity =
+      lastEvt && lastEvt <= todayIso
+        ? lastEvt
+        : toIso((r.updated_at as string | null) ?? null);
+    return {
+      id: r.id as string,
+      name: r.name as string,
+      org_type: (r.org_type as string | null) || null,
+      is_archived: r.is_archived as number,
+      event_count: Number(r.event_count ?? 0),
+      primary_contact_name: (r.primary_contact_name as string | null) || null,
+      primary_contact_email: (r.primary_contact_email as string | null) || null,
+      last_event_date: lastEvt,
+      last_activity_at: lastActivity,
+    };
+  });
+
+  return c.json({ organisations: orgs, total: orgs.length });
 });
+
+/**
+ * Normalise the date strings stored in `events.event_start_date` to ISO
+ * `yyyy-mm-dd`. The seed imports dates as `DD-MMM-YYYY` (e.g. "31-Jul-2026");
+ * ISO inputs pass through unchanged. Returns null for null/empty/garbage so the
+ * downstream facets/banner can treat "no date" uniformly.
+ */
+function toIso(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  // Already ISO?
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // DD-MMM-YYYY  (e.g. 31-Jul-2026)
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(s);
+  if (m) {
+    const day = m[1]!.padStart(2, "0");
+    const mon = MONTHS[m[2]!.toLowerCase()];
+    if (mon) return `${m[3]}-${mon}-${day}`;
+  }
+  // Last resort: let JS parse; fall back to null.
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+const MONTHS: Record<string, string> = {
+  jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+  jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+};
 
 // GET /:id
 organisationRoutes.get("/:id", requireUser, async (c) => {

@@ -9,6 +9,11 @@ export default {
   content: ["./src/**/*.{ts,tsx}", "./index.html"],
   theme: {
     extend: {
+      // First custom screen in the project: the Organisations faceted panel
+      // collapses its filter rail into a drawer below this width.
+      screens: {
+        bp: "900px",
+      },
       colors: {
         // Marble base tones
         marble: {
