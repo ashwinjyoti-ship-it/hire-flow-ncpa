@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser, requirePermission, actorFrom, ipHint } from "../middleware/auth";
 import { EventInput, StatusTransitionInput } from "../lib/types";
-import { canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
+import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
@@ -213,12 +213,29 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   const id = c.req.param("id");
   const to = parsed.data.to_status as EventStatus;
 
-  const event = await db.prepare("SELECT status, event_type FROM events WHERE id = ?").bind(id).first<{ status: EventStatus; event_type: string | null }>();
+  const event = await db.prepare("SELECT status, event_type, approval_status, confirmation_status FROM events WHERE id = ?").bind(id).first<{
+    status: EventStatus;
+    event_type: string | null;
+    approval_status: string | null;
+    confirmation_status: string | null;
+  }>();
   if (!event) return c.json({ error: "Not found" }, 404);
 
   const from = event.status;
   if (!canTransition(from, to)) {
     return c.json({ error: `Invalid transition: ${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}` }, 422);
+  }
+  // Confirmation gate: signed confirmation (+ approval if VFH).
+  if (to === "confirmed" && !canConfirm({
+    eventType: event.event_type,
+    confirmationStatus: event.confirmation_status,
+    approvalStatus: event.approval_status,
+  })) {
+    return c.json({ error: "Confirmation requires signed confirmation, and VFH events require approval received or approved." }, 422);
+  }
+  // Cancellation and regret both require a reason.
+  if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
+    return c.json({ error: "A reason is required to cancel or decline an event" }, 422);
   }
   // Cancellation and regret both require a reason.
   if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {

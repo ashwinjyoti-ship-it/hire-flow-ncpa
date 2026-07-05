@@ -59,10 +59,7 @@ export function EventEditPage() {
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
-  // Track the newly-created event id for post-save navigation.
-  let lastCreatedId: string | undefined;
-
-  const save = useMutation<void, Error, void>({
+  const save = useMutation<string | undefined, Error, void>({
     mutationFn: async () => {
       // If organisation_id is a temporary "new:<name>" token, create the org first.
       let orgId = form.organisation_id;
@@ -76,12 +73,12 @@ export function EventEditPage() {
         const { venue_bookings: _vb, ...rest } = payload;
         void _vb;
         await apiPut(`/events/${id}`, rest);
-        return;
+        return undefined;
       }
       const res = await apiPost<{ id: string }>("/events", payload);
-      lastCreatedId = res.id;
+      return res.id;
     },
-    onSuccess: () => navigate(`/events/${lastCreatedId ?? id}`),
+    onSuccess: (createdId) => navigate(`/events/${createdId ?? id}`),
     onError: (e: Error) => setError(e.message),
   });
 
