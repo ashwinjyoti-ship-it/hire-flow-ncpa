@@ -1,14 +1,25 @@
 name: Deploy
 
+# Deploy runs ONLY after the CI workflow completes successfully on main.
+# This avoids duplicate parallel runs on a main push and guarantees that
+# nothing deploys if typecheck/lint/test/build failed.
+#
+# Triggers:
+#   - workflow_run: when "CI" finishes on branch `main` with conclusion `success`.
+#   - workflow_dispatch: manual run from the Actions tab (skips the CI gate).
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 jobs:
   deploy:
+    # The workflow_run trigger fires on ANY conclusion (failure, success,
+    # cancelled). Gate explicitly so deploys only happen on green CI runs.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    # Only deploy after CI validates (in the same push). This job also runs on main pushes.
     steps:
       - uses: actions/checkout@v4
 
