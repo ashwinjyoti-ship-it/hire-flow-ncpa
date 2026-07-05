@@ -17,6 +17,8 @@ import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
+import { blockersForTransition, ensureChecklistForEvent, getChecklistItems, getEventLifecycle, updateChecklistItem } from "../lib/operations";
+import { z } from "zod";
 
 export const eventRoutes = new Hono<AuthEnv>();
 
@@ -166,6 +168,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
 
   await audit({ db, actor: actorFrom(user), action: "event.created", targetType: "event", targetId: id, detail: { title: d.title } });
   await eventActivity(db, id, "created", actorFrom(user).id, { title: d.title });
+  await ensureChecklistForEvent(db, id);
   return c.json({ id }, 201);
 });
 
@@ -233,9 +236,9 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   })) {
     return c.json({ error: "Confirmation requires signed confirmation, and VFH events require approval received or approved." }, 422);
   }
-  // Cancellation and regret both require a reason.
-  if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
-    return c.json({ error: "A reason is required to cancel or decline an event" }, 422);
+  const lifecycleBlockers = blockersForTransition({ id, title: "", ...event, ops_completion: null, accounts_completion: null, overall_completion: null }, to);
+  if (lifecycleBlockers.length > 0) {
+    return c.json({ error: lifecycleBlockers.join(" ") }, 422);
   }
   // Cancellation and regret both require a reason.
   if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
@@ -265,6 +268,54 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   });
   await eventActivity(db, id, "status_changed", actorFrom(user).id, { from, to, reason: parsed.data.reason });
   return c.json({ ok: true, status: to });
+});
+
+// GET /:id/checklist — per-event checklist grouped by module and lifecycle readiness.
+eventRoutes.get("/:id/checklist", requireUser, async (c) => {
+  const id = c.req.param("id");
+  const [items, lifecycle] = await Promise.all([
+    getChecklistItems(c.env.DB, id),
+    getEventLifecycle(c.env.DB, id),
+  ]);
+
+  const grouped: Record<string, Record<string, unknown[]>> = {};
+  for (const item of items) {
+    grouped[item.module] ??= {};
+    grouped[item.module]![item.section] ??= [];
+    grouped[item.module]![item.section]!.push({
+      ...item,
+      options: item.options ? JSON.parse(item.options) as unknown[] : null,
+    });
+  }
+  return c.json({ checklist: grouped, lifecycle: lifecycle.readiness });
+});
+
+const ChecklistUpdateInput = z.object({
+  value: z.string().nullish(),
+  status: z.enum(["not_started", "in_progress", "completed", "not_applicable", "blocked"]).optional(),
+  correction_reason: z.string().nullish(),
+});
+
+// PATCH /:id/checklist/:itemId — update a checklist field.
+eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"), async (c) => {
+  const parsed = ChecklistUpdateInput.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
+  try {
+    const item = await updateChecklistItem({
+      db: c.env.DB,
+      itemId: c.req.param("itemId"),
+      eventId: c.req.param("id"),
+      value: parsed.data.value ?? null,
+      status: parsed.data.status,
+      correctionReason: parsed.data.correction_reason,
+      user: c.get("user")!,
+    });
+    return c.json({ item });
+  } catch (err) {
+    const message = (err as Error).message;
+    const status = message.includes("reason") ? 422 : message.includes("not found") ? 404 : 400;
+    return c.json({ error: message }, status);
+  }
 });
 
 // GET /:id/conflicts — venue conflict check

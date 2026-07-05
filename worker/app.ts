@@ -7,6 +7,8 @@ import { organisationRoutes } from "./routes/organisations";
 import { eventRoutes } from "./routes/events";
 import { calendarRoutes } from "./routes/calendar";
 import { lookupRoutes } from "./routes/lookups";
+import { taskRoutes } from "./routes/tasks";
+import { notificationRoutes } from "./routes/notifications";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -57,6 +59,10 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Lookup (dropdown_options) admin CRUD — public reads still go to GET /lookups above.
   app.route("/lookups", lookupRoutes);
+
+  // Operational workflow routes.
+  app.route("/tasks", taskRoutes);
+  app.route("/notifications", notificationRoutes);
 
   return app;
 }

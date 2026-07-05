@@ -1,10 +1,35 @@
 import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, logout } from "../../lib/auth";
 import { ROLE_LABELS } from "../../lib/roles";
+import { apiGet, apiPost } from "../../lib/api";
+
+type NotificationRow = {
+  id: string;
+  title: string;
+  body: string | null;
+  related_event_id: string | null;
+  related_task_id: string | null;
+  event_title: string | null;
+  task_title: string | null;
+  created_at: string;
+};
 
 /** Top navigation bar with global search + user menu (carved-header depth). */
 export function Topbar() {
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["notifications", "unread"],
+    queryFn: () => apiGet<{ notifications: NotificationRow[]; unread: number }>("/notifications?unread=1"),
+    enabled: Boolean(user),
+    refetchInterval: 60_000,
+  });
+
+  const markAll = useMutation({
+    mutationFn: async () => apiPost("/notifications/read-all"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
 
   return (
     <header className="carved-header mx-auto mt-6 w-full max-w-[1600px] rounded-2xl bg-marble-highlight/60 px-6 py-3 backdrop-blur-sm">
@@ -35,6 +60,52 @@ export function Topbar() {
         </div>
         {user ? (
           <div className="flex items-center gap-3">
+            <div className="group relative">
+              <button
+                type="button"
+                aria-label="Notifications"
+                className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-ink-secondary"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M13.73 21a2 2 0 01-3.46 0" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {(data?.unread ?? 0) > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-cancelled px-1 text-[10px] font-semibold text-white">
+                    {data?.unread}
+                  </span>
+                )}
+              </button>
+              <div className="pointer-events-none absolute right-0 z-40 mt-2 w-80 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
+                <div className="carved-card rounded-2xl bg-marble-highlight p-4 shadow-xl">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-sage etched">Notifications</h2>
+                    {(data?.unread ?? 0) > 0 && (
+                      <button type="button" onClick={() => markAll.mutate()} className="text-xs text-sage-text underline">
+                        Mark read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 space-y-2 overflow-auto">
+                    {(data?.notifications.length ?? 0) === 0 ? (
+                      <p className="text-xs text-ink-muted etched">Nothing new.</p>
+                    ) : (
+                      data?.notifications.map((n) => (
+                        <Link
+                          key={n.id}
+                          to={n.related_event_id ? `/events/${n.related_event_id}` : "/tasks"}
+                          className="block rounded-xl bg-marble-shadow/30 px-3 py-2 text-xs hover:bg-marble-shadow/50"
+                        >
+                          <div className="font-semibold text-ink-primary etched-deep">{n.title}</div>
+                          {n.body && <div className="mt-0.5 text-ink-secondary etched">{n.body}</div>}
+                          {n.event_title && <div className="mt-1 text-ink-muted etched">{n.event_title}</div>}
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="hidden text-right sm:block">
               <div className="text-sm font-medium text-ink-primary etched-deep">{user.name}</div>
               <div className="text-[11px] text-sage etched">{ROLE_LABELS[user.role]}</div>

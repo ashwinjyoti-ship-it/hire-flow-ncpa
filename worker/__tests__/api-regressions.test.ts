@@ -129,4 +129,50 @@ describe("API regressions", () => {
     });
     expect(updatedStatus).toBeNull();
   });
+
+  it("blocks marking a VFH event approved until approval is received", async () => {
+    let updatedStatus: string | null = null;
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events WHERE id")) {
+        return {
+          first: () => ({
+            status: "tentative",
+            event_type: "VFH",
+            approval_status: "sent",
+            confirmation_status: "none",
+          }),
+        };
+      }
+      if (sql.startsWith("UPDATE events SET status")) {
+        return {
+          run: () => {
+            updatedStatus = "approved";
+            return { success: true };
+          },
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/ev_test/status",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION_COOKIE}=sess_test`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ to_status: "approved" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringContaining("approval must be received"),
+    });
+    expect(updatedStatus).toBeNull();
+  });
 });

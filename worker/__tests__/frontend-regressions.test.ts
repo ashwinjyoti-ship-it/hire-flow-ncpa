@@ -18,4 +18,13 @@ describe("frontend regression guards", () => {
     expect(source).toContain("/api/auth/mfa/status");
     expect(source).not.toContain("Infer MFA status via a dedicated endpoint");
   });
+
+  it("keeps lifecycle decisions on the event detail page", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("LifecyclePanel");
+    expect(source).toContain("Suggested:");
+    expect(source).toContain("Confirm decision");
+    expect(source).toContain("Regret");
+  });
 });
