@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet, apiPost } from "../lib/api";
-import { formatDate, formatDateTime } from "../lib/use-lookups";
+import { formatDate, formatDateTime, formatDuration } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, canTransition, requiresOverride } from "../../worker/lib/state-machine";
@@ -118,6 +118,14 @@ export function EventDetailPage() {
         <SummaryItem label="Completion" value={e.overall_completion != null ? `${Math.round(e.overall_completion * 100)}%` : "—"} />
       </div>
 
+      {/* Status stepper — visualises the enquiry → confirmed lifecycle */}
+      <StatusStepper
+        current={e.status}
+        eventType={e.event_type}
+        canChange={canChangeStatus}
+        onAdvance={(s) => { setStatusModal(s); setReason(""); }}
+      />
+
       {/* VFH approval notice */}
       {e.event_type === "VFH" && e.approval_status && e.approval_status !== "received" && e.approval_status !== "approved" && (
         <div className="mb-4 rounded-lg bg-status-awaitingApproval/10 px-4 py-2 text-xs text-status-awaitingApproval etched">
@@ -201,10 +209,10 @@ export function EventDetailPage() {
                           {(entry.with_ac_start || entry.without_ac_start) && (
                             <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
                               {entry.with_ac_start && (
-                                <span>With AC: {entry.with_ac_start}{entry.with_ac_end ? `–${entry.with_ac_end}` : ""}{entry.with_ac_minutes != null ? ` (${Math.floor(entry.with_ac_minutes / 60)}h ${entry.with_ac_minutes % 60}m)` : ""}</span>
+                                <span>With AC: {entry.with_ac_start}{entry.with_ac_end ? `–${entry.with_ac_end}` : ""}{entry.with_ac_minutes != null ? ` (${formatDuration(entry.with_ac_minutes)})` : ""}</span>
                               )}
                               {entry.without_ac_start && (
-                                <span>Without AC: {entry.without_ac_start}{entry.without_ac_end ? `–${entry.without_ac_end}` : ""}{entry.without_ac_minutes != null ? ` (${Math.floor(entry.without_ac_minutes / 60)}h ${entry.without_ac_minutes % 60}m)` : ""}</span>
+                                <span>Without AC: {entry.without_ac_start}{entry.without_ac_end ? `–${entry.without_ac_end}` : ""}{entry.without_ac_minutes != null ? ` (${formatDuration(entry.without_ac_minutes)})` : ""}</span>
                               )}
                             </div>
                           )}
@@ -326,6 +334,83 @@ function ProgressBar({ label, value, emphasis }: { label: string; value: number 
       <div className="h-2 overflow-hidden rounded-full bg-marble-shadow/60">
         <div className="h-full rounded-full bg-sage-btn" style={{ width: `${pct}%` }} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Horizontal lifecycle stepper: Enquiry → Tentative → [Approved] → Confirmed.
+ * - Past + current steps are highlighted.
+ * - The next reachable step is clickable (opens the reason modal via onAdvance).
+ * - 'Approved' only appears for VFH events (the approval gate).
+ * - Terminal states (regret/cancelled) replace the track with a banner.
+ */
+function StatusStepper({
+  current, eventType, canChange, onAdvance,
+}: {
+  current: EventStatus;
+  eventType: string | null;
+  canChange: boolean;
+  onAdvance: (s: EventStatus) => void;
+}) {
+  // Terminal decline states — show a banner instead of the track.
+  if (current === "regret" || current === "cancelled") {
+    const label = STATUS_LABELS[current];
+    const token = current === "regret" ? "bg-status-regret/10 text-status-regret" : "bg-status-cancelled/10 text-status-cancelled";
+    return (
+      <div className={"carved-card mb-6 rounded-2xl px-5 py-3 text-sm font-semibold etched " + token}>
+        Event marked as {label}. Reopening requires Admin / Venue Manager override.
+      </div>
+    );
+  }
+
+  // Build the track. Approved is VFH-only.
+  const track: EventStatus[] = eventType === "VFH"
+    ? ["enquiry", "tentative", "approved", "confirmed"]
+    : ["enquiry", "tentative", "confirmed"];
+  const currentIdx = Math.max(0, track.indexOf(current));
+
+  return (
+    <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-4">
+      <ol className="flex flex-wrap items-center gap-1">
+        {track.map((s, i) => {
+          const isPast = i < currentIdx;
+          const isCurrent = i === currentIdx;
+          const isNext = i === currentIdx + 1;
+          const clickable = canChange && (isNext || isPast === false && i > currentIdx);
+          const isApprovedGate = s === "approved";
+          return (
+            <li key={s} className="flex items-center">
+              <button
+                type="button"
+                disabled={!clickable}
+                onClick={() => clickable && onAdvance(s)}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
+                  (isCurrent
+                    ? "bg-sage-btn text-sage-text carved-btn-sage"
+                    : isPast
+                      ? "bg-sage/10 text-sage-text"
+                      : clickable
+                        ? "bg-marble-shadow/40 text-ink-secondary hover:bg-marble-shadow/60 carved-btn"
+                        : "bg-marble-shadow/30 text-ink-muted")
+                }
+                title={isApprovedGate ? "VFH approval gate" : undefined}
+              >
+                {STATUS_LABELS[s]}{isApprovedGate && " ★"}
+              </button>
+              {i < track.length - 1 && (
+                <span className={"mx-1 text-ink-muted " + (i < currentIdx ? "text-sage-text" : "")}>→</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-2 text-[11px] text-ink-muted etched">
+        {canChange
+          ? "Click the next step to advance the event. Confirmation requires signed confirmation (and VFH approval)."
+          : "You do not have permission to change the status."}
+      </p>
     </div>
   );
 }

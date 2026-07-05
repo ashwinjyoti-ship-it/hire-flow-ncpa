@@ -108,13 +108,13 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
 
   await db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
-       event_type, hiring_category, program_officer, event_owner,
+       event_type, program_officer, event_owner,
        event_start_date, event_end_date, status, form_status, approval_status, confirmation_status,
        enquiry_source, priority, requirements, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, makeId("code"), d.title, d.description ?? null, d.organisation_id, d.primary_contact_id ?? null,
-    d.event_type ?? null, d.hiring_category ?? null,
+    d.event_type ?? null,
     d.program_officer ?? null, d.event_owner ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null,
     // Approval status default: pending if VFH else not_required
@@ -182,7 +182,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   await db.prepare(
     `UPDATE events SET title = COALESCE(?, title), description = COALESCE(?, description),
        organisation_id = COALESCE(?, organisation_id), primary_contact_id = COALESCE(?, primary_contact_id),
-       event_type = COALESCE(?, event_type), hiring_category = COALESCE(?, hiring_category),
+       event_type = COALESCE(?, event_type),
        program_officer = COALESCE(?, program_officer),
        event_owner = COALESCE(?, event_owner),
        event_start_date = COALESCE(?, event_start_date), event_end_date = COALESCE(?, event_end_date),
@@ -191,7 +191,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
        updated_at = ? WHERE id = ?`
   ).bind(
     d.title ?? null, d.description ?? null, d.organisation_id ?? null, d.primary_contact_id ?? null,
-    d.event_type ?? null, d.hiring_category ?? null,
+    d.event_type ?? null,
     d.program_officer ?? null, d.event_owner ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null, d.enquiry_source ?? null,
     d.priority ?? null,

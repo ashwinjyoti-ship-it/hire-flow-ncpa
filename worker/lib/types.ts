@@ -48,9 +48,12 @@ export const ScheduleEntryInput = z.object({
 export type ScheduleEntryInputT = z.infer<typeof ScheduleEntryInput>;
 
 // ---- Venue bookings ----
+// Note: per-venue 'cancelled' is intentionally absent from the create/update
+// enum. Cancellation is an event-level concept (events.status -> 'cancelled'),
+// not a venue-level dropdown. Existing rows / DB schema still allow the value.
 export const VenueBookingInput = z.object({
   venue: z.string().min(1),
-  booking_status: z.enum(["tentative", "confirmed", "cancelled"]).default("tentative"),
+  booking_status: z.enum(["tentative", "confirmed"]).default("tentative"),
   number_of_shows: z.number().int().min(1).default(1),
   requirements: z.record(z.unknown()).nullish(),
   notes: z.string().nullish(),
@@ -66,7 +69,6 @@ export const EventInput = z.object({
   organisation_id: z.string().min(1, "Organisation is required"),
   primary_contact_id: z.string().nullish(),
   event_type: z.enum(["EE", "FR", "VFH", "Free Event"]).nullish(),
-  hiring_category: z.string().nullish(),
   program_officer: z.string().nullish(),
   event_owner: z.string().nullish(),
   event_start_date: z.string().nullish(),
