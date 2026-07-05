@@ -11,13 +11,17 @@ type CalResponse = { byDate: Record<string, unknown> };
 
 export function DashboardPage() {
   const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const monthStartIso = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-${String(monthStart.getDate()).padStart(2, "0")}`;
+  const monthEndIso = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
   const in7 = new Date(today.getTime() + 7 * 86400_000);
   const in7Iso = `${in7.getFullYear()}-${String(in7.getMonth() + 1).padStart(2, "0")}-${String(in7.getDate()).padStart(2, "0")}`;
 
   const { data } = useQuery({
-    queryKey: ["events", "dashboard"],
-    queryFn: () => apiGet<EventsResponse>(`/events?from=${todayIso}`),
+    queryKey: ["events", "dashboard", monthStartIso, monthEndIso],
+    queryFn: () => apiGet<EventsResponse>(`/events?from=${monthStartIso}&to=${monthEndIso}`),
   });
   const { data: cal } = useQuery({
     queryKey: ["calendar", "dashboard", todayIso, in7Iso],
@@ -34,15 +38,15 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="Today's operational overview" />
+      <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })} operational overview`} />
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href="/calendar?view=list&status=enquiry" />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href="/calendar?view=list&status=tentative" />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href="/calendar?view=list&status=confirmed" />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/calendar?view=list&status=regret" />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href="/calendar?view=list&status=cancelled" />
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=list&status=enquiry&from=${monthStartIso}&to=${monthEndIso}`} />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=list&status=tentative&from=${monthStartIso}&to=${monthEndIso}`} />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={`/calendar?view=list&status=confirmed&from=${monthStartIso}&to=${monthEndIso}`} />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={`/calendar?view=list&status=regret&from=${monthStartIso}&to=${monthEndIso}`} />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=list&status=cancelled&from=${monthStartIso}&to=${monthEndIso}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

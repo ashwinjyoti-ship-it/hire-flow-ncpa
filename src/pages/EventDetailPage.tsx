@@ -513,6 +513,17 @@ function ChecklistField({ item, canEdit, onUpdate }: { item: ChecklistItem; canE
           className={baseClass}
         />
       )}
+      {!item.is_computed && canEdit && (item.status === "in_progress" || item.status === "completed") && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => onUpdate(item, item.value, item.status === "completed" ? "in_progress" : "completed")}
+            className="carved-btn rounded-full bg-neutral-btn px-3 py-1 text-[11px] font-medium text-ink-secondary etched"
+          >
+            {item.status === "completed" ? "Reopen" : "Mark complete"}
+          </button>
+        </div>
+      )}
     </label>
   );
 }
