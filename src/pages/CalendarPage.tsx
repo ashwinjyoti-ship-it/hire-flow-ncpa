@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
@@ -37,9 +37,18 @@ function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(d.
 export function CalendarPage() {
   const { user } = useAuth();
   const { data: lookups } = useLookups();
-  const [view, setView] = useState<View>("month");
-  const [cursor, setCursor] = useState(() => new Date());
-  const [filters, setFilters] = useState({ status: "", venue: "", type: "", owner: "", q: "" });
+  const [searchParams] = useSearchParams();
+  const initialView = (searchParams.get("view") as View | null) ?? "month";
+  const initialFrom = searchParams.get("from");
+  const [view, setView] = useState<View>(["month", "week", "day", "venue", "list"].includes(initialView) ? initialView : "month");
+  const [cursor, setCursor] = useState(() => initialFrom ? new Date(`${initialFrom}T00:00:00`) : new Date());
+  const [filters, setFilters] = useState({
+    status: searchParams.get("status") ?? "",
+    venue: searchParams.get("venue") ?? "",
+    type: searchParams.get("type") ?? "",
+    owner: searchParams.get("owner") ?? "",
+    q: searchParams.get("q") ?? "",
+  });
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
 
   // Determine the visible date range based on the view.
@@ -47,6 +56,9 @@ export function CalendarPage() {
     if (view === "month") return { from: isoDate(startOfWeek(startOfMonth(cursor))), to: isoDate(addDays(startOfWeek(startOfMonth(cursor)), 41)) };
     if (view === "week") return { from: isoDate(startOfWeek(cursor)), to: isoDate(addDays(startOfWeek(cursor), 6)) };
     if (view === "day") return { from: isoDate(cursor), to: isoDate(cursor) };
+    if (view === "list") {
+      return { from: isoDate(startOfMonth(cursor)), to: isoDate(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)) };
+    }
     // venue timeline: show a wider span (next 30 days)
     return { from: isoDate(cursor), to: isoDate(addDays(cursor, 29)) };
   }, [view, cursor]);
@@ -61,8 +73,10 @@ export function CalendarPage() {
   // List view uses the events endpoint (sortable table, full filter set).
   const listQuery = new URLSearchParams();
   Object.entries(filters).forEach(([k, v]) => { if (v) listQuery.set(k, v); });
+  listQuery.set("from", range.from);
+  listQuery.set("to", range.to);
   const { data: listData, isLoading: listLoading } = useQuery<{ events: EventSummary[] }>({
-    queryKey: ["events", filters],
+    queryKey: ["events", filters, range.from, range.to],
     queryFn: () => apiGet(`/events?${listQuery.toString()}`),
     enabled: view === "list",
   });
@@ -73,7 +87,7 @@ export function CalendarPage() {
   const owners = lookups?.lookups.handled_by ?? [];
 
   const title = view === "list"
-    ? "All events"
+    ? `${formatDate(range.from)} – ${formatDate(range.to)}`
     : view === "month" || view === "venue"
       ? cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })
       : view === "week"
@@ -109,13 +123,13 @@ export function CalendarPage() {
           ))}
         </div>
 
-        {view !== "list" && (
+        {(view !== "list" || searchParams.get("from")) && (
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1)); else if (view === "week") setCursor(addDays(cursor, -7)); else if (view === "day") setCursor(addDays(cursor, -1)); else setCursor(addDays(cursor, -30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous">
+            <button type="button" onClick={() => { if (view === "month" || view === "list") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1)); else if (view === "week") setCursor(addDays(cursor, -7)); else if (view === "day") setCursor(addDays(cursor, -1)); else setCursor(addDays(cursor, -30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous">
               <Chevron dir="left" />
             </button>
             <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Jump to today</button>
-            <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)); else if (view === "week") setCursor(addDays(cursor, 7)); else if (view === "day") setCursor(addDays(cursor, 1)); else setCursor(addDays(cursor, 30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next">
+            <button type="button" onClick={() => { if (view === "month" || view === "list") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)); else if (view === "week") setCursor(addDays(cursor, 7)); else if (view === "day") setCursor(addDays(cursor, 1)); else setCursor(addDays(cursor, 30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next">
               <Chevron dir="right" />
             </button>
           </div>
@@ -232,13 +246,12 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
                 </span>
               </div>
               <div className="space-y-1.5">
-                {chips.slice(0, 3).map((c, i) => (
+                {chips.map((c, i) => (
                   <button key={i} type="button" onClick={() => onPick(c.entry)} className="carved-card flex w-full items-center gap-1.5 rounded-md bg-marble-highlight/60 px-2 py-1 text-left">
                     <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[c.status] ?? "enquiry"]} />
                     <span className="truncate text-[11px] font-medium text-ink-secondary etched">{c.name}</span>
                   </button>
                 ))}
-                {chips.length > 3 && <div className="text-[10px] text-ink-muted etched">+{chips.length - 3} more</div>}
               </div>
             </article>
           );
