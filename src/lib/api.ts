@@ -33,6 +33,18 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  return data;
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`, { method: "DELETE", credentials: "include" });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
