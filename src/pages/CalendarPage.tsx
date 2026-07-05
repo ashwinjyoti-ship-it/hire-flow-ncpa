@@ -2,8 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
-import { apiGet } from "../lib/api";
+import { StatusBadge } from "../components/StatusBadge";
+import { apiGet, type EventSummary } from "../lib/api";
 import { useLookups, formatDate } from "../lib/use-lookups";
+import { useAuth } from "../lib/auth";
+import { can } from "../lib/can";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS, STATUS_TOKEN } from "../../worker/lib/state-machine";
 
@@ -22,7 +25,7 @@ type CalEntry = {
 };
 type CalResponse = { entries: CalEntry[]; byDate: Record<string, CalEntry[]> };
 
-type View = "month" | "week" | "day" | "venue";
+type View = "month" | "week" | "day" | "venue" | "list";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -32,10 +35,11 @@ function isoDate(d: Date): string { return `${d.getFullYear()}-${String(d.getMon
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(d.getDate() + n); return x; }
 
 export function CalendarPage() {
+  const { user } = useAuth();
   const { data: lookups } = useLookups();
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState(() => new Date());
-  const [filters, setFilters] = useState({ status: "", venue: "", type: "", owner: "" });
+  const [filters, setFilters] = useState({ status: "", venue: "", type: "", owner: "", q: "" });
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
 
   // Determine the visible date range based on the view.
@@ -51,65 +55,102 @@ export function CalendarPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["calendar", range.from, range.to, filters],
     queryFn: () => apiGet<CalResponse>(`/calendar?${q.toString()}`),
+    enabled: view !== "list",
+  });
+
+  // List view uses the events endpoint (sortable table, full filter set).
+  const listQuery = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v) listQuery.set(k, v); });
+  const { data: listData, isLoading: listLoading } = useQuery<{ events: EventSummary[] }>({
+    queryKey: ["events", filters],
+    queryFn: () => apiGet(`/events?${listQuery.toString()}`),
+    enabled: view === "list",
   });
 
   const byDate = data?.byDate ?? {};
   const today = isoDate(new Date());
   const venues = lookups?.lookups.venue ?? [];
+  const owners = lookups?.lookups.handled_by ?? [];
 
-  const title = view === "month" || view === "venue"
-    ? cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })
-    : view === "week"
-      ? `${formatDate(range.from)} – ${formatDate(range.to)}`
-      : formatDate(range.from);
+  const title = view === "list"
+    ? "All events"
+    : view === "month" || view === "venue"
+      ? cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })
+      : view === "week"
+        ? `${formatDate(range.from)} – ${formatDate(range.to)}`
+        : formatDate(range.from);
+
+  const showCreate = can(user?.role ?? "viewer", "event.create");
 
   return (
     <div>
-      <PageHeader title="Calendar" subtitle={title} />
+      <PageHeader
+        title={view === "month" ? title : "Calendar"}
+        subtitle={view === "month" ? "Operating calendar" : title}
+        actions={showCreate ? (
+          <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
+            + New Event
+          </Link>
+        ) : null}
+      />
 
       {/* Controls */}
       <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
         <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
-          {(["month", "week", "day", "venue"] as const).map((v) => (
+          {(["month", "week", "day", "venue", "list"] as const).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setView(v)}
               className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
             >
-              {v === "venue" ? "Venue Timeline" : v[0]!.toUpperCase() + v.slice(1)}
+              {v === "venue" ? "Timeline" : v[0]!.toUpperCase() + v.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1)); else if (view === "week") setCursor(addDays(cursor, -7)); else if (view === "day") setCursor(addDays(cursor, -1)); else setCursor(addDays(cursor, -30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous">
-            <Chevron dir="left" />
-          </button>
-          <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Today</button>
-          <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)); else if (view === "week") setCursor(addDays(cursor, 7)); else if (view === "day") setCursor(addDays(cursor, 1)); else setCursor(addDays(cursor, 30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next">
-            <Chevron dir="right" />
-          </button>
-        </div>
+        {view !== "list" && (
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1)); else if (view === "week") setCursor(addDays(cursor, -7)); else if (view === "day") setCursor(addDays(cursor, -1)); else setCursor(addDays(cursor, -30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous">
+              <Chevron dir="left" />
+            </button>
+            <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Jump to today</button>
+            <button type="button" onClick={() => { if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)); else if (view === "week") setCursor(addDays(cursor, 7)); else if (view === "day") setCursor(addDays(cursor, 1)); else setCursor(addDays(cursor, 30)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next">
+              <Chevron dir="right" />
+            </button>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={filters.q}
+            onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
+            placeholder="Search title, org…"
+            className="carved rounded-full bg-marble-shadow/40 px-3 py-1.5 text-xs text-ink-primary focus:outline-none"
+          />
           <FilterSelect value={filters.status} onChange={(v) => setFilters((f) => ({ ...f, status: v }))} options={[{ value: "", label: "All statuses" }, ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v }))]} />
           <FilterSelect value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
           <FilterSelect value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
+          <FilterSelect value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
         </div>
       </div>
 
       {/* Legend */}
-      <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
-        {[["inquiry", "Inquiry"], ["awaiting_approval", "Awaiting Approval"], ["tentative", "Tentative"], ["waitlisted", "Waitlisted"], ["confirmed", "Confirmed"], ["in_progress", "In Progress"], ["completed", "Completed"], ["cancelled", "Cancelled"]].map(([k, label]) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <span className={"h-2 w-2 rounded-full " + DOT_CLASS[STATUS_TOKEN[k as EventStatus] ?? "draft"]} /> {label}
-          </span>
-        ))}
-      </div>
+      {view !== "list" && (
+        <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
+          {Object.entries(STATUS_LABELS).map(([k, label]) => (
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <span className={"h-2 w-2 rounded-full " + DOT_CLASS[STATUS_TOKEN[k as EventStatus] ?? "enquiry"]} /> {label}
+            </span>
+          ))}
+        </div>
+      )}
 
-      {isLoading ? (
+      {view === "list" ? (
+        <EventsListView events={listData?.events ?? []} loading={listLoading} />
+      ) : isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : view === "month" ? (
         <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} />
@@ -149,7 +190,14 @@ export function CalendarPage() {
   );
 }
 
-// ---- Month grid (marble carved cells, sage today pip) ----
+// ---- Month grid (one chip per organisation per day) ----
+// Days can get crowded; we collapse to a single status-coloured chip per org
+// (worst status wins) so the month view stays readable. The side panel and the
+// detail page carry the full breakdown (venues, activities, AC timings).
+const STATUS_RANK: Record<EventStatus, number> = {
+  cancelled: 0, regret: 1, enquiry: 2, tentative: 3, approved: 4, confirmed: 5,
+};
+
 function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void }) {
   const start = startOfWeek(startOfMonth(cursor));
   const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
@@ -166,6 +214,16 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           const entries = byDate[key] ?? [];
           const isToday = key === today;
           const inMonth = d.getMonth() === cursor.getMonth();
+          // Group entries by organisation, pick the "worst" (lowest-rank) status as the chip colour.
+          const byOrg = new Map<string, { name: string; status: EventStatus; entry: CalEntry }>();
+          for (const e of entries) {
+            const orgKey = e.organisation_name ?? "—";
+            const existing = byOrg.get(orgKey);
+            if (!existing || STATUS_RANK[e.status] < STATUS_RANK[existing.status]) {
+              byOrg.set(orgKey, { name: orgKey, status: e.status, entry: e });
+            }
+          }
+          const chips = Array.from(byOrg.values());
           return (
             <article key={key} className={"min-h-[128px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40") + (!inMonth ? " carved-muted" : "")}>
               <div className="mb-2 flex justify-end">
@@ -174,18 +232,62 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
                 </span>
               </div>
               <div className="space-y-1.5">
-                {entries.slice(0, 3).map((e) => (
-                  <button key={e.id} type="button" onClick={() => onPick(e)} className="carved-card flex w-full items-center gap-1.5 rounded-md bg-marble-highlight/60 px-2 py-1 text-left">
-                    <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "draft"]} />
-                    <span className="truncate text-[11px] font-medium text-ink-secondary etched">{e.title}</span>
+                {chips.slice(0, 3).map((c, i) => (
+                  <button key={i} type="button" onClick={() => onPick(c.entry)} className="carved-card flex w-full items-center gap-1.5 rounded-md bg-marble-highlight/60 px-2 py-1 text-left">
+                    <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[c.status] ?? "enquiry"]} />
+                    <span className="truncate text-[11px] font-medium text-ink-secondary etched">{c.name}</span>
                   </button>
                 ))}
-                {entries.length > 3 && <div className="text-[10px] text-ink-muted etched">+{entries.length - 3} more</div>}
+                {chips.length > 3 && <div className="text-[10px] text-ink-muted etched">+{chips.length - 3} more</div>}
               </div>
             </article>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ---- List view (sortable, filterable table — replaces the retired Events tab) ----
+function EventsListView({ events, loading }: { events: EventSummary[]; loading: boolean }) {
+  if (loading) return <div className="text-sm text-ink-muted">Loading…</div>;
+  if (events.length === 0) {
+    return <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-center text-sm text-ink-muted etched">No events match these filters.</div>;
+  }
+  return (
+    <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-ink-muted/10 text-left text-[11px] uppercase tracking-wider text-ink-muted etched">
+            <th className="px-4 py-3 font-semibold">Organisation</th>
+            <th className="px-4 py-3 font-semibold">Event</th>
+            <th className="px-4 py-3 font-semibold">Venues</th>
+            <th className="px-4 py-3 font-semibold">Dates</th>
+            <th className="px-4 py-3 font-semibold">Status</th>
+            <th className="px-4 py-3 font-semibold">Owner</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((e) => (
+            <tr key={e.id} className="border-b border-ink-muted/5 transition-colors hover:bg-marble-shadow/20">
+              <td className="px-4 py-3 font-medium text-ink-primary etched-deep">{e.organisation_name ?? "—"}</td>
+              <td className="px-4 py-3">
+                <Link to={`/events/${e.id}`} className="font-medium text-ink-primary etched-deep hover:text-sage-text">
+                  {e.title}
+                </Link>
+                {e.event_code && <div className="text-[11px] text-ink-muted">{e.event_code}</div>}
+              </td>
+              <td className="px-4 py-3 text-ink-secondary etched">{e.venues ?? "—"}</td>
+              <td className="px-4 py-3 text-ink-secondary etched">
+                {e.event_start_date ? formatDate(e.event_start_date) : "—"}
+                {e.event_end_date && e.event_end_date !== e.event_start_date ? ` → ${formatDate(e.event_end_date)}` : ""}
+              </td>
+              <td className="px-4 py-3"><StatusBadge status={e.status as EventStatus} /></td>
+              <td className="px-4 py-3 text-ink-secondary etched">{e.event_owner ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -210,7 +312,7 @@ function WeekDayList({ byDate, days, start, today, onPick }: { byDate: Record<st
               <div className="space-y-2">
                 {entries.map((e) => (
                   <button key={e.id} type="button" onClick={() => onPick(e)} className="flex w-full items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 text-left hover:bg-marble-shadow/50">
-                    <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "draft"]} />
+                    <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "enquiry"]} />
                     <span className="w-20 shrink-0 text-xs font-medium text-ink-secondary etched">{e.start_time ?? "—"}</span>
                     <span className="flex-1 truncate text-sm font-medium text-ink-primary etched-deep">{e.title}</span>
                     <span className="shrink-0 text-xs text-ink-muted etched">{e.venue}</span>
@@ -265,7 +367,7 @@ function VenueTimeline({ byDate, venues, start, onPick }: { byDate: Record<strin
                     {entries.map((e) => (
                       <button key={e.id} type="button" onClick={() => onPick(e)} className="carved-card mb-1 block w-full rounded-md bg-marble-highlight/70 px-2 py-1 text-left">
                         <div className="flex items-center gap-1">
-                          <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "draft"]} />
+                          <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + DOT_CLASS[STATUS_TOKEN[e.status] ?? "enquiry"]} />
                           <span className="truncate text-[11px] font-medium text-ink-secondary etched">{e.title}</span>
                         </div>
                         {e.start_time && <div className="mt-0.5 text-[10px] text-ink-muted etched">{e.start_time} · {e.activity_type.replace(/_/g, " ")}</div>}
@@ -300,17 +402,10 @@ function FilterSelect({ value, onChange, options }: { value: string; onChange: (
 
 // Status dot Tailwind classes (mirrors StatusBadge token mapping).
 const DOT_CLASS: Record<string, string> = {
-  inquiry: "bg-status-inquiry",
-  availability: "bg-status-availability",
-  awaitingApproval: "bg-status-awaitingApproval",
-  waitlisted: "bg-status-waitlisted",
+  enquiry: "bg-status-enquiry",
   tentative: "bg-status-tentative",
-  confirmed: "bg-status-confirmed",
-  inProgress: "bg-status-inProgress",
-  completed: "bg-status-completed",
-  closed: "bg-status-closed",
-  cancelled: "bg-status-cancelled",
-  rejected: "bg-status-rejected",
   approved: "bg-status-approved",
-  draft: "bg-status-draft",
+  confirmed: "bg-status-confirmed",
+  regret: "bg-status-regret",
+  cancelled: "bg-status-cancelled",
 };

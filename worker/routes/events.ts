@@ -65,7 +65,10 @@ eventRoutes.get("/:id", requireUser, async (c) => {
   const { results: venue_bookings } = await c.env.DB.prepare(
     `SELECT vb.*, (SELECT json_group_array(json(se.json)) FROM (
        SELECT json_object('id', id, 'activity_type', activity_type, 'activity_date', activity_date,
-         'start_time', start_time, 'end_time', end_time, 'notes', notes, 'sort_order', sort_order) AS json
+         'start_time', start_time, 'end_time', end_time,
+         'with_ac_start', with_ac_start, 'with_ac_end', with_ac_end, 'with_ac_minutes', with_ac_minutes,
+         'without_ac_start', without_ac_start, 'without_ac_end', without_ac_end, 'without_ac_minutes', without_ac_minutes,
+         'notes', notes, 'sort_order', sort_order) AS json
        FROM schedule_entries WHERE venue_booking_id = vb.id ORDER BY activity_date, sort_order
      ) se) AS schedule_json
      FROM venue_bookings vb WHERE vb.event_id = ? ORDER BY vb.sort_order`
@@ -105,14 +108,14 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
 
   await db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
-       event_type, hiring_category, vertical, program_officer, event_owner, collaboration_details,
+       event_type, hiring_category, program_officer, event_owner,
        event_start_date, event_end_date, status, form_status, approval_status, confirmation_status,
        enquiry_source, priority, requirements, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'inquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
-    id, makeId("code"), d.title, d.description ?? null, d.organisation_id ?? null, d.primary_contact_id ?? null,
-    d.event_type ?? null, d.hiring_category ?? null, d.vertical ?? null,
-    d.program_officer ?? null, d.event_owner ?? null, d.collaboration_details ?? null,
+    id, makeId("code"), d.title, d.description ?? null, d.organisation_id, d.primary_contact_id ?? null,
+    d.event_type ?? null, d.hiring_category ?? null,
+    d.program_officer ?? null, d.event_owner ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null,
     // Approval status default: pending if VFH else not_required
     d.event_type === "VFH" ? "pending" : "not_required",
@@ -124,7 +127,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   // Initial status history entry.
   await db.prepare(
     `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
-     VALUES (?, ?, NULL, 'inquiry', ?, ?, ?)`
+     VALUES (?, ?, NULL, 'enquiry', ?, ?, ?)`
   ).bind(makeId("sh"), id, user.id, now, "Event created").run();
 
   // Nested venue bookings + schedule entries.
@@ -133,12 +136,11 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
     vbOrder++;
     const vbId = makeId("vb");
     await db.prepare(
-      `INSERT INTO venue_bookings (id, event_id, venue, booking_status, number_of_shows, ac_start, ac_end,
-         event_duration_minutes, requirements, notes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO venue_bookings (id, event_id, venue, booking_status, number_of_shows,
+         requirements, notes, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      vbId, id, vb.venue, vb.booking_status, vb.number_of_shows, vb.ac_start ?? null, vb.ac_end ?? null,
-      vb.event_duration_minutes ?? null,
+      vbId, id, vb.venue, vb.booking_status, vb.number_of_shows,
       vb.requirements ? JSON.stringify(vb.requirements) : null,
       vb.notes ?? null, vbOrder, now, now
     ).run();
@@ -147,9 +149,18 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
       seOrder++;
       await db.prepare(
         `INSERT INTO schedule_entries (id, venue_booking_id, event_id, activity_type, activity_date,
-           start_time, end_time, notes, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(makeId("se"), vbId, id, se.activity_type, se.activity_date, se.start_time ?? null, se.end_time ?? null, se.notes ?? null, seOrder, now).run();
+           start_time, end_time,
+           with_ac_start, with_ac_end, with_ac_minutes,
+           without_ac_start, without_ac_end, without_ac_minutes,
+           notes, sort_order, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        makeId("se"), vbId, id, se.activity_type, se.activity_date,
+        se.start_time ?? null, se.end_time ?? null,
+        se.with_ac_start ?? null, se.with_ac_end ?? null, se.with_ac_minutes ?? null,
+        se.without_ac_start ?? null, se.without_ac_end ?? null, se.without_ac_minutes ?? null,
+        se.notes ?? null, seOrder, now
+      ).run();
     }
   }
 
@@ -172,16 +183,16 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
     `UPDATE events SET title = COALESCE(?, title), description = COALESCE(?, description),
        organisation_id = COALESCE(?, organisation_id), primary_contact_id = COALESCE(?, primary_contact_id),
        event_type = COALESCE(?, event_type), hiring_category = COALESCE(?, hiring_category),
-       vertical = COALESCE(?, vertical), program_officer = COALESCE(?, program_officer),
-       event_owner = COALESCE(?, event_owner), collaboration_details = COALESCE(?, collaboration_details),
+       program_officer = COALESCE(?, program_officer),
+       event_owner = COALESCE(?, event_owner),
        event_start_date = COALESCE(?, event_start_date), event_end_date = COALESCE(?, event_end_date),
        enquiry_source = COALESCE(?, enquiry_source), priority = COALESCE(?, priority),
        requirements = COALESCE(?, requirements), notes = COALESCE(?, notes),
        updated_at = ? WHERE id = ?`
   ).bind(
     d.title ?? null, d.description ?? null, d.organisation_id ?? null, d.primary_contact_id ?? null,
-    d.event_type ?? null, d.hiring_category ?? null, d.vertical ?? null,
-    d.program_officer ?? null, d.event_owner ?? null, d.collaboration_details ?? null,
+    d.event_type ?? null, d.hiring_category ?? null,
+    d.program_officer ?? null, d.event_owner ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null, d.enquiry_source ?? null,
     d.priority ?? null,
     d.requirements ? JSON.stringify(d.requirements) : null,
@@ -214,6 +225,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   if (!canTransition(from, to)) {
     return c.json({ error: `Invalid transition: ${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}` }, 422);
   }
+  // Confirmation gate: signed confirmation (+ approval if VFH).
   if (to === "confirmed" && !canConfirm({
     eventType: event.event_type,
     confirmationStatus: event.confirmation_status,
@@ -221,9 +233,13 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   })) {
     return c.json({ error: "Confirmation requires signed confirmation, and VFH events require approval received or approved." }, 422);
   }
-  // Cancellation requires a reason.
-  if (to === "cancelled" && !parsed.data.reason) {
-    return c.json({ error: "A reason is required to cancel an event" }, 422);
+  // Cancellation and regret both require a reason.
+  if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
+    return c.json({ error: "A reason is required to cancel or decline an event" }, 422);
+  }
+  // Cancellation and regret both require a reason.
+  if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
+    return c.json({ error: "A reason is required to cancel or decline an event" }, 422);
   }
   // Override-gated transitions require Admin or Venue Manager.
   if (requiresOverride(from, to)) {
@@ -264,7 +280,7 @@ eventRoutes.get("/:id/conflicts", requireUser, async (c) => {
      FROM schedule_entries se
      JOIN venue_bookings vb ON vb.id = se.venue_booking_id
      JOIN events e ON e.id = se.event_id
-     WHERE e.id != ? AND e.is_archived = 0 AND e.status NOT IN ('cancelled','rejected')
+     WHERE e.id != ? AND e.is_archived = 0 AND e.status NOT IN ('cancelled','regret')
        AND vb.venue IN (SELECT venue FROM venue_bookings WHERE event_id = ?)
        AND se.activity_date IN (SELECT activity_date FROM schedule_entries WHERE event_id = ?)
      ORDER BY se.activity_date, vb.venue`
@@ -273,8 +289,8 @@ eventRoutes.get("/:id/conflicts", requireUser, async (c) => {
   // Classify: confirmed∩confirmed = conflict; otherwise potential.
   const conflicts = results.map((r) => {
     const row = r as { status: string };
-    const otherConfirmed = row.status === "confirmed" || row.status === "in_progress";
-    const thisConfirmed = event.status === "confirmed" || event.status === "in_progress";
+    const otherConfirmed = row.status === "confirmed";
+    const thisConfirmed = event.status === "confirmed";
     return { ...r, level: otherConfirmed && thisConfirmed ? "conflict" : "potential" };
   });
 

@@ -16,7 +16,7 @@ import { makeId } from "../lib/id";
 
 export const organisationRoutes = new Hono<AuthEnv>();
 
-// GET / — list with optional search
+// GET / — list with optional prefix search (used by the form's org combobox)
 organisationRoutes.get("/", requireUser, async (c) => {
   const q = c.req.query("q")?.trim();
   let sql = `SELECT o.id, o.name, o.org_type, o.is_archived,

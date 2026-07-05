@@ -1,50 +1,34 @@
 /**
  * Event status state machine. Server-side validation blocks invalid transitions.
  *
- * Primary lifecycle:
- *   Draft → Inquiry → Availability Check → Awaiting Approval (VFH) →
- *     Waitlisted/Tentative → Confirmed → In Progress → Completed → Closed
+ * Canonical lifecycle (6 statuses):
+ *   Enquiry → Tentative → (Approved, VFH only) → Confirmed
  *
- * Side-paths:
- *   Awaiting Approval → Cancelled
- *   Approved → Cancelled
- *   Confirmed → Cancelled
- *   In Progress → Cancelled (Admin/Venue Manager + mandatory reason)
+ * Terminal / decline paths:
+ *   Enquiry / Tentative / Approved → Regret      (declined before confirmation)
+ *   Enquiry / Tentative / Approved / Confirmed → Cancelled  (booking called off)
  *
- * Waitlisted may transition to: Awaiting Approval, Approved, Confirmed, Cancelled.
- * Draft exists only as an internal unsent form state before Inquiry.
+ * Regret and Cancelled are terminal. Reopening from either requires Admin /
+ * Venue Manager override + a mandatory reason.
  */
 
 export type EventStatus =
-  | "draft"
-  | "inquiry"
-  | "availability_check"
-  | "awaiting_approval"
-  | "waitlisted"
+  | "enquiry"
   | "tentative"
   | "approved"
   | "confirmed"
-  | "in_progress"
-  | "completed"
-  | "closed"
-  | "cancelled"
-  | "rejected";
+  | "regret"
+  | "cancelled";
 
 /** Valid forward transitions from each status. */
 const TRANSITIONS: Record<EventStatus, EventStatus[]> = {
-  draft: ["inquiry", "cancelled"],
-  inquiry: ["availability_check", "awaiting_approval", "waitlisted", "tentative", "confirmed", "cancelled", "rejected"],
-  availability_check: ["awaiting_approval", "waitlisted", "tentative", "confirmed", "cancelled", "rejected", "inquiry"],
-  awaiting_approval: ["approved", "waitlisted", "tentative", "cancelled", "rejected"],
-  waitlisted: ["awaiting_approval", "approved", "confirmed", "tentative", "cancelled"],
-  tentative: ["awaiting_approval", "confirmed", "waitlisted", "cancelled", "rejected"],
-  approved: ["confirmed", "cancelled"],
-  confirmed: ["in_progress", "completed", "cancelled"],
-  in_progress: ["completed", "cancelled"],
-  completed: ["closed"],
-  closed: [],
-  cancelled: ["inquiry", "tentative"], // reopen with manager override
-  rejected: ["inquiry", "tentative"],
+  enquiry: ["tentative", "approved", "confirmed", "regret", "cancelled"],
+  tentative: ["approved", "confirmed", "regret", "cancelled"],
+  // `approved` is the VFH approval gate. From here: confirm or back out.
+  approved: ["confirmed", "regret", "cancelled"],
+  confirmed: ["cancelled"],
+  regret: [],
+  cancelled: ["enquiry", "tentative"], // reopen with manager override
 };
 
 /** Whether the transition is allowed. */
@@ -54,13 +38,10 @@ export function canTransition(from: EventStatus, to: EventStatus): boolean {
 
 /** Whether the transition requires Admin/Venue Manager + a reason. */
 export function requiresOverride(from: EventStatus, to: EventStatus): boolean {
-  // Cancelling an in-progress event, or reopening a terminal/cancelled state.
-  if (from === "in_progress" && to === "cancelled") return true;
-  if (from === "cancelled" || from === "rejected" || from === "closed") return true;
-  // Confirmed → Cancelled is a sensitive change.
+  // Cancelling a confirmed booking is a sensitive change.
   if (from === "confirmed" && to === "cancelled") return true;
-  void from;
-  void to;
+  // Reopening a terminal state (cancelled/regret) requires override.
+  if (from === "cancelled" || from === "regret") return true;
   return false;
 }
 
@@ -84,34 +65,20 @@ export function canConfirm(args: {
 }
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
-  draft: "Draft",
-  inquiry: "Inquiry",
-  availability_check: "Availability Check",
-  awaiting_approval: "Awaiting Approval",
-  waitlisted: "Waitlisted",
+  enquiry: "Enquiry",
   tentative: "Tentative",
   approved: "Approved",
   confirmed: "Confirmed",
-  in_progress: "In Progress",
-  completed: "Completed",
-  closed: "Closed",
+  regret: "Regret",
   cancelled: "Cancelled",
-  rejected: "Rejected",
 };
 
 /** Status token key (maps to the Tailwind status colour tokens). */
 export const STATUS_TOKEN: Record<EventStatus, string> = {
-  draft: "draft",
-  inquiry: "inquiry",
-  availability_check: "availability",
-  awaiting_approval: "awaitingApproval",
-  waitlisted: "waitlisted",
+  enquiry: "enquiry",
   tentative: "tentative",
   approved: "approved",
   confirmed: "confirmed",
-  in_progress: "inProgress",
-  completed: "completed",
-  closed: "closed",
+  regret: "regret",
   cancelled: "cancelled",
-  rejected: "rejected",
 };

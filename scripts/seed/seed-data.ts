@@ -54,20 +54,16 @@ export const DROPDOWN_LISTS: DropdownSeed[] = [
   { list_key: "event_type", value: "VFH", sort_order: 3, metadata: { full: "Venue For Hire", requires_approval: true } },
   { list_key: "event_type", value: "Free Event", sort_order: 4, metadata: { also: "FE" } },
 
-  // Event status (Dropdown_Master Status list + lifecycle states)
-  { list_key: "event_status", value: "draft", sort_order: 1 },
-  { list_key: "event_status", value: "inquiry", sort_order: 2 },
-  { list_key: "event_status", value: "availability_check", sort_order: 3 },
-  { list_key: "event_status", value: "awaiting_approval", sort_order: 4 },
-  { list_key: "event_status", value: "waitlisted", sort_order: 5 },
-  { list_key: "event_status", value: "tentative", sort_order: 6 },
-  { list_key: "event_status", value: "approved", sort_order: 7 },
-  { list_key: "event_status", value: "confirmed", sort_order: 8 },
-  { list_key: "event_status", value: "in_progress", sort_order: 9 },
-  { list_key: "event_status", value: "completed", sort_order: 10 },
-  { list_key: "event_status", value: "closed", sort_order: 11 },
-  { list_key: "event_status", value: "cancelled", sort_order: 12 },
-  { list_key: "event_status", value: "rejected", sort_order: 13, metadata: { also: "regret" } },
+  // Event status — canonical lifecycle (6 statuses).
+  //   enquiry → tentative → approved (VFH only) → confirmed
+  //   regret = declined enquiry (terminal)
+  //   cancelled = booking called off (terminal)
+  { list_key: "event_status", value: "enquiry", sort_order: 1 },
+  { list_key: "event_status", value: "tentative", sort_order: 2 },
+  { list_key: "event_status", value: "approved", sort_order: 3, metadata: { vfh_only: true } },
+  { list_key: "event_status", value: "confirmed", sort_order: 4 },
+  { list_key: "event_status", value: "regret", sort_order: 5, metadata: { terminal: true } },
+  { list_key: "event_status", value: "cancelled", sort_order: 6, metadata: { terminal: true } },
 
   // Staff: Program Officer (Dropdown_Master ProgramOfficer)
   { list_key: "program_officer", value: "Farha", sort_order: 1 },

@@ -3,62 +3,62 @@ import { canTransition, requiresOverride, canConfirm, requiresApproval } from ".
 
 describe("Event state machine", () => {
   describe("valid transitions", () => {
-    it("allows inquiry → availability_check", () => {
-      expect(canTransition("inquiry", "availability_check")).toBe(true);
-    });
-
     it("allows the primary happy path", () => {
-      expect(canTransition("draft", "inquiry")).toBe(true);
-      expect(canTransition("inquiry", "awaiting_approval")).toBe(true);
-      expect(canTransition("awaiting_approval", "approved")).toBe(true);
+      expect(canTransition("enquiry", "tentative")).toBe(true);
+      expect(canTransition("tentative", "approved")).toBe(true);
       expect(canTransition("approved", "confirmed")).toBe(true);
-      expect(canTransition("confirmed", "in_progress")).toBe(true);
-      expect(canTransition("in_progress", "completed")).toBe(true);
-      expect(canTransition("completed", "closed")).toBe(true);
     });
 
-    it("allows waitlisted → confirmed (skip approval where permitted)", () => {
-      expect(canTransition("waitlisted", "confirmed")).toBe(true);
+    it("allows enquiry to skip directly to confirmed", () => {
+      expect(canTransition("enquiry", "confirmed")).toBe(true);
+      expect(canTransition("tentative", "confirmed")).toBe(true);
     });
 
-    it("allows confirmed → cancelled", () => {
+    it("allows regret from any pre-confirmation state", () => {
+      expect(canTransition("enquiry", "regret")).toBe(true);
+      expect(canTransition("tentative", "regret")).toBe(true);
+      expect(canTransition("approved", "regret")).toBe(true);
+    });
+
+    it("allows cancelled from any pre-terminal state AND from confirmed", () => {
+      expect(canTransition("enquiry", "cancelled")).toBe(true);
+      expect(canTransition("tentative", "cancelled")).toBe(true);
+      expect(canTransition("approved", "cancelled")).toBe(true);
       expect(canTransition("confirmed", "cancelled")).toBe(true);
     });
   });
 
   describe("invalid transitions", () => {
-    it("blocks closed → anything (terminal)", () => {
-      expect(canTransition("closed", "in_progress")).toBe(false);
-      expect(canTransition("closed", "confirmed")).toBe(false);
-      expect(canTransition("closed", "inquiry")).toBe(false);
+    it("regret is terminal", () => {
+      expect(canTransition("regret", "tentative")).toBe(false);
+      expect(canTransition("regret", "confirmed")).toBe(false);
+      expect(canTransition("regret", "enquiry")).toBe(false);
     });
 
-    it("blocks skipping ahead from inquiry to completed", () => {
-      expect(canTransition("inquiry", "completed")).toBe(false);
-      expect(canTransition("inquiry", "closed")).toBe(false);
+    it("cancelled cannot move forward (only reopen via override)", () => {
+      expect(canTransition("cancelled", "confirmed")).toBe(false);
+      expect(canTransition("cancelled", "regret")).toBe(false);
     });
 
-    it("blocks completed → in_progress (no backwards from terminal-ish)", () => {
-      expect(canTransition("completed", "in_progress")).toBe(false);
+    it("blocks confirmed → enquiry (no back-to-start)", () => {
+      expect(canTransition("confirmed", "enquiry")).toBe(false);
     });
   });
 
   describe("override requirements", () => {
-    it("requires override to cancel an in-progress event", () => {
-      expect(requiresOverride("in_progress", "cancelled")).toBe(true);
-    });
-
     it("requires override to cancel a confirmed event", () => {
       expect(requiresOverride("confirmed", "cancelled")).toBe(true);
     });
 
     it("requires override to reopen a cancelled event", () => {
       expect(requiresOverride("cancelled", "tentative")).toBe(true);
+      expect(requiresOverride("cancelled", "enquiry")).toBe(true);
     });
 
     it("does not require override for a normal forward transition", () => {
-      expect(requiresOverride("inquiry", "awaiting_approval")).toBe(false);
+      expect(requiresOverride("enquiry", "tentative")).toBe(false);
       expect(requiresOverride("approved", "confirmed")).toBe(false);
+      expect(requiresOverride("tentative", "regret")).toBe(false);
     });
   });
 

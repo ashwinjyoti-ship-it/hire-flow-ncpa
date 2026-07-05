@@ -91,7 +91,7 @@ describe("API regressions", () => {
       if (sql.includes("FROM events WHERE id")) {
         return {
           first: () => ({
-            status: "inquiry",
+            status: "enquiry",
             event_type: "VFH",
             approval_status: "pending",
             confirmation_status: "none",

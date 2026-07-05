@@ -27,7 +27,7 @@ export function DashboardPage() {
   const events = data?.events ?? [];
   const todayEntries = (cal?.byDate?.[todayIso] as Array<{ id: string; title: string; venue: string; activity_type: string; start_time: string | null; event_id: string }> | undefined) ?? [];
 
-  const counts: Record<string, number> = { inquiry: 0, awaiting_approval: 0, waitlisted: 0, confirmed: 0, in_progress: 0, completed: 0, cancelled: 0 };
+  const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: 0, cancelled: 0 };
   for (const e of events) {
     if (e.status in counts) counts[e.status] = (counts[e.status] ?? 0) + 1;
   }
@@ -38,11 +38,11 @@ export function DashboardPage() {
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="Inquiries" value={counts.inquiry ?? 0} status="inquiry" href="/events?status=inquiry" />
-        <SummaryCard label="Awaiting Approval" value={counts.awaiting_approval ?? 0} status="awaiting_approval" href="/events?status=awaiting_approval" />
-        <SummaryCard label="Waitlisted" value={counts.waitlisted ?? 0} status="waitlisted" href="/events?status=waitlisted" />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href="/events?status=confirmed" />
-        <SummaryCard label="In Progress" value={counts.in_progress ?? 0} status="in_progress" href="/events?status=in_progress" />
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href="/calendar?view=list&status=enquiry" />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href="/calendar?view=list&status=tentative" />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href="/calendar?view=list&status=confirmed" />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/calendar?view=list&status=regret" />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href="/calendar?view=list&status=cancelled" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -74,7 +74,7 @@ export function DashboardPage() {
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Active Events</h2>
-            <Link to="/events" className="text-xs text-sage-text hover:underline">All events →</Link>
+            <Link to="/calendar?view=list" className="text-xs text-sage-text hover:underline">All events →</Link>
           </div>
           {events.length === 0 ? (
             <p className="text-sm text-ink-muted etched">No active events.</p>
