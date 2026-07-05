@@ -20,6 +20,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply ncpa-hire-db --remote",
     "db:seed:local": "tsx scripts/seed/run-seed.ts --env local",
     "db:seed:preview": "tsx scripts/seed/run-seed.ts --env preview",
+    "db:demo:local": "tsx scripts/seed/demo-events.ts --env=local",
+    "db:demo:remote": "tsx scripts/seed/demo-events.ts --env=remote --allow-remote-demo",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "deploy": "npm run build && wrangler pages deploy dist --project-name ncpa-hire",
     "deploy:scheduler": "wrangler deploy --config scheduler/wrangler.jsonc"
