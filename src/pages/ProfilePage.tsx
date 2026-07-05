@@ -3,7 +3,7 @@ import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABELS } from "../lib/roles";
 
-type MfaStatus = { enrolled: boolean };
+type MfaStatus = { enrolled: boolean; recoveryCodesRemaining?: number };
 type SetupResponse = { secret: string; uri: string };
 type ConfirmResponse = { recoveryCodes: string[] };
 
@@ -20,8 +20,18 @@ export function ProfilePage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    // Infer MFA status via a dedicated endpoint (Phase 3 refinement).
-    setMfaStatus({ enrolled: false });
+    let cancelled = false;
+    fetch("/api/auth/mfa/status", { credentials: "include" })
+      .then(async (res): Promise<MfaStatus | null> => res.ok ? ((await res.json()) as MfaStatus) : null)
+      .then((data) => {
+        if (!cancelled) setMfaStatus(data ?? { enrolled: false });
+      })
+      .catch(() => {
+        if (!cancelled) setMfaStatus({ enrolled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -138,7 +148,7 @@ export function ProfilePage() {
             </div>
           )}
 
-          {!setup && !recoveryCodes && (
+          {!mfaStatus?.enrolled && !setup && !recoveryCodes && (
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-sage etched">Confirm with your password to begin setup</span>
               <input
@@ -157,6 +167,12 @@ export function ProfilePage() {
                 Begin MFA setup
               </button>
             </label>
+          )}
+
+          {mfaStatus?.enrolled && !recoveryCodes && (
+            <p className="text-xs text-ink-secondary etched">
+              Recovery codes remaining: {mfaStatus.recoveryCodesRemaining ?? "—"}
+            </p>
           )}
 
           {setup && (
