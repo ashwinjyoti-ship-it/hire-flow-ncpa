@@ -19,7 +19,7 @@ export const organisationRoutes = new Hono<AuthEnv>();
 // GET / — list with optional search
 organisationRoutes.get("/", requireUser, async (c) => {
   const q = c.req.query("q")?.trim();
-  let sql = `SELECT o.id, o.name, o.org_type, o.email, o.phone, o.is_archived,
+  let sql = `SELECT o.id, o.name, o.org_type, o.is_archived,
              (SELECT COUNT(*) FROM events e WHERE e.organisation_id = o.id) AS event_count,
              (SELECT name FROM contacts WHERE organisation_id = o.id AND is_primary = 1 LIMIT 1) AS primary_contact
              FROM organisations o WHERE o.is_archived = 0`;

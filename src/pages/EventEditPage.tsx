@@ -40,22 +40,19 @@ export function EventEditPage() {
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
-  // Track the newly-created event id for post-save navigation.
-  let lastCreatedId: string | undefined;
-
-  const save = useMutation<void, Error, void>({
+  const save = useMutation<string | undefined, Error, void>({
     mutationFn: async () => {
       if (isEdit && id) {
         // Omit venue_bookings on edit (managed via separate sub-routes later).
         const { venue_bookings: _vb, ...rest } = form;
         void _vb;
         await apiPut(`/events/${id}`, rest);
-        return;
+        return undefined;
       }
       const res = await apiPost<{ id: string }>("/events", form);
-      lastCreatedId = res.id;
+      return res.id;
     },
-    onSuccess: () => navigate(`/events/${lastCreatedId ?? id}`),
+    onSuccess: (createdId) => navigate(`/events/${createdId ?? id}`),
     onError: (e: Error) => setError(e.message),
   });
 
