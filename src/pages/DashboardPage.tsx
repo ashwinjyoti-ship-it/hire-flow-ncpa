@@ -42,11 +42,11 @@ export function DashboardPage() {
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=list&status=enquiry&from=${monthStartIso}&to=${monthEndIso}`} />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=list&status=tentative&from=${monthStartIso}&to=${monthEndIso}`} />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={`/calendar?view=list&status=confirmed&from=${monthStartIso}&to=${monthEndIso}`} />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={`/calendar?view=list&status=regret&from=${monthStartIso}&to=${monthEndIso}`} />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=list&status=cancelled&from=${monthStartIso}&to=${monthEndIso}`} />
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=lifecycle&status=enquiry&from=${monthStartIso}`} />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=lifecycle&status=tentative&from=${monthStartIso}`} />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={`/calendar?view=lifecycle&status=confirmed&from=${monthStartIso}`} />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={`/calendar?view=lifecycle&status=regret&from=${monthStartIso}`} />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=lifecycle&status=cancelled&from=${monthStartIso}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -78,7 +78,7 @@ export function DashboardPage() {
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Active Events</h2>
-            <Link to="/calendar?view=list" className="text-xs text-sage-text hover:underline">All events →</Link>
+            <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle →</Link>
           </div>
           {events.length === 0 ? (
             <p className="text-sm text-ink-muted etched">No active events.</p>

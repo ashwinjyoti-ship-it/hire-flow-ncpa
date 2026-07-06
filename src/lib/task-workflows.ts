@@ -1,0 +1,228 @@
+export type TaskLike = {
+  id: string;
+  title: string;
+  description: string | null;
+  event_id: string | null;
+  event_title: string | null;
+  event_status: string | null;
+  event_start_date?: string | null;
+  event_end_date?: string | null;
+  event_venues?: string | null;
+  event_owner?: string | null;
+  task_type: "automatic" | "manual";
+  source_rule: string | null;
+  assignee_name: string | null;
+  due_date: string | null;
+  priority: "high" | "medium" | "low";
+  status: "open" | "in_progress" | "completed" | "cancelled";
+};
+
+export type WorkflowFamily = "approval" | "confirmation" | "payments" | "operations" | "accounts" | "postEvent" | "manual";
+export type TimingGroupKey = "overdue" | "today" | "tomorrow" | "thisWeek" | "later" | "noDate";
+
+export type TaskGroup<T extends string> = {
+  key: T;
+  label: string;
+  tasks: TaskLike[];
+};
+
+export type EventCommandCard = {
+  event: {
+    id: string | null;
+    title: string;
+    status: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    venues: string | null;
+    owner: string | null;
+  };
+  tasks: TaskLike[];
+  workflowGroups: Array<TaskGroup<WorkflowFamily>>;
+  openTaskCount: number;
+  sortRank: number;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const WORKFLOW_LABELS: Record<WorkflowFamily, string> = {
+  approval: "Approval",
+  payments: "Payments",
+  confirmation: "Confirmation",
+  operations: "Operations",
+  accounts: "Accounts",
+  postEvent: "Post-event",
+  manual: "Manual/Other",
+};
+
+const CARD_WORKFLOW_ORDER: WorkflowFamily[] = ["approval", "confirmation", "payments", "operations", "accounts", "postEvent", "manual"];
+const LANE_WORKFLOW_ORDER: WorkflowFamily[] = ["approval", "payments", "confirmation", "operations", "accounts", "postEvent", "manual"];
+
+const TIMING_LABELS: Record<TimingGroupKey, string> = {
+  overdue: "Overdue",
+  today: "Today",
+  tomorrow: "Tomorrow",
+  thisWeek: "This week",
+  later: "Later",
+  noDate: "No date",
+};
+
+const TIMING_ORDER: TimingGroupKey[] = ["overdue", "today", "tomorrow", "thisWeek", "later", "noDate"];
+
+export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
+  const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
+  if (haystack.includes("approval")) return "approval";
+  if (haystack.includes("confirmation") || haystack.includes("letter") || haystack.includes("signed")) return "confirmation";
+  if (haystack.includes("payment") || haystack.includes("installment") || haystack.includes("instalment") || haystack.includes("invoice") || haystack.includes("deposit")) return "payments";
+  if (haystack.includes("technical") || haystack.includes("onstage") || haystack.includes("stage") || haystack.includes("noc") || haystack.includes("meeting") || haystack.includes("setup")) return "operations";
+  if (haystack.includes("account") || haystack.includes("tax") || haystack.includes("ledger") || haystack.includes("tds") || haystack.includes("refund")) return "accounts";
+  if (haystack.includes("feedback") || haystack.includes("post") || haystack.includes("report")) return "postEvent";
+  return "manual";
+}
+
+export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday()): EventCommandCard[] {
+  const openTasks = tasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
+  const byEvent = new Map<string, TaskLike[]>();
+  for (const task of openTasks) {
+    const key = task.event_id ?? `task:${task.id}`;
+    byEvent.set(key, [...(byEvent.get(key) ?? []), task]);
+  }
+
+  return Array.from(byEvent.entries())
+    .map(([, eventTasks]) => {
+      const first = eventTasks[0]!;
+      const sortedTasks = [...eventTasks].sort((a, b) => compareTasksForWorkflow(a, b, todayIso, CARD_WORKFLOW_ORDER));
+      return {
+        event: {
+          id: first.event_id,
+          title: first.event_title ?? "Unlinked task",
+          status: first.event_status,
+          startDate: first.event_start_date ?? null,
+          endDate: first.event_end_date ?? null,
+          venues: first.event_venues ?? null,
+          owner: first.event_owner ?? first.assignee_name ?? null,
+        },
+        tasks: sortedTasks,
+        workflowGroups: groupTasksByWorkflowOrder(sortedTasks, CARD_WORKFLOW_ORDER, todayIso),
+        openTaskCount: sortedTasks.length,
+        sortRank: getEventSortRank(eventTasks, todayIso),
+      };
+    })
+    .sort((a, b) => {
+      if (a.sortRank !== b.sortRank) return a.sortRank - b.sortRank;
+      return compareNullableDates(a.event.startDate, b.event.startDate) || a.event.title.localeCompare(b.event.title);
+    });
+}
+
+export function groupTasksByTiming(tasks: TaskLike[], todayIso = isoToday()): Array<TaskGroup<TimingGroupKey>> {
+  return buildGroups(tasks, TIMING_ORDER, TIMING_LABELS, (task) => getTimingGroup(task, todayIso), (a, b) => compareTasksByDueDate(a, b, todayIso));
+}
+
+export function groupTasksByWorkflowLane(tasks: TaskLike[], todayIso = isoToday()): Array<TaskGroup<WorkflowFamily>> {
+  return buildGroups(tasks, LANE_WORKFLOW_ORDER, WORKFLOW_LABELS, getWorkflowFamily, (a, b) => compareTasksByDueDate(a, b, todayIso));
+}
+
+export function getTaskUrgencyLabels(task: TaskLike, todayIso = isoToday()): string[] {
+  const labels: string[] = [];
+  const timing = getTimingGroup(task, todayIso);
+  if (timing === "overdue") labels.push("Overdue");
+  if (timing === "today") labels.push("Due today");
+  if (task.priority === "high") labels.push("High priority");
+  if (!task.assignee_name) labels.push("Unassigned");
+  return labels;
+}
+
+export function getTimingGroup(task: TaskLike, todayIso = isoToday()): TimingGroupKey {
+  if (!task.due_date) return "noDate";
+  const diff = daysBetween(todayIso, task.due_date);
+  if (diff < 0) return "overdue";
+  if (diff === 0) return "today";
+  if (diff === 1) return "tomorrow";
+  if (diff <= 6) return "thisWeek";
+  return "later";
+}
+
+function buildGroups<T extends string>(
+  tasks: TaskLike[],
+  order: T[],
+  labels: Record<T, string>,
+  keyFor: (task: TaskLike) => T,
+  compare: (a: TaskLike, b: TaskLike) => number
+): Array<TaskGroup<T>> {
+  const grouped = new Map<T, TaskLike[]>();
+  for (const task of tasks) {
+    const key = keyFor(task);
+    grouped.set(key, [...(grouped.get(key) ?? []), task]);
+  }
+  return order
+    .map((key) => ({ key, label: labels[key], tasks: [...(grouped.get(key) ?? [])].sort(compare) }))
+    .filter((group) => group.tasks.length > 0);
+}
+
+function groupTasksByWorkflowOrder(tasks: TaskLike[], order: WorkflowFamily[], todayIso: string): Array<TaskGroup<WorkflowFamily>> {
+  return buildGroups(tasks, order, WORKFLOW_LABELS, getWorkflowFamily, (a, b) => compareTasksForWorkflow(a, b, todayIso, order));
+}
+
+function compareTasksForWorkflow(a: TaskLike, b: TaskLike, todayIso: string, order: WorkflowFamily[]): number {
+  const familyDelta = order.indexOf(getWorkflowFamily(a)) - order.indexOf(getWorkflowFamily(b));
+  if (familyDelta !== 0) return familyDelta;
+  return compareTasksByDueDate(a, b, todayIso);
+}
+
+function compareTasksByDueDate(a: TaskLike, b: TaskLike, todayIso: string): number {
+  const urgencyDelta = taskUrgencyRank(a, todayIso) - taskUrgencyRank(b, todayIso);
+  if (urgencyDelta !== 0) return urgencyDelta;
+  const dateDelta = compareNullableDates(a.due_date, b.due_date);
+  if (dateDelta !== 0) return dateDelta;
+  const priorityDelta = priorityRank(a.priority) - priorityRank(b.priority);
+  if (priorityDelta !== 0) return priorityDelta;
+  return a.title.localeCompare(b.title);
+}
+
+function taskUrgencyRank(task: TaskLike, todayIso: string): number {
+  if (getTimingGroup(task, todayIso) === "overdue") return 0;
+  if (getTimingGroup(task, todayIso) === "today") return 1;
+  if (task.priority === "high") return 2;
+  return 3;
+}
+
+function getEventSortRank(tasks: TaskLike[], todayIso: string): number {
+  if (tasks.some((task) => getTimingGroup(task, todayIso) === "overdue")) return 0;
+  if (tasks.some((task) => getTimingGroup(task, todayIso) === "today")) return 1;
+  if (tasks.some((task) => task.priority === "high")) return 2;
+  if (tasks.some((task) => isSoonBlocker(task, todayIso))) return 3;
+  if (tasks.some((task) => getTimingGroup(task, todayIso) === "tomorrow" || getTimingGroup(task, todayIso) === "thisWeek")) return 4;
+  if (tasks.some((task) => task.due_date)) return 5;
+  return 6;
+}
+
+function isSoonBlocker(task: TaskLike, todayIso: string): boolean {
+  if (!task.event_start_date) return false;
+  const daysToEvent = daysBetween(todayIso, task.event_start_date);
+  if (daysToEvent < 0 || daysToEvent > 14) return false;
+  return getWorkflowFamily(task) !== "manual";
+}
+
+function priorityRank(priority: TaskLike["priority"]): number {
+  if (priority === "high") return 0;
+  if (priority === "medium") return 1;
+  return 2;
+}
+
+function compareNullableDates(a: string | null | undefined, b: string | null | undefined): number {
+  if (a && b) return a.localeCompare(b);
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((parseIsoDate(toIso).getTime() - parseIsoDate(fromIso).getTime()) / DAY_MS);
+}
+
+function parseIsoDate(iso: string): Date {
+  return new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
+}
+
+function isoToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}

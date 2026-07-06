@@ -1,33 +1,45 @@
-import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
+import { StatusBadge } from "../components/StatusBadge";
+import { getEventStatusSurface } from "../lib/event-status-surface";
 import { apiGet, apiPatch } from "../lib/api";
 import { formatDate } from "../lib/use-lookups";
+import {
+  buildEventCommandCards,
+  groupTasksByTiming,
+  groupTasksByWorkflowLane,
+  getTaskUrgencyLabels,
+  getTimingGroup,
+  getWorkflowFamily,
+  WORKFLOW_LABELS,
+  type TaskLike,
+  type WorkflowFamily,
+} from "../lib/task-workflows";
+import type { EventStatus } from "../../worker/lib/state-machine";
 
-type TaskRow = {
-  id: string;
-  title: string;
-  description: string | null;
-  event_id: string | null;
-  event_title: string | null;
-  event_status: string | null;
-  task_type: "automatic" | "manual";
-  source_rule: string | null;
-  assignee_name: string | null;
-  due_date: string | null;
-  priority: "high" | "medium" | "low";
-  status: "open" | "in_progress" | "completed" | "cancelled";
+type TaskRow = TaskLike;
+type TaskView = "cards" | "queue" | "lanes";
+
+const VIEW_LABELS: Record<TaskView, string> = {
+  cards: "Event command cards",
+  queue: "Today's work queue",
+  lanes: "Workflow lanes",
 };
 
 export function TasksPage() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("open");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = parseView(searchParams.get("view"));
+  const [status, setStatus] = useState("active");
   const [mine, setMine] = useState(false);
+  const today = useMemo(() => isoTodayInIndia(), []);
 
+  const apiStatus = status === "active" ? "all" : status;
   const { data, isLoading, error } = useQuery({
-    queryKey: ["tasks", status, mine],
-    queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=${status}&mine=${mine ? "1" : "0"}`),
+    queryKey: ["tasks", apiStatus, mine],
+    queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=${apiStatus}&mine=${mine ? "1" : "0"}`),
   });
 
   const updateTask = useMutation({
@@ -35,28 +47,60 @@ export function TasksPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  const tasks = useMemo(() => {
+    const rows = data?.tasks ?? [];
+    if (status === "active") return rows.filter((task) => task.status === "open" || task.status === "in_progress");
+    return rows;
+  }, [data?.tasks, status]);
+
+  function selectView(next: TaskView) {
+    const params = new URLSearchParams(searchParams);
+    if (next === "cards") params.delete("view");
+    else params.set("view", next);
+    setSearchParams(params, { replace: true });
+  }
+
   return (
     <div>
       <PageHeader title="Tasks" subtitle="Automatic follow-ups and manual operational work" />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {["open", "in_progress", "completed", "all"].map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setStatus(option)}
-            className={
-              "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (status === option ? "carved-btn-sage bg-sage-btn text-sage-text" : "carved-btn bg-neutral-btn text-ink-secondary")
-            }
-          >
-            {option.replace(/_/g, " ")}
-          </button>
-        ))}
-        <label className="ml-auto inline-flex items-center gap-2 text-sm text-ink-secondary etched">
-          <input type="checkbox" checked={mine} onChange={(ev) => setMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
-          My tasks
-        </label>
+      <div className="carved-header mb-4 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
+            {(["cards", "queue", "lanes"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => selectView(option)}
+                className={
+                  "rounded-full px-4 py-1.5 text-xs font-semibold etched " +
+                  (view === option ? "carved-btn-sage bg-sage-btn text-sage-text" : "text-ink-muted hover:text-ink-secondary")
+                }
+              >
+                {VIEW_LABELS[option]}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+            {["active", "open", "in_progress", "completed", "all"].map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setStatus(option)}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-medium etched " +
+                  (status === option ? "carved-btn-sage bg-sage-btn text-sage-text" : "carved-btn bg-neutral-btn text-ink-secondary")
+                }
+              >
+                {option.replace(/_/g, " ")}
+              </button>
+            ))}
+            <label className="inline-flex items-center gap-2 px-2 text-xs font-medium text-ink-secondary etched">
+              <input type="checkbox" checked={mine} onChange={(ev) => setMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
+              My tasks
+            </label>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -65,70 +109,269 @@ export function TasksPage() {
         </div>
       )}
 
-      <div className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
-        {isLoading ? (
-          <div className="p-6 text-sm text-ink-muted etched">Loading...</div>
-        ) : (data?.tasks.length ?? 0) === 0 ? (
-          <div className="p-6 text-sm text-ink-muted etched">No tasks in this view.</div>
-        ) : (
-          <div className="divide-y divide-ink-muted/10">
-            {data?.tasks.map((task) => (
-              <div key={task.id} className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold text-ink-primary etched-deep">{task.title}</h3>
-                    <span className={badgeClass(task.priority)}>{task.priority}</span>
-                    <span className={statusClass(task.status)}>{task.status.replace(/_/g, " ")}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
-                    <span>{task.task_type === "automatic" ? "Automatic" : "Manual"}</span>
-                    {task.source_rule && <span>{task.source_rule.replace(/_/g, " ")}</span>}
-                    {task.due_date && <span>Due {formatDate(task.due_date)}</span>}
-                    {task.assignee_name && <span>{task.assignee_name}</span>}
-                    {task.event_id && task.event_title && <Link to={`/events/${task.event_id}`} className="text-sage-text underline">{task.event_title}</Link>}
-                  </div>
-                  {task.description && <p className="mt-2 text-xs text-ink-secondary etched">{task.description}</p>}
-                </div>
-                <div className="flex gap-2">
-                  {task.status === "open" && (
-                    <button
-                      type="button"
-                      disabled={updateTask.isPending}
-                      onClick={() => updateTask.mutate({ id: task.id, status: "in_progress" })}
-                      className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
-                    >
-                      Start
-                    </button>
-                  )}
-                  {task.status !== "completed" && task.status !== "cancelled" && (
-                    <button
-                      type="button"
-                      disabled={updateTask.isPending}
-                      onClick={() => updateTask.mutate({ id: task.id, status: "completed" })}
-                      className="carved-btn-sage rounded-full bg-sage-btn px-3 py-1.5 text-xs font-semibold text-sage-text etched"
-                    >
-                      Complete
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {isLoading ? (
+        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">Loading...</div>
+      ) : tasks.length === 0 ? (
+        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">No tasks in this view.</div>
+      ) : view === "cards" ? (
+        <EventCommandCards tasks={tasks} today={today} updateTask={updateTask} />
+      ) : view === "queue" ? (
+        <TodaysWorkQueue tasks={tasks} today={today} updateTask={updateTask} />
+      ) : (
+        <WorkflowLanes tasks={tasks} today={today} updateTask={updateTask} />
+      )}
     </div>
   );
 }
 
-function badgeClass(priority: string): string {
-  if (priority === "high") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-cancelled";
-  if (priority === "low") return "rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted";
-  return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-awaitingApproval";
+function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
+  const cards = buildEventCommandCards(tasks, today);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  function toggleCard(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      {cards.map((card) => {
+        const surface = getEventStatusSurface(card.event.status);
+        const cardKey = card.event.id ?? card.event.title;
+        const isExpanded = expanded.has(cardKey);
+        const nextTask = card.tasks[0];
+        const urgentLabels = card.tasks.flatMap((task) => getTaskUrgencyLabels(task, today));
+        const uniqueUrgentLabels = Array.from(new Set(urgentLabels)).slice(0, 3);
+        return (
+          <article key={card.event.id ?? card.event.title} className={`carved-card overflow-hidden rounded-2xl border bg-marble-highlight/70 ${surface.card}`}>
+            <div className={`border-l-4 ${surface.border} px-5 py-4`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    {card.event.status && <StatusBadge status={card.event.status as EventStatus} />}
+                    <span className="rounded-full bg-marble-highlight/70 px-2 py-0.5 text-[11px] font-semibold text-ink-secondary ring-1 ring-ink-muted/10 etched">
+                      {card.openTaskCount} open {card.openTaskCount === 1 ? "task" : "tasks"}
+                    </span>
+                  </div>
+                  <h3 className="truncate text-base font-semibold text-ink-primary etched-deep">
+                    {card.event.id ? <Link to={`/events/${card.event.id}`} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
+                  </h3>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
+                    {card.event.startDate && <span>{formatEventDate(card.event.startDate, card.event.endDate)}</span>}
+                    {card.event.venues && <span>{card.event.venues}</span>}
+                    {card.event.owner && <span>{card.event.owner}</span>}
+                  </div>
+                  {nextTask && (
+                    <div className="mt-3 rounded-lg bg-marble-highlight/70 px-3 py-2 ring-1 ring-ink-muted/10">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">Next</span>
+                        {uniqueUrgentLabels.map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
+                      </div>
+                      <div className="mt-1 truncate text-xs font-semibold text-ink-primary etched-deep">{nextTask.title}</div>
+                      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-ink-muted etched">
+                        <span>{workflowLabel(getWorkflowFamily(nextTask))}</span>
+                        {nextTask.due_date && <span>Due {formatDate(nextTask.due_date)}</span>}
+                        {!nextTask.due_date && <span>No date</span>}
+                        {nextTask.assignee_name && <span>{nextTask.assignee_name}</span>}
+                        {getTimingGroup(nextTask, today) === "overdue" && <span>Needs attention</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleCard(cardKey)}
+                  aria-expanded={isExpanded}
+                  className="carved-btn shrink-0 rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-semibold text-ink-secondary etched"
+                >
+                  {isExpanded ? "Collapse" : "Expand"}
+                </button>
+              </div>
+            </div>
+            {isExpanded && (
+              <div className="space-y-4 px-5 pb-5">
+                {card.workflowGroups.map((group) => (
+                  <section key={group.key}>
+                    <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{workflowLabel(group.key)}</h4>
+                    <div className="space-y-2">
+                      {group.tasks.map((task) => <TaskMiniCard key={task.id} task={task} today={today} updateTask={updateTask} />)}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
-function statusClass(status: string): string {
+function TodaysWorkQueue({ tasks, today, updateTask }: TaskViewProps) {
+  const groups = groupTasksByTiming(tasks, today);
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <section key={group.key} className="carved-card rounded-2xl bg-marble-highlight/55 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink-primary etched-deep">{group.label}</h3>
+            <span className="text-xs text-ink-muted etched">{group.tasks.length}</span>
+          </div>
+          <div className="space-y-2">
+            {group.tasks.map((task) => <TaskExecutionRow key={task.id} task={task} today={today} updateTask={updateTask} />)}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function WorkflowLanes({ tasks, today, updateTask }: TaskViewProps) {
+  const lanes = groupTasksByWorkflowLane(tasks, today);
+  return (
+    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+      {lanes.map((lane) => (
+        <section key={lane.key} className="carved-card flex min-h-[180px] flex-col rounded-2xl bg-marble-highlight/55 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink-primary etched-deep">{lane.label}</h3>
+            <span className="rounded-full bg-marble-shadow/50 px-2 py-0.5 text-[11px] font-medium text-ink-muted etched">{lane.tasks.length}</span>
+          </div>
+          <div className="space-y-2">
+            {lane.tasks.map((task) => <LaneTaskCard key={task.id} task={task} today={today} updateTask={updateTask} />)}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+type TaskViewProps = {
+  tasks: TaskRow[];
+  today: string;
+  updateTask: UseMutationResult<unknown, Error, { id: string; status: TaskRow["status"] }>;
+};
+
+function TaskMiniCard({ task, today, updateTask }: TaskCardProps) {
+  return (
+    <div className="rounded-lg bg-marble-highlight/75 px-3 py-2 ring-1 ring-ink-muted/10">
+      <TaskCardMain task={task} today={today} compact={false} />
+      <TaskActions task={task} updateTask={updateTask} />
+    </div>
+  );
+}
+
+function TaskExecutionRow({ task, today, updateTask }: TaskCardProps) {
+  const surface = getEventStatusSurface(task.event_status);
+  return (
+    <div className={`grid gap-3 rounded-xl px-4 py-3 md:grid-cols-[1fr_auto] md:items-center ${surface.row}`}>
+      <TaskCardMain task={task} today={today} compact={false} showEvent />
+      <TaskActions task={task} updateTask={updateTask} />
+    </div>
+  );
+}
+
+function LaneTaskCard({ task, today, updateTask }: TaskCardProps) {
+  const surface = getEventStatusSurface(task.event_status);
+  return (
+    <div className={`rounded-lg px-3 py-2 ${surface.row}`}>
+      <TaskCardMain task={task} today={today} compact showEvent />
+      <TaskActions task={task} updateTask={updateTask} compact />
+    </div>
+  );
+}
+
+type TaskCardProps = {
+  task: TaskRow;
+  today: string;
+  updateTask: TaskViewProps["updateTask"];
+};
+
+function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskRow; today: string; compact: boolean; showEvent?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className={(compact ? "text-xs" : "text-sm") + " font-semibold text-ink-primary etched-deep"}>{task.title}</h4>
+        <span className={taskStatusClass(task.status)}>{task.status.replace(/_/g, " ")}</span>
+        {getTaskUrgencyLabels(task, today).map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
+        <span>{task.task_type === "automatic" ? "Automatic" : "Manual"}</span>
+        <span>{workflowLabel(getWorkflowFamily(task))}</span>
+        {task.source_rule && <span>{task.source_rule.replace(/_/g, " ")}</span>}
+        {task.due_date && <span>Due {formatDate(task.due_date)}</span>}
+        {task.assignee_name && <span>{task.assignee_name}</span>}
+        {showEvent && task.event_id && task.event_title && <Link to={`/events/${task.event_id}`} className="text-sage-text underline">{task.event_title}</Link>}
+      </div>
+      {!compact && task.description && <p className="mt-2 text-xs text-ink-secondary etched">{task.description}</p>}
+    </div>
+  );
+}
+
+function TaskActions({ task, updateTask, compact = false }: { task: TaskRow; updateTask: TaskCardProps["updateTask"]; compact?: boolean }) {
+  if (task.status === "completed" || task.status === "cancelled") return null;
+  return (
+    <div className={"mt-3 flex gap-2 " + (compact ? "justify-end" : "md:mt-0")}>
+      {task.status === "open" && (
+        <button
+          type="button"
+          disabled={updateTask.isPending}
+          onClick={() => updateTask.mutate({ id: task.id, status: "in_progress" })}
+          className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+        >
+          Start
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={updateTask.isPending}
+        onClick={() => updateTask.mutate({ id: task.id, status: "completed" })}
+        className="carved-btn-sage rounded-full bg-sage-btn px-3 py-1.5 text-xs font-semibold text-sage-text etched"
+      >
+        Complete
+      </button>
+    </div>
+  );
+}
+
+function parseView(value: string | null): TaskView {
+  if (value === "queue" || value === "lanes") return value;
+  return "cards";
+}
+
+function workflowLabel(family: WorkflowFamily): string {
+  return WORKFLOW_LABELS[family];
+}
+
+function formatEventDate(start: string, end: string | null): string {
+  if (!end || end === start) return formatDate(start);
+  return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
+function taskStatusClass(status: string): string {
   if (status === "completed") return "rounded-full bg-sage/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-sage-text";
   if (status === "cancelled") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-cancelled";
   if (status === "in_progress") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-awaitingApproval";
   return "rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted";
+}
+
+function urgencyClass(label: string): string {
+  if (label === "Overdue") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled";
+  if (label === "Due today") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval";
+  if (label === "High priority") return "rounded-full bg-status-tentative/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-tentative";
+  return "rounded-full bg-marble-shadow/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted";
+}
+
+function isoTodayInIndia(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const m = parts.find((part) => part.type === "month")?.value ?? "01";
+  const d = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
 }

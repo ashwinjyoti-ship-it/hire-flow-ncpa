@@ -39,7 +39,11 @@ taskRoutes.get("/", requireUser, async (c) => {
   }
 
   const { results } = await c.env.DB.prepare(
-    `SELECT t.*, e.title AS event_title, e.status AS event_status, u.name AS assignee_name
+    `SELECT t.*, e.title AS event_title, e.status AS event_status,
+            e.event_start_date AS event_start_date, e.event_end_date AS event_end_date,
+            e.event_owner AS event_owner,
+            (SELECT GROUP_CONCAT(vb.venue, ', ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS event_venues,
+            u.name AS assignee_name
      FROM tasks t
      LEFT JOIN events e ON e.id = t.event_id
      LEFT JOIN users u ON u.id = t.assignee_id

@@ -32,7 +32,7 @@ export function Topbar() {
   });
 
   return (
-    <header className="carved-header mx-auto mt-6 w-full max-w-[1600px] rounded-2xl bg-marble-highlight/60 px-6 py-3 backdrop-blur-sm">
+    <header className="carved-header relative z-50 mx-auto mt-6 w-full max-w-[1600px] rounded-2xl bg-marble-highlight/60 px-6 py-3 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-4">
         <Link to="/dashboard" className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-btn text-sage-text carved-btn-sage">
@@ -76,7 +76,7 @@ export function Topbar() {
                   </span>
                 )}
               </button>
-              <div className="pointer-events-none absolute right-0 z-40 mt-2 w-80 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
+              <div className="pointer-events-none absolute right-0 z-[70] mt-2 w-80 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
                 <div className="carved-card rounded-2xl bg-marble-highlight p-4 shadow-xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-sage etched">Notifications</h2>
