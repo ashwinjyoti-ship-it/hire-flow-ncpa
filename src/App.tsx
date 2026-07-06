@@ -26,7 +26,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
-        {/* Events tab dropped — Calendar page is the hub (Month/Week/Day/Timeline/List). */}
+        {/* Events tab dropped — Calendar is the hub for activity and lifecycle views. */}
         <Route path="/events" element={<Navigate to="/calendar" replace />} />
         <Route path="/events/new" element={<EventEditPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />

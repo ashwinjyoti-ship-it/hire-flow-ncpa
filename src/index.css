@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 /*
- * Marble + Sage — Drifting Veins.
- * Procedural marble background (no raster). Two feTurbulence vein layers drift
- * on coprime cycles (~52s and ~61s). Honours prefers-reduced-motion.
+ * Marble + Sage — Polished White Marble.
+ * Procedural marble background (no raster). Global stone gets the clearest
+ * cloudy variation and faint grey veining; working surfaces stay restrained.
  */
 
 :root {
@@ -21,7 +21,7 @@ body,
 body {
   margin: 0;
   font-family: "Inter", system-ui, sans-serif;
-  background-color: #fafaf8;
+  background-color: #f8f8f5;
   color: #726f68; /* text-tertiary */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -40,13 +40,14 @@ body {
   position: fixed;
   inset: 0;
   z-index: -3;
-  background-image: radial-gradient(
-      160% 130% at 18% -5%,
-      rgba(255, 255, 255, 0.75) 0%,
-      rgba(255, 255, 255, 0) 50%
-    ),
-    linear-gradient(155deg, #fefefe 0%, #fafaf8 55%, #f4f4f2 100%);
-  background-blend-mode: screen, normal;
+  background-image:
+    radial-gradient(140% 120% at 18% -8%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0) 48%),
+    radial-gradient(110% 90% at 82% 12%, rgba(235, 236, 232, 0.44) 0%, rgba(255, 255, 255, 0) 54%),
+    radial-gradient(95% 80% at 28% 88%, rgba(226, 228, 224, 0.34) 0%, rgba(255, 255, 255, 0) 58%),
+    linear-gradient(125deg, rgba(130, 132, 128, 0.055) 0 1px, transparent 1px 34%),
+    linear-gradient(155deg, #ffffff 0%, #fafaf8 43%, #f1f2ef 100%);
+  background-size: auto, auto, auto, 920px 920px, auto;
+  background-blend-mode: screen, multiply, multiply, multiply, normal;
 }
 
 .vein {
@@ -60,20 +61,20 @@ body {
   will-change: transform;
 }
 
-/* Vein Layer 1 — seed 12, opacity 0.12, 52s drift */
+/* Vein Layer 1 — longer, soft grey movement */
 .vein-1 {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='1100'><filter id='n1'><feTurbulence type='fractalNoise' baseFrequency='0.004 0.008' numOctaves='4' seed='12' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.75 0 0 0 0  0 0.76 0 0 0  0 0 0.79 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0 0 0 0 1 0 0 0 0 0 0 0 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n1)' opacity='0.12'/></svg>");
-  background-size: 1100px 1100px;
-  opacity: 0.12;
-  animation: drift1 52s ease-in-out alternate infinite;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='1200'><filter id='n1'><feTurbulence type='fractalNoise' baseFrequency='0.0035 0.007' numOctaves='4' seed='12' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.58 0 0 0 0  0 0.59 0 0 0  0 0 0.62 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0 0 0 0.10 0.34 0.10 0 0 0 0 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n1)' opacity='0.22'/></svg>");
+  background-size: 1200px 1200px;
+  opacity: 0.28;
+  animation: drift1 88s ease-in-out alternate infinite;
 }
 
-/* Vein Layer 2 — seed 47, opacity 0.10, 61s drift (coprime → ~53 min before repeat) */
+/* Vein Layer 2 — cloudy stone variation */
 .vein-2 {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='800'><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.006 0.013' numOctaves='4' seed='47' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.80 0 0 0 0  0 0.81 0 0 0  0 0 0.83 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n2)' opacity='0.10'/></svg>");
-  background-size: 800px 800px;
-  opacity: 0.1;
-  animation: drift2 61s ease-in-out alternate infinite;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='880' height='880'><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.005 0.012' numOctaves='5' seed='47' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0.68 0 0 0 0  0 0.69 0 0 0  0 0 0.71 0 0  0 0 0 0 1'/><feComponentTransfer><feFuncA tableValues='0 0.04 0.09 0.13 0.06 0.02 0 0'/></feComponentTransfer></filter><rect width='100%' height='100%' filter='url(%23n2)' opacity='0.18'/></svg>");
+  background-size: 880px 880px;
+  opacity: 0.2;
+  animation: drift2 97s ease-in-out alternate infinite;
 }
 
 @keyframes drift1 {
@@ -120,6 +121,10 @@ body {
 }
 .carved-card,
 .carved-header {
+  background-image:
+    radial-gradient(120% 90% at 10% 0%, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 58%),
+    linear-gradient(140deg, rgba(116, 118, 114, 0.025) 0 1px, transparent 1px 44%);
+  background-size: auto, 720px 720px;
   box-shadow: inset 0 2px 5px rgba(90, 88, 82, 0.16), inset 0 -1px 0 rgba(255, 255, 255, 0.9);
 }
 .carved-btn {

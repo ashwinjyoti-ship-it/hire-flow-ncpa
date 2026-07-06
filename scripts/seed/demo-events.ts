@@ -1,8 +1,13 @@
 /**
  * Local demo data seed for Phase 6 testing.
  *
- * Creates 50 events across May-Sep 2026, with varied lifecycle states,
- * event types, single/multi-venue bookings, checklists, tasks, and notifications.
+ * Creates 50 lifecycle-realistic events:
+ *   - June enquiries mostly show in September
+ *   - July enquiries show in September/October
+ *   - August enquiries show in November
+ *   - September enquiries show in December
+ * with varied lifecycle states, event types, single/multi-venue bookings,
+ * checklists, tasks, and notifications.
  *
  * Usage:
  *   PATH="$PWD/node_modules/.bin:$PATH" tsx scripts/seed/demo-events.ts --env=local
@@ -55,10 +60,19 @@ const FALLBACK_ORGS = [
 ];
 
 const EVENT_TYPES: EventType[] = ["VFH", "EE", "FR", "Free Event"];
-const STATUS_ROTATION: EventStatus[] = ["enquiry", "tentative", "approved", "confirmed", "confirmed", "regret", "cancelled", "tentative", "confirmed", "enquiry"];
 const OWNERS = ["Aditi Rao", "Dev Mehta", "Farah Contractor", "Kabir Shah", "Leena Iyer"];
 const OFFICERS = ["Mira Kapoor", "Nikhil D'Souza", "Rhea Menon", "Samar Khan", "Tara Desai"];
 const SOURCES = ["Referral", "Website", "Repeat Client", "Phone Call", "Email"];
+const DEMO_TODAY = "2026-07-06";
+const DEMO_PASSWORD_HASH = `scrypt:${"00".repeat(16)}:${"00".repeat(32)}`;
+const DEMO_USERS = [
+  { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations" },
+  { id: "demo_user_aditi", email: "aditi.rao@ncpa.local", name: "Aditi Rao", role: "venue_manager", organisation: "Venue Hire" },
+  { id: "demo_user_dev", email: "dev.mehta@ncpa.local", name: "Dev Mehta", role: "coordinator", organisation: "Venue Hire" },
+  { id: "demo_user_farah", email: "farah.contractor@ncpa.local", name: "Farah Contractor", role: "coordinator", organisation: "Accounts" },
+  { id: "demo_user_kabir", email: "kabir.shah@ncpa.local", name: "Kabir Shah", role: "coordinator", organisation: "Technical" },
+  { id: "demo_user_leena", email: "leena.iyer@ncpa.local", name: "Leena Iyer", role: "viewer", organisation: "Management" },
+];
 
 function parseEnv(): SeedEnv {
   const arg = process.argv.find((a) => a.startsWith("--env="));
@@ -84,10 +98,18 @@ function date(year: number, month: number, day: number): string {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+function clampDay(day: number): number {
+  return Math.max(1, Math.min(28, day));
+}
+
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function maxIsoDate(a: string, b: string): string {
+  return a >= b ? a : b;
 }
 
 function slug(s: string): string {
@@ -236,9 +258,60 @@ type DemoEvent = {
   startDate: string;
   endDate: string;
   enquiryDate: string;
+  confirmationDate: string | null;
   email: string;
   phone: string;
 };
+
+type LifecycleCohort = {
+  enquiryMonth: 6 | 7 | 8 | 9;
+  showMonths: number[];
+  count: number;
+  statuses: EventStatus[];
+};
+
+const LIFECYCLE_COHORTS: LifecycleCohort[] = [
+  {
+    enquiryMonth: 6,
+    showMonths: [9],
+    count: 14,
+    statuses: ["confirmed", "approved", "tentative", "confirmed", "confirmed", "regret", "cancelled", "approved", "tentative", "confirmed", "confirmed", "approved", "tentative", "confirmed"],
+  },
+  {
+    enquiryMonth: 7,
+    showMonths: [9, 10],
+    count: 14,
+    statuses: ["enquiry", "tentative", "approved", "tentative", "confirmed", "enquiry", "approved", "tentative", "cancelled", "tentative", "confirmed", "enquiry", "approved", "tentative"],
+  },
+  {
+    enquiryMonth: 8,
+    showMonths: [11],
+    count: 12,
+    statuses: ["enquiry", "enquiry", "tentative", "tentative", "approved", "enquiry", "tentative", "enquiry", "tentative", "approved", "enquiry", "tentative"],
+  },
+  {
+    enquiryMonth: 9,
+    showMonths: [12],
+    count: 10,
+    statuses: ["enquiry", "enquiry", "tentative", "enquiry", "tentative", "enquiry", "enquiry", "tentative", "enquiry", "enquiry"],
+  },
+];
+
+function lifecycleDate(enquiryMonth: number, slot: number): string {
+  return date(2026, enquiryMonth, clampDay(3 + slot * 2));
+}
+
+function showDateForCohort(cohort: LifecycleCohort, slot: number): string {
+  const showMonth = cohort.showMonths[slot % cohort.showMonths.length]!;
+  const day = clampDay(6 + ((slot * 3) % 21));
+  return date(2026, showMonth, day);
+}
+
+function confirmationDateForStatus(enquiryDate: string, status: EventStatus, slot: number): string | null {
+  if (status === "confirmed") return addDays(enquiryDate, 12 + (slot % 7));
+  if (status === "approved") return addDays(enquiryDate, 8 + (slot % 4));
+  return null;
+}
 
 function buildEvents(orgNames: string[]): DemoEvent[] {
   const natures = [
@@ -254,19 +327,19 @@ function buildEvents(orgNames: string[]): DemoEvent[] {
     "Awards Evening",
   ];
   const events: DemoEvent[] = [];
-  const months = [5, 6, 7, 8, 9];
-  for (const month of months) {
-    for (let slot = 0; slot < 10; slot++) {
+  for (const cohort of LIFECYCLE_COHORTS) {
+    for (let slot = 0; slot < cohort.count; slot++) {
       const index = events.length;
       const orgName = orgNames[index % orgNames.length]!;
       const eventType = EVENT_TYPES[index % EVENT_TYPES.length]!;
-      let status = STATUS_ROTATION[slot]!;
+      let status = cohort.statuses[slot]!;
       if (status === "approved" && eventType !== "VFH") status = "tentative";
       const venues = venuePlan(index);
       const duration = durationDays(index, venues);
-      const startDate = month === 7 && slot < 5 ? date(2026, 7, 5) : date(2026, month, 4 + slot * 2);
+      const enquiryDate = lifecycleDate(cohort.enquiryMonth, slot);
+      const startDate = showDateForCohort(cohort, slot);
       const endDate = addDays(startDate, duration - 1);
-      const code = `DEMO-2026-${pad(month)}-${pad(slot + 1)}`;
+      const code = `DEMO-2026-${pad(cohort.enquiryMonth)}-${pad(slot + 1)}`;
       const nature = natures[index % natures.length]!;
       events.push({
         index,
@@ -283,7 +356,8 @@ function buildEvents(orgNames: string[]): DemoEvent[] {
         duration,
         startDate,
         endDate,
-        enquiryDate: addDays(startDate, -28 - (index % 10)),
+        enquiryDate,
+        confirmationDate: confirmationDateForStatus(enquiryDate, status, slot),
         email: `events+${slug(orgName)}@example.com`,
         phone: `+91 98${String(70000000 + index * 137).slice(0, 8)}`,
       });
@@ -315,6 +389,22 @@ function seedVenueLookups(batch: SqlBatch, timestamp: string): void {
       `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
        VALUES (${sqlStr(`demo_venue_${slug(venue)}`)}, 'venue', ${sqlStr(venue)}, ${i + 1}, 1, NULL, ${sqlStr(timestamp)})
        ON CONFLICT(list_key, value) DO UPDATE SET is_active = 1, sort_order = excluded.sort_order;`
+    );
+  });
+}
+
+function seedDemoUsers(batch: SqlBatch, timestamp: string): void {
+  DEMO_USERS.forEach((user) => {
+    batch.add(
+      `INSERT INTO users (id, email, name, role, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
+       VALUES (${sqlStr(user.id)}, ${sqlStr(user.email)}, ${sqlStr(user.name)}, ${sqlStr(user.role)}, ${sqlStr(user.organisation)},
+       ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)}, 1, ${sqlStr(timestamp)}, ${sqlStr(timestamp)})
+       ON CONFLICT(email) DO UPDATE SET
+         name = excluded.name,
+         role = excluded.role,
+         organisation = excluded.organisation,
+         is_active = 1,
+         updated_at = excluded.updated_at;`
     );
   });
 }
@@ -354,6 +444,7 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
       security: event.venues.length >= 3,
       notes: `Demo ${event.venues.length}-venue event for Phase 6 testing.`,
     };
+    const lifecycleUpdatedAt = event.confirmationDate ?? addDays(event.enquiryDate, event.status === "enquiry" ? 0 : 5);
     batch.add(
       `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
        event_type, program_officer, event_owner, event_start_date, event_end_date, status, form_status,
@@ -366,7 +457,7 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
        ${sqlStr(event.enquiryDate)}, ${sqlStr(SOURCES[event.index % SOURCES.length])}, ${event.index % 4 === 0 ? 1 : 0},
        ${sqlStr(event.index % 7 === 0 ? "high" : event.index % 5 === 0 ? "low" : "medium")},
        ${sqlStr(JSON.stringify(requirements))}, ${sqlStr(`Demo seed: ${event.venues.join(", ")} / ${event.status}.`)},
-       ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
+       ${sqlStr(event.enquiryDate + "T10:00:00.000Z")}, ${sqlStr(lifecycleUpdatedAt + "T10:00:00.000Z")});`
     );
     batch.add(
       `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
@@ -375,13 +466,15 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
     if (event.status !== "enquiry") {
       batch.add(
         `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
-         VALUES (${sqlStr(`demo_sh_${event.id}_current`)}, ${sqlStr(event.id)}, 'enquiry', ${sqlStr(event.status)}, NULL, ${sqlStr(addDays(event.enquiryDate, 5) + "T10:00:00.000Z")}, 'Demo lifecycle state');`
+         VALUES (${sqlStr(`demo_sh_${event.id}_current`)}, ${sqlStr(event.id)}, 'enquiry', ${sqlStr(event.status)}, NULL, ${sqlStr(lifecycleUpdatedAt + "T10:00:00.000Z")}, 'Demo lifecycle state');`
       );
     }
     batch.add(
       `INSERT INTO event_activity (id, event_id, activity_type, detail, actor_id, created_at)
        VALUES (${sqlStr(`demo_act_${event.id}`)}, ${sqlStr(event.id)}, 'created', ${sqlStr(JSON.stringify({ title: event.title }))}, NULL, ${sqlStr(timestamp)});`
     );
+
+    seedDocumentsForEvent(batch, event, timestamp);
 
     event.venues.forEach((venue, venueIndex) => {
       const vbId = `demo_vb_${event.id}_${slug(venue)}`;
@@ -420,29 +513,169 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
         );
       });
 
-    if (event.index % 3 === 0 || event.status === "enquiry" || event.status === "tentative") {
-      const taskId = `demo_task_${event.id}`;
-      const dueDate = event.index % 2 === 0 ? addDays(now().slice(0, 10), -1) : addDays(now().slice(0, 10), 2);
+    seedTasksForEvent(batch, event, timestamp);
+  }
+}
+
+type DemoTaskSpec = {
+  slug: string;
+  title: string;
+  description: string;
+  sourceRule: string | null;
+  assigneeId: string | null;
+  dueDate: string | null;
+  priority: "high" | "medium" | "low";
+  status: "open" | "in_progress" | "completed" | "cancelled";
+};
+
+function demoTaskSpecs(event: DemoEvent): DemoTaskSpec[] {
+  const ownerUser = DEMO_USERS[(event.index % (DEMO_USERS.length - 1)) + 1]!;
+  const specs: DemoTaskSpec[] = [];
+  const approvalDue = addDays(event.enquiryDate, event.eventType === "VFH" ? 5 : 3);
+  const confirmationDue = event.confirmationDate ? addDays(event.confirmationDate, 2) : addDays(event.enquiryDate, 14);
+  const firstPaymentDue = maxIsoDate(addDays(event.enquiryDate, 10), addDays(event.startDate, -70));
+  const secondPaymentDue = addDays(event.startDate, -45);
+  const operationsDue = addDays(event.startDate, -28);
+
+  if (event.status === "enquiry" || event.status === "tentative" || event.status === "approved") {
+    specs.push({
+      slug: "approval",
+      title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Internal approval checkpoint",
+      description: "Confirm whether the event can move to the next lifecycle stage.",
+      sourceRule: "approval_followup",
+      assigneeId: "demo_user_aditi",
+      dueDate: approvalDue,
+      priority: approvalDue <= DEMO_TODAY ? "high" : "medium",
+      status: approvalDue < DEMO_TODAY && event.index % 3 === 0 ? "in_progress" : "open",
+    });
+  }
+
+  if (event.status === "approved" || event.status === "confirmed") {
+    specs.push({
+      slug: "confirmation",
+      title: "Prepare confirmation letter",
+      description: "Generate, courier, and track signed confirmation paperwork.",
+      sourceRule: "confirmation_letter",
+      assigneeId: ownerUser.id,
+      dueDate: confirmationDue,
+      priority: event.status === "approved" ? "high" : "medium",
+      status: event.status === "confirmed" && confirmationDue < DEMO_TODAY && event.index % 4 === 0 ? "completed" : "open",
+    });
+  }
+
+  if (event.status === "tentative" || event.status === "approved" || event.status === "confirmed") {
+    specs.push({
+      slug: "payment",
+      title: event.index % 2 === 0 ? "Collect installment payment" : "Reconcile proforma invoice",
+      description: "Track expected payment milestone and update accounts checklist.",
+      sourceRule: event.index % 2 === 0 ? "installment_due" : "proforma_invoice",
+      assigneeId: "demo_user_farah",
+      dueDate: event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue,
+      priority: (event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue) <= DEMO_TODAY ? "high" : "medium",
+      status: (event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue) < DEMO_TODAY && event.index % 4 === 0 ? "in_progress" : "open",
+    });
+  }
+
+  if (!["regret", "cancelled"].includes(event.status)) {
+    specs.push({
+      slug: "operations",
+      title: event.index % 2 === 0 ? "OnStage technical sheet review" : "Schedule technical meeting",
+      description: "Coordinate production, venue, and client technical requirements.",
+      sourceRule: event.index % 2 === 0 ? "onstage_followup" : "technical_meeting",
+      assigneeId: "demo_user_kabir",
+      dueDate: operationsDue,
+      priority: operationsDue <= addDays(DEMO_TODAY, 14) ? "high" : "medium",
+      status: operationsDue < DEMO_TODAY && event.index % 7 === 0 ? "in_progress" : "open",
+    });
+  }
+
+  if (event.status === "confirmed") {
+    specs.push({
+      slug: "accounts",
+      title: "Send final file to accounts",
+      description: "Close the venue hire file and hand over the account pack.",
+      sourceRule: "accounts_file_status",
+      assigneeId: "demo_user_farah",
+      dueDate: addDays(event.endDate, 1),
+      priority: event.startDate < DEMO_TODAY ? "high" : "medium",
+      status: event.startDate < addDays(DEMO_TODAY, -10) ? "completed" : "open",
+    });
+  }
+
+  if (event.startDate < DEMO_TODAY && event.status === "confirmed") {
+    specs.push({
+      slug: "post_event",
+      title: "Send feedback form and event report",
+      description: "Collect client feedback and complete the post-event report.",
+      sourceRule: "feedback_followup",
+      assigneeId: ownerUser.id,
+      dueDate: event.index % 3 === 0 ? addDays(DEMO_TODAY, -3) : addDays(DEMO_TODAY, 4),
+      priority: event.index % 3 === 0 ? "high" : "medium",
+      status: event.index % 4 === 0 ? "in_progress" : "open",
+    });
+  }
+
+  if (event.index % 6 === 0 || event.status === "cancelled" || event.status === "regret") {
+    specs.push({
+      slug: "manual",
+      title: event.status === "cancelled" ? "Call client about cancelled booking" : "Manual client follow-up",
+      description: "General coordination note for the operations team.",
+      sourceRule: null,
+      assigneeId: event.index % 12 === 0 ? null : ownerUser.id,
+      dueDate: event.index % 12 === 0 ? null : addDays(event.enquiryDate, 7 + (event.index % 9)),
+      priority: event.index % 12 === 0 ? "low" : "medium",
+      status: event.status === "cancelled" ? "cancelled" : "open",
+    });
+  }
+
+  return specs;
+}
+
+function seedTasksForEvent(batch: SqlBatch, event: DemoEvent, timestamp: string): void {
+  const specs = demoTaskSpecs(event);
+  specs.forEach((spec) => {
+    const taskId = `demo_task_${event.id}_${spec.slug}`;
       batch.add(
-        `INSERT INTO tasks (id, title, description, event_id, task_type, source_rule, idempotency_key, due_date, priority, status, created_at, updated_at)
-         VALUES (${sqlStr(taskId)}, ${sqlStr(`Follow up: ${event.title}`)}, ${sqlStr("Demo operational follow-up task.")},
-         ${sqlStr(event.id)}, 'manual', NULL, NULL, ${sqlStr(dueDate)}, ${sqlStr(event.index % 7 === 0 ? "high" : "medium")},
-         ${sqlStr(event.index % 4 === 0 ? "in_progress" : "open")}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
+        `INSERT INTO tasks (id, title, description, event_id, task_type, source_rule, idempotency_key, assignee_id, due_date, priority, status, created_at, updated_at)
+         VALUES (${sqlStr(taskId)}, ${sqlStr(spec.title)}, ${sqlStr(spec.description)}, ${sqlStr(event.id)},
+         ${sqlStr(spec.sourceRule ? "automatic" : "manual")}, ${sqlStr(spec.sourceRule)}, ${sqlStr(`demo-${event.id}-${spec.slug}`)},
+         ${sqlStr(spec.assigneeId)}, ${sqlStr(spec.dueDate)}, ${sqlStr(spec.priority)}, ${sqlStr(spec.status)}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
       );
       batch.add(
         `INSERT INTO notifications (id, idempotency_key, recipient_role, title, body, channel, related_event_id, related_task_id, is_read, created_at)
-         VALUES (${sqlStr(`demo_ntf_${event.id}`)}, ${sqlStr(`demo-task-${event.id}`)}, 'venue_manager',
-         ${sqlStr("Demo task ready")}, ${sqlStr(`Review ${event.title}`)}, 'in_app', ${sqlStr(event.id)}, ${sqlStr(taskId)}, 0, ${sqlStr(timestamp)});`
+         VALUES (${sqlStr(`demo_ntf_${event.id}_${spec.slug}`)}, ${sqlStr(`demo-task-${event.id}-${spec.slug}`)}, ${sqlStr(spec.slug === "accounts" ? "admin" : "venue_manager")},
+         ${sqlStr(spec.status === "in_progress" ? "Task in progress" : "Demo task ready")}, ${sqlStr(`${spec.title}: ${event.title}`)}, 'in_app',
+         ${sqlStr(event.id)}, ${sqlStr(taskId)}, ${spec.status === "completed" ? 1 : 0}, ${sqlStr(timestamp)});`
       );
-    }
-  }
+  });
+}
+
+function seedDocumentsForEvent(batch: SqlBatch, event: DemoEvent, timestamp: string): void {
+  const categories = event.status === "confirmed"
+    ? ["confirmation_letter", "technical_rider", "accounts"]
+    : event.status === "approved"
+      ? ["approval", "confirmation_letter"]
+      : event.status === "tentative"
+        ? ["costing"]
+        : ["inquiry"];
+
+  categories.slice(0, event.index % 4 === 0 ? 3 : 1).forEach((category, i) => {
+    batch.add(
+      `INSERT INTO documents (id, event_id, venue_booking_id, checklist_item_id, file_name, r2_key, mime_type, file_size, category, uploaded_by, uploaded_at, notes)
+       VALUES (${sqlStr(`demo_doc_${event.id}_${category}`)}, ${sqlStr(event.id)}, NULL, NULL,
+       ${sqlStr(`${event.code}-${category.replace(/_/g, "-")}.pdf`)}, ${sqlStr(`demo/${event.id}/${category}.pdf`)},
+       'application/pdf', ${112000 + event.index * 137 + i * 221}, ${sqlStr(category)}, 'demo_user_admin', ${sqlStr(timestamp)},
+       ${sqlStr("Demo document metadata; no R2 object is required for UI testing.")});`
+    );
+  });
 }
 
 function pickOrganisationNames(env: SeedEnv): string[] {
   const existing = queryAll<{ name: string }>(
     "SELECT DISTINCT name FROM organisations WHERE name IS NOT NULL AND TRIM(name) != '' ORDER BY name LIMIT 20;",
     env
-  ).map((row) => row.name);
+  ).map((row) => row.name.trim())
+    .filter((name) => /[A-Za-z]/.test(name) && name.length > 3 && !/^\d+$/.test(name));
   return (existing.length >= 10 ? existing : FALLBACK_ORGS).slice(0, 20);
 }
 
@@ -461,6 +694,7 @@ async function main() {
 
   const events = buildEvents(orgNames);
   const batch = new SqlBatch(60);
+  seedDemoUsers(batch, timestamp);
   clearTransactionalData(batch);
   seedVenueLookups(batch, timestamp);
   seedOrganisations(batch, orgNames, timestamp);

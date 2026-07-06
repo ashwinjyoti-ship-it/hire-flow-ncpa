@@ -27,4 +27,31 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Confirm decision");
     expect(source).toContain("Regret");
   });
+
+  it("keeps notification flyout above routed page controls", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("relative z-50");
+    expect(source).toContain("z-[70]");
+  });
+
+  it("keeps calendar focused on activity and lifecycle views", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(calendar).not.toContain("view=list");
+    expect(calendar).not.toContain("EventsListView");
+    expect(calendar).not.toContain('"venue", "lifecycle"');
+    expect(calendar).toContain("const VenueTimeline");
+    expect(dashboard).not.toContain("view=list");
+    expect(calendar).toContain("lifecycle");
+  });
+
+  it("keeps task command cards collapsible by default", () => {
+    const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(source).toContain("aria-expanded");
+    expect(source).toContain("Expand");
+    expect(source).toContain("Collapse");
+  });
 });
