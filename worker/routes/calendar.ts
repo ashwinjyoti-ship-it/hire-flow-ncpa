@@ -38,88 +38,12 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
 
   const sql = `WITH lifecycle AS (
       SELECT
-        'enquiry_' || e.id AS id,
-        'enquiry' AS milestone_type,
-        e.enquiry_date AS milestone_date,
-        e.id AS event_id,
-        e.event_code,
-        e.title,
-        e.status,
-        e.event_type,
-        o.name AS organisation_name,
-        e.event_owner,
-        (SELECT GROUP_CONCAT(vb.venue, ' · ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS venues,
-        NULL AS task_id,
-        NULL AS task_title,
-        e.is_archived
-      FROM events e
-      LEFT JOIN organisations o ON o.id = e.organisation_id
-      WHERE e.enquiry_date IS NOT NULL
-
-      UNION ALL
-
-      SELECT
-        sh.id AS id,
-        sh.to_status AS milestone_type,
-        substr(sh.changed_at, 1, 10) AS milestone_date,
-        e.id AS event_id,
-        e.event_code,
-        e.title,
-        e.status,
-        e.event_type,
-        o.name AS organisation_name,
-        e.event_owner,
-        (SELECT GROUP_CONCAT(vb.venue, ' · ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS venues,
-        NULL AS task_id,
-        NULL AS task_title,
-        e.is_archived
-      FROM event_status_history sh
-      JOIN events e ON e.id = sh.event_id
-      LEFT JOIN organisations o ON o.id = e.organisation_id
-      WHERE sh.to_status IN ('tentative', 'approved', 'confirmed', 'regret', 'cancelled')
-
-      UNION ALL
-
-      SELECT
-        'task_' || t.id AS id,
+        'current_' || e.id AS id,
+        e.status AS milestone_type,
         CASE
-          WHEN LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%payment%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%installment%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%instalment%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%invoice%' THEN 'payment_due'
-          WHEN LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%technical%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%onstage%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%meeting%' THEN 'technical_due'
-          WHEN LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%account%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%tax%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%ledger%' THEN 'accounts_due'
-          WHEN LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%feedback%'
-            OR LOWER(COALESCE(t.source_rule, '') || ' ' || t.title) LIKE '%report%' THEN 'post_event_due'
-          ELSE 'task_due'
-        END AS milestone_type,
-        t.due_date AS milestone_date,
-        e.id AS event_id,
-        e.event_code,
-        e.title,
-        e.status,
-        e.event_type,
-        o.name AS organisation_name,
-        e.event_owner,
-        (SELECT GROUP_CONCAT(vb.venue, ' · ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS venues,
-        t.id AS task_id,
-        t.title AS task_title,
-        e.is_archived
-      FROM tasks t
-      JOIN events e ON e.id = t.event_id
-      LEFT JOIN organisations o ON o.id = e.organisation_id
-      WHERE t.due_date IS NOT NULL AND t.status != 'cancelled'
-
-      UNION ALL
-
-      SELECT
-        'show_' || e.id AS id,
-        'show' AS milestone_type,
-        e.event_start_date AS milestone_date,
+          WHEN e.status = 'enquiry' THEN e.enquiry_date
+          ELSE substr(sh.changed_at, 1, 10)
+        END AS milestone_date,
         e.id AS event_id,
         e.event_code,
         e.title,
@@ -133,7 +57,14 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         e.is_archived
       FROM events e
       LEFT JOIN organisations o ON o.id = e.organisation_id
-      WHERE e.event_start_date IS NOT NULL
+      LEFT JOIN event_status_history sh ON sh.id = (
+        SELECT latest.id
+        FROM event_status_history latest
+        WHERE latest.event_id = e.id AND latest.to_status = e.status
+        ORDER BY latest.changed_at DESC
+        LIMIT 1
+      )
+      WHERE e.status IN ('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')
     )
     SELECT id, milestone_type, milestone_date, event_id, event_code, title, status, event_type,
            organisation_name, event_owner, venues, task_id, task_title
@@ -145,11 +76,6 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         WHEN 'tentative' THEN 2
         WHEN 'approved' THEN 3
         WHEN 'confirmed' THEN 4
-        WHEN 'payment_due' THEN 5
-        WHEN 'technical_due' THEN 6
-        WHEN 'show' THEN 7
-        WHEN 'post_event_due' THEN 8
-        WHEN 'accounts_due' THEN 9
         ELSE 10
       END,
       title
@@ -173,6 +99,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
   const venue = c.req.query("venue");
   const type = c.req.query("type");
   const owner = c.req.query("owner");
+  const q = c.req.query("q");
 
   if (!from || !to) {
     return c.json({ error: "from and to query params required (yyyy-mm-dd)" }, 400);
@@ -189,6 +116,11 @@ calendarRoutes.get("/", requireUser, async (c) => {
   if (venue) { where.push("vb.venue = ?"); binds.push(venue); }
   if (type) { where.push("e.event_type = ?"); binds.push(type); }
   if (owner) { where.push("e.event_owner = ?"); binds.push(owner); }
+  if (q) {
+    where.push("(LOWER(e.title) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(e.event_code, '')) LIKE ?)");
+    const like = `%${q.toLowerCase()}%`;
+    binds.push(like, like, like);
+  }
 
   const sql = `SELECT se.id, se.activity_type, se.activity_date, se.start_time, se.end_time,
       e.id AS event_id, e.title, e.status, e.event_type,

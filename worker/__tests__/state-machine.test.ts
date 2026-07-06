@@ -4,9 +4,14 @@ import { canTransition, requiresOverride, canConfirm, requiresApproval } from ".
 describe("Event state machine", () => {
   describe("valid transitions", () => {
     it("allows the primary happy path", () => {
-      expect(canTransition("enquiry", "tentative")).toBe(true);
+      expect(canTransition("enquiry", "approved")).toBe(true);
+      expect(canTransition("enquiry", "confirmed")).toBe(true);
       expect(canTransition("tentative", "approved")).toBe(true);
       expect(canTransition("approved", "confirmed")).toBe(true);
+    });
+
+    it("allows tentative as a client-uncertain holding state", () => {
+      expect(canTransition("enquiry", "tentative")).toBe(true);
     });
 
     it("allows enquiry to skip directly to confirmed", () => {

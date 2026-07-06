@@ -23,7 +23,8 @@ describe("frontend regression guards", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
     expect(source).toContain("LifecyclePanel");
-    expect(source).toContain("Suggested:");
+    expect(source).toContain("Next step:");
+    expect(source).toContain("LifecycleTrack");
     expect(source).toContain("Confirm decision");
     expect(source).toContain("Regret");
   });
@@ -42,6 +43,10 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("view=list");
     expect(calendar).not.toContain("EventsListView");
     expect(calendar).not.toContain('"venue", "lifecycle"');
+    expect(calendar).toContain('requestedView === "show" ? "show" : "lifecycle"');
+    expect(calendar).toContain('(["lifecycle", "show"] as const)');
+    expect(calendar).not.toContain('"week"');
+    expect(calendar).not.toContain('"day"');
     expect(calendar).toContain("const VenueTimeline");
     expect(dashboard).not.toContain("view=list");
     expect(calendar).toContain("lifecycle");

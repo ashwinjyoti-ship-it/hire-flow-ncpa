@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
@@ -84,6 +84,34 @@ const ACTIVITY_LABELS: Record<string, string> = {
   checklist_updated: "Checklist updated",
 };
 
+const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey: string; label: string }> = {
+  "Confirmation letter must be made.": {
+    tab: "operations",
+    fieldKey: "confirmation_made",
+    label: "Confirmation Letter Made",
+  },
+  "Confirmation letter must be couriered.": {
+    tab: "operations",
+    fieldKey: "confirmation_couriered",
+    label: "Confirmation Letter Couriered",
+  },
+  "Signed confirmation must be received.": {
+    tab: "operations",
+    fieldKey: "confirmation_signed_received",
+    label: "Signed Copy Received",
+  },
+  "VFH approval must be received or approved.": {
+    tab: "operations",
+    fieldKey: "approval_received_on",
+    label: "Approval Received On",
+  },
+  "VFH approval must be received before marking the event approved.": {
+    tab: "operations",
+    fieldKey: "approval_received_on",
+    label: "Approval Received On",
+  },
+};
+
 export function EventDetailPage() {
   const { id = "" } = useParams();
   const { user } = useAuth();
@@ -92,6 +120,7 @@ export function EventDetailPage() {
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["event", id],
@@ -112,6 +141,15 @@ export function EventDetailPage() {
     queryKey: ["event", id, "conflicts"],
     queryFn: () => apiGet<ConflictsResponse>(`/events/${id}/conflicts`),
   });
+
+  useEffect(() => {
+    if (!focusedFieldKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      const el = document.getElementById(`checklist-${focusedFieldKey}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusedFieldKey, tab, checklistData]);
 
   const transition = useMutation({
     mutationFn: async (args: { to: EventStatus; reason: string }) =>
@@ -152,6 +190,11 @@ export function EventDetailPage() {
   const actions = checklistData?.lifecycle.actions ?? [];
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
+  function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
+    setTab(target.tab);
+    setFocusedFieldKey(target.fieldKey);
+  }
+
   return (
     <div>
       <PageHeader
@@ -165,24 +208,6 @@ export function EventDetailPage() {
                 Edit
               </Link>
             )}
-            {canChangeStatus && (e.status === "confirmed" || e.status === "approved" || e.status === "tentative") && (
-              <button
-                type="button"
-                onClick={() => { setStatusModal("cancelled"); setReason(""); }}
-                className="carved-btn rounded-full bg-status-cancelled/15 px-4 py-2 text-sm font-semibold text-status-cancelled etched hover:bg-status-cancelled/25"
-              >
-                Cancel event
-              </button>
-            )}
-            {canChangeStatus && (e.status === "enquiry" || e.status === "tentative" || e.status === "approved") && (
-              <button
-                type="button"
-                onClick={() => { setStatusModal("regret"); setReason(""); }}
-                className="carved-btn rounded-full bg-status-regret/15 px-4 py-2 text-sm font-semibold text-status-regret etched hover:bg-status-regret/25"
-              >
-                Mark as Regret
-              </button>
-            )}
           </>
         }
       />
@@ -195,20 +220,13 @@ export function EventDetailPage() {
         <SummaryItem label="Signed confirmation" value={prettyState(e.confirmation_status)} />
       </div>
 
-      {/* Status stepper — visualises the enquiry → confirmed lifecycle */}
-      <StatusStepper
-        current={e.status}
-        eventType={e.event_type}
-        canChange={canChangeStatus}
-        onAdvance={(s) => { setStatusModal(s); setReason(""); }}
-      />
-
       <LifecyclePanel
         event={e}
         actions={actions}
         nextAction={checklistData?.lifecycle.nextAction ?? null}
         blockers={checklistData?.lifecycle.blockers ?? []}
         canChangeStatus={canChangeStatus}
+        onOpenBlocker={focusChecklistField}
         onChoose={(status) => {
           setStatusModal(status);
           setReason("");
@@ -272,6 +290,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.operations ?? {}}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
+          focusedFieldKey={focusedFieldKey}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
       )}
@@ -281,6 +300,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.accounts ?? {}}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
+          focusedFieldKey={focusedFieldKey}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
       )}
@@ -349,6 +369,7 @@ function LifecyclePanel({
   nextAction,
   blockers,
   canChangeStatus,
+  onOpenBlocker,
   onChoose,
 }: {
   event: DetailResponse["event"];
@@ -356,12 +377,17 @@ function LifecyclePanel({
   nextAction: LifecycleAction | null;
   blockers: string[];
   canChangeStatus: boolean;
+  onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onChoose: (status: EventStatus) => void;
 }) {
+  const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
   const visibleActions = useMemo(() => {
-    const preferred: EventStatus[] = ["tentative", "approved", "confirmed", "regret", "cancelled"];
+    const preferred: EventStatus[] = ["approved", "confirmed", "tentative", "regret", "cancelled"];
     return [...actions].sort((a, b) => preferred.indexOf(a.status) - preferred.indexOf(b.status));
   }, [actions]);
+  const closeOutActions = visibleActions.filter((action) => action.status === "regret" || action.status === "cancelled");
+  const blockedForwardAction = nextAction ? null : visibleActions.find((action) => forwardStatuses.includes(action.status) && action.blockers.length > 0) ?? null;
+  const visibleBlockers = blockedForwardAction?.blockers ?? blockers;
 
   return (
     <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
@@ -371,7 +397,9 @@ function LifecyclePanel({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} />
             {nextAction ? (
-              <span className="rounded-full bg-sage/10 px-3 py-1 text-xs font-medium text-sage-text etched">Suggested: {statusLabel(nextAction.status)}</span>
+              <span className="rounded-full bg-sage/10 px-3 py-1 text-xs font-medium text-sage-text etched">Next step: {milestoneLabel(nextAction.status)}</span>
+            ) : blockedForwardAction ? (
+              <span className="rounded-full bg-status-awaitingApproval/10 px-3 py-1 text-xs font-medium text-status-awaitingApproval etched">Next step blocked</span>
             ) : (
               <span className="rounded-full bg-marble-shadow/50 px-3 py-1 text-xs text-ink-muted etched">No next lifecycle action</span>
             )}
@@ -383,39 +411,81 @@ function LifecyclePanel({
         </div>
       </div>
 
-      {blockers.length > 0 && (
-        <div className="mb-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-xs text-status-awaitingApproval etched">
-          {blockers.map((b) => (
-            <div key={b}>{b}</div>
-          ))}
-        </div>
-      )}
+      <LifecycleTrack
+        current={event.status}
+        eventType={event.event_type}
+      />
 
-      {canChangeStatus && visibleActions.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {visibleActions.map((action) => (
+      <div className="rounded-2xl bg-marble-shadow/20 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Next milestone</h3>
+            <p className="mt-1 text-sm font-medium text-ink-primary etched-deep">
+              {nextAction
+                ? milestoneLabel(nextAction.status)
+                : blockedForwardAction
+                  ? `${milestoneLabel(blockedForwardAction.status)} is blocked`
+                  : "No forward milestone available"}
+            </p>
+          </div>
+          {canChangeStatus && nextAction && (
             <button
-              key={action.status}
               type="button"
-              disabled={!action.allowed}
-              title={action.blockers.join(" ")}
-              onClick={() => onChoose(action.status)}
-              className={
-                "rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 " +
-                (action.recommended
-                  ? "carved-btn-sage bg-sage-btn text-sage-text"
-                  : action.status === "cancelled"
-                    ? "carved-btn bg-status-cancelled/10 text-status-cancelled"
-                    : action.status === "regret"
-                      ? "carved-btn bg-status-regret/10 text-status-regret"
-                    : "carved-btn bg-neutral-btn text-ink-secondary")
-              }
+              onClick={() => onChoose(nextAction.status)}
+              className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
             >
-              {statusLabel(action.status)}
+              Advance to {milestoneLabel(nextAction.status)}
             </button>
-          ))}
+          )}
         </div>
-      )}
+
+        {blockedForwardAction && visibleBlockers.length > 0 && (
+          <div className="mt-3 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-xs text-status-awaitingApproval etched">
+            {visibleBlockers.map((b) => {
+              const target = BLOCKER_TARGETS[b];
+              return (
+                <div key={b} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>{b}</span>
+                  {target && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenBlocker(target)}
+                      className="font-semibold text-sage-text underline decoration-sage/40 underline-offset-2 hover:decoration-sage"
+                    >
+                      Go to {target.label}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {canChangeStatus && closeOutActions.length > 0 && (
+          <div className="mt-4 border-t border-ink-muted/10 pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Close out</h3>
+            <div className="flex flex-wrap gap-2">
+              {closeOutActions.map((action) => (
+                <button
+                  key={action.status}
+                  type="button"
+                  disabled={!action.allowed}
+                  title={action.blockers.join(" ")}
+                  onClick={() => onChoose(action.status)}
+                  className={
+                    "rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 " +
+                    (action.status === "cancelled"
+                      ? "carved-btn bg-status-cancelled/10 text-status-cancelled"
+                      : "carved-btn bg-status-regret/10 text-status-regret")
+                  }
+                >
+                  {lifecycleActionLabel(action.status)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -424,11 +494,13 @@ function ChecklistModuleView({
   sections,
   canEdit,
   isSaving,
+  focusedFieldKey,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
   canEdit: boolean;
   isSaving: boolean;
+  focusedFieldKey: string | null;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -442,7 +514,7 @@ function ChecklistModuleView({
           <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
           <div className="grid gap-3 md:grid-cols-2">
             {items.map((item) => (
-              <ChecklistField key={item.id} item={item} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
+              <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
             ))}
           </div>
         </section>
@@ -451,12 +523,19 @@ function ChecklistModuleView({
   );
 }
 
-function ChecklistField({ item, canEdit, onUpdate }: { item: ChecklistItem; canEdit: boolean; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
+function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60";
+  const canManuallyToggleStatus = item.field_type !== "dropdown" && item.field_type !== "status";
 
   return (
-    <label className="block rounded-xl bg-marble-shadow/20 p-3">
+    <label
+      id={`checklist-${item.field_key}`}
+      className={
+        "block rounded-xl bg-marble-shadow/20 p-3 transition-shadow " +
+        (focused ? "ring-2 ring-sage/70 ring-offset-2 ring-offset-marble-highlight" : "")
+      }
+    >
       <span className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-ink-secondary etched">{item.label}</span>
         <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(item.status)}>
@@ -513,7 +592,7 @@ function ChecklistField({ item, canEdit, onUpdate }: { item: ChecklistItem; canE
           className={baseClass}
         />
       )}
-      {!item.is_computed && canEdit && (item.status === "in_progress" || item.status === "completed") && (
+      {!item.is_computed && canEdit && canManuallyToggleStatus && (item.status === "in_progress" || item.status === "completed") && (
         <div className="mt-2 flex justify-end">
           <button
             type="button"
@@ -536,7 +615,7 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
         <div key={task.id as string} className="rounded-xl bg-marble-shadow/30 px-4 py-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium text-ink-primary etched-deep">{task.title as string}</span>
-            <span className={statusClass(String(task.status))}>{String(task.status).replace(/_/g, " ")}</span>
+            <span className={statusClass(String(task.status))}>{taskStatusLabel(String(task.status))}</span>
           </div>
           <div className="mt-1 text-xs text-ink-muted etched">
             {task.task_type === "automatic" ? "Automatic" : "Manual"}
@@ -679,19 +758,17 @@ function ProgressBar({ label, value, emphasis }: { label: string; value: number 
 }
 
 /**
- * Horizontal lifecycle stepper: Enquiry → Tentative → [Approved] → Confirmed.
+ * Horizontal lifecycle track: Enquiry → [Approval] → Confirmed.
  * - Past + current steps are highlighted.
- * - The next reachable step is clickable (opens the reason modal via onAdvance).
+ * - This is informational only; the action button below advances the lifecycle.
  * - 'Approved' only appears for VFH events (the approval gate).
  * - Terminal states (regret/cancelled) replace the track with a banner.
  */
-function StatusStepper({
-  current, eventType, canChange, onAdvance,
+function LifecycleTrack({
+  current, eventType,
 }: {
   current: EventStatus;
   eventType: string | null;
-  canChange: boolean;
-  onAdvance: (s: EventStatus) => void;
 }) {
   // Terminal decline states — show a banner instead of the track.
   if (current === "regret" || current === "cancelled") {
@@ -704,41 +781,35 @@ function StatusStepper({
     );
   }
 
-  // Build the track. Approved is VFH-only.
+  // Build the track. Approval is VFH-only; Tentative is a holding status, not a normal milestone.
   const track: EventStatus[] = eventType === "VFH"
-    ? ["enquiry", "tentative", "approved", "confirmed"]
-    : ["enquiry", "tentative", "confirmed"];
-  const currentIdx = Math.max(0, track.indexOf(current));
+    ? ["enquiry", "approved", "confirmed"]
+    : ["enquiry", "confirmed"];
+  const currentIdx = track.indexOf(current);
 
   return (
-    <div className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-4">
+    <div className="mb-4 rounded-2xl bg-marble-shadow/20 p-4">
       <ol className="flex flex-wrap items-center gap-1">
         {track.map((s, i) => {
           const isPast = i < currentIdx;
           const isCurrent = i === currentIdx;
-          const isNext = i === currentIdx + 1;
-          const clickable = canChange && (isNext || isPast === false && i > currentIdx);
           const isApprovedGate = s === "approved";
           return (
             <li key={s} className="flex items-center">
-              <button
-                type="button"
-                disabled={!clickable}
-                onClick={() => clickable && onAdvance(s)}
+              <span
+                aria-current={isCurrent ? "step" : undefined}
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
                   (isCurrent
                     ? "bg-sage-btn text-sage-text carved-btn-sage"
                     : isPast
                       ? "bg-sage/10 text-sage-text"
-                      : clickable
-                        ? "bg-marble-shadow/40 text-ink-secondary hover:bg-marble-shadow/60 carved-btn"
-                        : "bg-marble-shadow/30 text-ink-muted")
+                      : "bg-marble-shadow/30 text-ink-muted")
                 }
                 title={isApprovedGate ? "VFH approval gate" : undefined}
               >
-                {STATUS_LABELS[s]}{isApprovedGate && " ★"}
-              </button>
+                {milestoneLabel(s)}{isApprovedGate && " ★"}
+              </span>
               {i < track.length - 1 && (
                 <span className={"mx-1 text-ink-muted " + (i < currentIdx ? "text-sage-text" : "")}>→</span>
               )}
@@ -746,17 +817,23 @@ function StatusStepper({
           );
         })}
       </ol>
-      <p className="mt-2 text-[11px] text-ink-muted etched">
-        {canChange
-          ? "Click the next step to advance the event. Confirmation requires signed confirmation (and VFH approval)."
-          : "You do not have permission to change the status."}
-      </p>
     </div>
   );
 }
 
 function statusLabel(status: EventStatus): string {
   return STATUS_LABELS[status] ?? status;
+}
+
+function milestoneLabel(status: EventStatus): string {
+  if (status === "approved") return "Approval";
+  return statusLabel(status);
+}
+
+function lifecycleActionLabel(status: EventStatus): string {
+  if (status === "cancelled") return "Cancel event";
+  if (status === "regret") return "Mark as Regret";
+  return statusLabel(status);
 }
 
 function prettyState(value: string | null | undefined): string {
@@ -773,4 +850,12 @@ function statusClass(status: string): string {
   if (status === "blocked" || status === "cancelled") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-cancelled";
   if (status === "in_progress" || status === "open") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-awaitingApproval";
   return "rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted";
+}
+
+function taskStatusLabel(status: string): string {
+  if (status === "open") return "Not started";
+  if (status === "in_progress") return "Started";
+  if (status === "completed") return "Done";
+  if (status === "cancelled") return "Cancelled";
+  return status.replace(/_/g, " ");
 }

@@ -137,7 +137,7 @@ export async function getChecklistItems(db: D1Database, eventId: string): Promis
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
-     WHERE ci.event_id = ?
+     WHERE ci.event_id = ? AND ci.field_key != 'event_status'
      ORDER BY ci.module, cd.sort_order`
   ).bind(eventId).all<ChecklistItemRow>();
   return results;
@@ -148,7 +148,7 @@ export async function recalculateEventCompletion(db: D1Database, eventId: string
     `SELECT ci.module, ci.status, ci.due_date, cd.is_computed
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
-     WHERE ci.event_id = ?`
+     WHERE ci.event_id = ? AND ci.field_key != 'event_status'`
   ).bind(eventId).all<{ module: ChecklistModule; status: string; due_date: string | null; is_computed: number }>();
 
   const today = todayIso();
@@ -343,6 +343,7 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
 export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleReadiness {
   const actions = (Object.keys(STATUS_LABELS) as EventStatus[])
     .filter((status) => canTransition(event.status, status))
+    .filter((status) => status !== "approved" || event.event_type === "VFH")
     .map((status) => {
       const blockers = blockersForTransition(event, status);
       return {
@@ -354,8 +355,8 @@ export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleRead
       };
     });
 
-  const preferredOrder: EventStatus[] = ["tentative", "approved", "confirmed"];
-  const nextAction = actions.find((a) => a.allowed && preferredOrder.includes(a.status)) ?? actions.find((a) => a.allowed) ?? null;
+  const preferredOrder: EventStatus[] = event.event_type === "VFH" ? ["approved", "confirmed"] : ["confirmed"];
+  const nextAction = actions.find((a) => a.allowed && preferredOrder.includes(a.status)) ?? null;
   if (nextAction) nextAction.recommended = true;
   const confirmBlockers = blockersForTransition(event, "confirmed");
   return {
@@ -381,7 +382,11 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     }
   }
   if (to === "confirmed") {
-    if (event.confirmation_status !== "signed_received") {
+    if (!event.confirmation_status || event.confirmation_status === "none") {
+      blockers.push("Confirmation letter must be made.");
+    } else if (event.confirmation_status === "made") {
+      blockers.push("Confirmation letter must be couriered.");
+    } else if (event.confirmation_status !== "signed_received") {
       blockers.push("Signed confirmation must be received.");
     }
     if (event.event_type === "VFH" && !["received", "approved"].includes(event.approval_status ?? "")) {

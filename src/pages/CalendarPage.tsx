@@ -42,18 +42,12 @@ type LifecycleEntry = {
 };
 type LifecycleResponse = { entries: LifecycleEntry[]; byDate: Record<string, LifecycleEntry[]> };
 
-type View = "month" | "week" | "day" | "lifecycle";
+type View = "show" | "lifecycle";
 type LifecycleType =
   | "enquiry"
   | "tentative"
   | "approved"
   | "confirmed"
-  | "payment_due"
-  | "technical_due"
-  | "show"
-  | "post_event_due"
-  | "accounts_due"
-  | "task_due"
   | "regret"
   | "cancelled";
 
@@ -68,9 +62,10 @@ export function CalendarPage() {
   const { user } = useAuth();
   const { data: lookups } = useLookups();
   const [searchParams] = useSearchParams();
-  const initialView = (searchParams.get("view") as View | null) ?? "month";
+  const requestedView = searchParams.get("view");
+  const initialView: View = requestedView === "show" ? "show" : "lifecycle";
   const initialFrom = searchParams.get("from");
-  const [view, setView] = useState<View>(["month", "week", "day", "lifecycle"].includes(initialView) ? initialView : "month");
+  const [view, setView] = useState<View>(initialView);
   const [cursor, setCursor] = useState(() => initialFrom ? new Date(`${initialFrom}T00:00:00`) : new Date());
   const [filters, setFilters] = useState({
     status: searchParams.get("status") ?? "",
@@ -83,11 +78,8 @@ export function CalendarPage() {
 
   // Determine the visible date range based on the view.
   const range = useMemo(() => {
-    if (view === "month" || view === "lifecycle") return { from: isoDate(startOfWeek(startOfMonth(cursor))), to: isoDate(addDays(startOfWeek(startOfMonth(cursor)), 41)) };
-    if (view === "week") return { from: isoDate(startOfWeek(cursor)), to: isoDate(addDays(startOfWeek(cursor), 6)) };
-    if (view === "day") return { from: isoDate(cursor), to: isoDate(cursor) };
-    return { from: isoDate(cursor), to: isoDate(cursor) };
-  }, [view, cursor]);
+    return { from: isoDate(startOfWeek(startOfMonth(cursor))), to: isoDate(addDays(startOfWeek(startOfMonth(cursor)), 41)) };
+  }, [cursor]);
 
   const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
   const { data, isLoading } = useQuery({
@@ -109,19 +101,15 @@ export function CalendarPage() {
   const venues = lookups?.lookups.venue ?? [];
   const owners = lookups?.lookups.handled_by ?? [];
 
-  const title = view === "month" || view === "lifecycle"
-      ? cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })
-      : view === "week"
-        ? `${formatDate(range.from)} – ${formatDate(range.to)}`
-        : formatDate(range.from);
+  const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
 
   const showCreate = can(user?.role ?? "viewer", "event.create");
 
   return (
     <div>
       <PageHeader
-        title={view === "month" ? title : "Calendar"}
-        subtitle={view === "month" ? "Operating calendar" : title}
+        title={view === "lifecycle" ? "Lifecycle Calendar" : "Show Calendar"}
+        subtitle={title}
         actions={showCreate ? (
           <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
             + New Event
@@ -132,24 +120,24 @@ export function CalendarPage() {
       {/* Controls */}
       <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
         <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
-          {(["month", "week", "day", "lifecycle"] as const).map((v) => (
+          {(["lifecycle", "show"] as const).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setView(v)}
               className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
             >
-              {v[0]!.toUpperCase() + v.slice(1)}
+              {v === "show" ? "Show Calendar" : "Lifecycle"}
             </button>
           ))}
         </div>
 
         <div className="flex items-center gap-2">
-            <button type="button" onClick={() => { if (view === "month" || view === "lifecycle") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1)); else if (view === "week") setCursor(addDays(cursor, -7)); else setCursor(addDays(cursor, -1)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous">
+            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous month">
             <Chevron dir="left" />
           </button>
           <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Jump to today</button>
-            <button type="button" onClick={() => { if (view === "month" || view === "lifecycle") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)); else if (view === "week") setCursor(addDays(cursor, 7)); else setCursor(addDays(cursor, 1)); }} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next">
+            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next month">
             <Chevron dir="right" />
           </button>
         </div>
@@ -172,15 +160,10 @@ export function CalendarPage() {
 
       {/* Legend */}
       <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
-        {view === "lifecycle" && Object.entries(LIFECYCLE_LABELS).map(([key, label]) => (
+        {(view === "lifecycle" ? Object.entries(LIFECYCLE_LABELS) : Object.entries(STATUS_LABELS)).map(([key, label]) => (
             <span key={key} className="inline-flex items-center gap-1.5">
-              <span className={"h-2 w-2 rounded-full " + lifecycleDot(key as LifecycleType)} /> {label}
+              <span className={"h-2 w-2 rounded-full " + (view === "lifecycle" ? lifecycleDot(key as LifecycleType) : getEventStatusSurface(key).dot)} /> {label}
             </span>
-        ))}
-        {Object.entries(STATUS_LABELS).map(([k, label]) => (
-          <span key={k} className="inline-flex items-center gap-1.5">
-            <span className={"h-2 w-2 rounded-full " + getEventStatusSurface(k).dot} /> {label}
-          </span>
         ))}
       </div>
 
@@ -192,13 +175,9 @@ export function CalendarPage() {
         )
       ) : isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
-      ) : view === "month" ? (
+      ) : (
         <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} />
-      ) : view === "week" ? (
-        <WeekDayList byDate={byDate} days={7} start={startOfWeek(cursor)} today={today} onPick={setSideEvent} />
-      ) : view === "day" ? (
-        <WeekDayList byDate={byDate} days={1} start={cursor} today={today} onPick={setSideEvent} />
-      ) : null}
+      )}
 
       {/* Side panel */}
       {sideEvent && (
@@ -241,12 +220,6 @@ const LIFECYCLE_LABELS: Record<LifecycleType, string> = {
   tentative: "Tentative",
   approved: "Approved",
   confirmed: "Confirmed",
-  payment_due: "Payment due",
-  technical_due: "Technical",
-  show: "Show",
-  post_event_due: "Post-event",
-  accounts_due: "Accounts",
-  task_due: "Task",
   regret: "Regret",
   cancelled: "Cancelled",
 };
@@ -256,12 +229,6 @@ const LIFECYCLE_TONE: Record<LifecycleType, string> = {
   tentative: "bg-status-tentative",
   approved: "bg-status-approved",
   confirmed: "bg-status-confirmed",
-  payment_due: "bg-status-awaitingApproval",
-  technical_due: "bg-status-inProgress",
-  show: "bg-sage",
-  post_event_due: "bg-status-regret",
-  accounts_due: "bg-ink-secondary",
-  task_due: "bg-ink-muted",
   regret: "bg-status-regret",
   cancelled: "bg-status-cancelled",
 };
@@ -287,7 +254,7 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
           const isToday = key === today;
           const inMonth = d.getMonth() === cursor.getMonth();
           return (
-            <article key={key} className={"min-h-[144px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40") + (!inMonth ? " carved-muted" : "")}>
+            <article key={key} className={"min-h-[144px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 {entries.length > 0 ? <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
                 <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
@@ -328,8 +295,7 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
         {entry.organisation_name ?? entry.title}
       </div>
-      {entry.task_title && <div className="truncate text-[10px] text-ink-muted etched">{entry.task_title}</div>}
-      {entry.milestone_type === "show" && entry.venues && <div className="truncate text-[10px] text-ink-muted etched">{entry.venues}</div>}
+      {entry.venues && <div className="truncate text-[10px] text-ink-muted etched">{entry.venues}</div>}
     </Link>
   );
 }
@@ -361,7 +327,7 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           }
           const chips = Array.from(byOrg.values());
           return (
-            <article key={key} className={"min-h-[128px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40") + (!inMonth ? " carved-muted" : "")}>
+            <article key={key} className={"min-h-[128px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex justify-end">
                 <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
@@ -379,42 +345,6 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           );
         })}
       </div>
-    </div>
-  );
-}
-
-// ---- Week / Day list view ----
-function WeekDayList({ byDate, days, start, today, onPick }: { byDate: Record<string, CalEntry[]>; days: number; start: Date; today: string; onPick: (e: CalEntry) => void }) {
-  const range = Array.from({ length: days }, (_, i) => addDays(start, i));
-  return (
-    <div className="space-y-4">
-      {range.map((d) => {
-        const key = isoDate(d);
-        const entries = byDate[key] ?? [];
-        return (
-          <section key={key} className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
-            <div className={"mb-3 text-sm font-semibold etched-deep " + (key === today ? "text-sage-text" : "text-ink-primary")}>
-              {d.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "short", timeZone: "Asia/Kolkata" })}
-              {key === today && <span className="ml-2 text-[11px] uppercase tracking-wider text-sage">Today</span>}
-            </div>
-            {entries.length === 0 ? (
-              <p className="text-xs text-ink-muted etched">No activities scheduled.</p>
-            ) : (
-              <div className="space-y-2">
-                {entries.map((e) => (
-                  <button key={e.id} type="button" onClick={() => onPick(e)} className={"flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left " + getEventStatusSurface(e.status).row}>
-                    <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + getEventStatusSurface(e.status).dot} />
-                    <span className="w-20 shrink-0 text-xs font-medium text-ink-secondary etched">{e.start_time ?? "—"}</span>
-                    <span className="flex-1 truncate text-sm font-medium text-ink-primary etched-deep">{e.title}</span>
-                    <span className="shrink-0 text-xs text-ink-muted etched">{e.venue}</span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-sage etched">{e.activity_type.replace(/_/g, " ")}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
     </div>
   );
 }

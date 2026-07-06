@@ -1,8 +1,11 @@
 /**
  * Event status state machine. Server-side validation blocks invalid transitions.
  *
- * Canonical lifecycle (6 statuses):
- *   Enquiry → Tentative → (Approved, VFH only) → Confirmed
+ * Canonical lifecycle:
+ *   Enquiry → (Approved, VFH only) → Confirmed
+ *
+ * Tentative is not a normal progress milestone. It marks enquiries where the
+ * client is unsure and the event should remain in follow-up before confirmation.
  *
  * Terminal / decline paths:
  *   Enquiry / Tentative / Approved → Regret      (declined before confirmation)
@@ -23,6 +26,7 @@ export type EventStatus =
 /** Valid forward transitions from each status. */
 const TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   enquiry: ["tentative", "approved", "confirmed", "regret", "cancelled"],
+  // `tentative` is a client-uncertain holding state. From here: approve/confirm or back out.
   tentative: ["approved", "confirmed", "regret", "cancelled"],
   // `approved` is the VFH approval gate. From here: confirm or back out.
   approved: ["confirmed", "regret", "cancelled"],
