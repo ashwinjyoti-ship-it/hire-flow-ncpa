@@ -134,14 +134,14 @@ describe("API regressions", () => {
     });
   });
 
-  it("serves lifecycle calendar milestones separately from venue schedule entries", async () => {
+  it("serves one current lifecycle calendar card per event, separate from tasks and venue schedule entries", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
-        expect(sql).toContain("e.enquiry_date AS milestone_date");
+        expect(sql).toContain("WHEN e.status = 'enquiry' THEN e.enquiry_date");
         expect(sql).toContain("event_status_history");
-        expect(sql).toContain("tasks t");
-        expect(sql).toContain("e.event_start_date AS milestone_date");
+        expect(sql).not.toContain("tasks t");
+        expect(sql).not.toContain("'show' AS milestone_type");
         return {
           all: () => ({
             results: [
@@ -149,19 +149,6 @@ describe("API regressions", () => {
                 id: "enquiry_ev_test",
                 milestone_type: "enquiry",
                 milestone_date: "2026-06-03",
-                event_id: "ev_test",
-                title: "Annual Day",
-                status: "tentative",
-                event_type: "VFH",
-                organisation_name: "Test Org",
-                event_owner: "Aditi Rao",
-                venues: "JBT",
-                task_title: null,
-              },
-              {
-                id: "show_ev_test",
-                milestone_type: "show",
-                milestone_date: "2026-09-12",
                 event_id: "ev_test",
                 title: "Annual Day",
                 status: "tentative",
@@ -191,13 +178,35 @@ describe("API regressions", () => {
     await expect(res.json()).resolves.toMatchObject({
       entries: [
         { milestone_type: "enquiry", milestone_date: "2026-06-03" },
-        { milestone_type: "show", milestone_date: "2026-09-12" },
       ],
       byDate: {
         "2026-06-03": [{ milestone_type: "enquiry" }],
-        "2026-09-12": [{ milestone_type: "show" }],
       },
     });
+  });
+
+  it("applies text search on the show calendar", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se")) {
+        expect(sql).toContain("LOWER(e.title) LIKE ?");
+        expect(sql).toContain("LOWER(COALESCE(o.name, '')) LIKE ?");
+        expect(sql).toContain("LOWER(COALESCE(e.event_code, '')) LIKE ?");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-07-01&to=2026-07-31&q=agp",
+      {
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
   });
 
   it("blocks confirming a VFH event before approval and signed confirmation are complete", async () => {

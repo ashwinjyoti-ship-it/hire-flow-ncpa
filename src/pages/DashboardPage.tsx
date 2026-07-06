@@ -2,12 +2,34 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiGet, type EventSummary } from "../lib/api";
+import { apiGet } from "../lib/api";
+import { getEventStatusSurface } from "../lib/event-status-surface";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
-type EventsResponse = { events: EventSummary[] };
-type CalResponse = { byDate: Record<string, unknown> };
+type LifecycleEntry = {
+  id: string;
+  milestone_type: EventStatus;
+  milestone_date: string;
+  event_id: string;
+  title: string;
+  status: EventStatus;
+  organisation_name: string | null;
+  venues: string | null;
+};
+type LifecycleResponse = { entries: LifecycleEntry[]; byDate: Record<string, LifecycleEntry[]> };
+type TasksResponse = {
+  tasks: Array<{
+    id: string;
+    title: string;
+    event_id: string | null;
+    event_title: string | null;
+    event_status: EventStatus | null;
+    due_date: string | null;
+    priority: "high" | "medium" | "low";
+    status: "open" | "in_progress" | "completed" | "cancelled";
+  }>;
+};
 
 export function DashboardPage() {
   const today = new Date();
@@ -16,57 +38,60 @@ export function DashboardPage() {
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const monthStartIso = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-${String(monthStart.getDate()).padStart(2, "0")}`;
   const monthEndIso = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
-  const in7 = new Date(today.getTime() + 7 * 86400_000);
-  const in7Iso = `${in7.getFullYear()}-${String(in7.getMonth() + 1).padStart(2, "0")}-${String(in7.getDate()).padStart(2, "0")}`;
 
-  const { data } = useQuery({
-    queryKey: ["events", "dashboard", monthStartIso, monthEndIso],
-    queryFn: () => apiGet<EventsResponse>(`/events?from=${monthStartIso}&to=${monthEndIso}`),
+  const { data: lifecycleData } = useQuery({
+    queryKey: ["calendar-lifecycle", "dashboard", monthStartIso, monthEndIso],
+    queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?from=${monthStartIso}&to=${monthEndIso}`),
   });
-  const { data: cal } = useQuery({
-    queryKey: ["calendar", "dashboard", todayIso, in7Iso],
-    queryFn: () => apiGet<CalResponse>(`/calendar?from=${todayIso}&to=${in7Iso}`),
+  const { data: taskData } = useQuery({
+    queryKey: ["tasks", "dashboard", "active"],
+    queryFn: () => apiGet<TasksResponse>("/tasks?status=all"),
   });
 
-  const events = data?.events ?? [];
-  const todayEntries = (cal?.byDate?.[todayIso] as Array<{ id: string; title: string; venue: string; activity_type: string; start_time: string | null; event_id: string }> | undefined) ?? [];
+  const lifecycleEntries = lifecycleData?.entries ?? [];
+  const tasks = (taskData?.tasks ?? [])
+    .filter((task) => task.status === "open" || task.status === "in_progress")
+    .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
 
   const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: 0, cancelled: 0 };
-  for (const e of events) {
-    if (e.status in counts) counts[e.status] = (counts[e.status] ?? 0) + 1;
+  for (const entry of lifecycleEntries) {
+    if (entry.milestone_type in counts) counts[entry.milestone_type] = (counts[entry.milestone_type] ?? 0) + 1;
   }
+  const lifecycleQueue = [...lifecycleEntries]
+    .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || a.milestone_date.localeCompare(b.milestone_date));
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })} operational overview`} />
+      <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })} lifecycle overview`} />
 
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=lifecycle&status=enquiry&from=${monthStartIso}`} />
         <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=lifecycle&status=tentative&from=${monthStartIso}`} />
+        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href={`/calendar?view=lifecycle&status=approved&from=${monthStartIso}`} />
         <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={`/calendar?view=lifecycle&status=confirmed&from=${monthStartIso}`} />
         <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={`/calendar?view=lifecycle&status=regret&from=${monthStartIso}`} />
         <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=lifecycle&status=cancelled&from=${monthStartIso}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Today section */}
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Today</h2>
-            <Link to="/calendar" className="text-xs text-sage-text hover:underline">Calendar →</Link>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle Queue</h2>
+            <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
           </div>
-          {todayEntries.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">No activities scheduled today.</p>
+          {lifecycleQueue.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No lifecycle cards this month.</p>
           ) : (
             <ul className="space-y-2">
-              {todayEntries.map((e) => (
+              {lifecycleQueue.slice(0, 8).map((e) => (
                 <li key={e.id}>
                   <Link to={`/events/${e.event_id}`} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="w-16 shrink-0 text-xs font-medium text-ink-secondary etched">{e.start_time ?? "—"}</span>
-                    <span className="flex-1 truncate text-sm font-medium text-ink-primary etched-deep">{e.title}</span>
-                    <span className="shrink-0 text-xs text-ink-muted etched">{e.venue}</span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-sage etched">{e.activity_type.replace(/_/g, " ")}</span>
+                    <span className="flex-1 truncate">
+                      <span className="block text-sm font-medium text-ink-primary etched-deep">{e.organisation_name ?? e.title}</span>
+                      <span className="block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
+                    </span>
+                    <StatusBadge status={e.milestone_type} />
                   </Link>
                 </li>
               ))}
@@ -74,24 +99,23 @@ export function DashboardPage() {
           )}
         </section>
 
-        {/* Recent events needing attention */}
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Active Events</h2>
-            <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle →</Link>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Work Needing Attention</h2>
+            <Link to="/tasks" className="text-xs text-sage-text hover:underline">Tasks →</Link>
           </div>
-          {events.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">No active events.</p>
+          {tasks.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No open tasks.</p>
           ) : (
             <ul className="space-y-2">
-              {events.slice(0, 8).map((e) => (
-                <li key={e.id}>
-                  <Link to={`/events/${e.id}`} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
+              {tasks.slice(0, 8).map((task) => (
+                <li key={task.id}>
+                  <Link to={task.event_id ? `/events/${task.event_id}` : "/tasks"} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
                     <span className="flex-1 truncate">
-                      <span className="block text-sm font-medium text-ink-primary etched-deep">{e.title}</span>
-                      <span className="block text-[11px] text-ink-muted etched">{e.venues ?? "—"} · {e.event_start_date ? formatDate(e.event_start_date) : "—"}</span>
+                      <span className="block text-sm font-medium text-ink-primary etched-deep">{task.title}</span>
+                      <span className="block text-[11px] text-ink-muted etched">{task.event_title ?? "Unlinked task"} · {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}</span>
                     </span>
-                    <StatusBadge status={e.status as EventStatus} />
+                    {task.event_status && <StatusBadge status={task.event_status} />}
                   </Link>
                 </li>
               ))}
@@ -103,12 +127,28 @@ export function DashboardPage() {
   );
 }
 
+function lifecycleRank(status: EventStatus): number {
+  if (status === "enquiry") return 0;
+  if (status === "tentative") return 1;
+  if (status === "approved") return 2;
+  return 3;
+}
+
+function taskRank(task: TasksResponse["tasks"][number], todayIso: string): number {
+  if (task.due_date && task.due_date < todayIso) return 0;
+  if (task.due_date === todayIso) return 1;
+  if (task.priority === "high") return 2;
+  if (task.due_date) return 3;
+  return 4;
+}
+
 function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href: string }) {
+  const surface = getEventStatusSurface(status);
   return (
     <Link to={href} className="carved-card rounded-2xl bg-marble-highlight/50 p-4 transition-colors hover:bg-marble-highlight/80">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
-        <StatusBadge status={status} />
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
+        <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + surface.dot} aria-hidden="true" />
       </div>
       <div className="text-3xl font-semibold text-ink-primary etched-deep">{value}</div>
     </Link>

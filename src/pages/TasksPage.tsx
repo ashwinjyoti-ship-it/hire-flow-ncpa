@@ -23,10 +23,18 @@ type TaskRow = TaskLike;
 type TaskView = "cards" | "queue" | "lanes";
 
 const VIEW_LABELS: Record<TaskView, string> = {
-  cards: "Event command cards",
-  queue: "Today's work queue",
-  lanes: "Workflow lanes",
+  queue: "Due date",
+  cards: "By event",
+  lanes: "Work area",
 };
+
+const TASK_STATUS_FILTERS = [
+  { value: "active", label: "To do" },
+  { value: "open", label: "Not started" },
+  { value: "in_progress", label: "Started" },
+  { value: "completed", label: "Done" },
+  { value: "all", label: "Everything" },
+] as const;
 
 export function TasksPage() {
   const qc = useQueryClient();
@@ -55,19 +63,19 @@ export function TasksPage() {
 
   function selectView(next: TaskView) {
     const params = new URLSearchParams(searchParams);
-    if (next === "cards") params.delete("view");
+    if (next === "queue") params.delete("view");
     else params.set("view", next);
     setSearchParams(params, { replace: true });
   }
 
   return (
     <div>
-      <PageHeader title="Tasks" subtitle="Automatic follow-ups and manual operational work" />
+      <PageHeader title="Tasks" subtitle="Work to do across events" />
 
       <div className="carved-header mb-4 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
-            {(["cards", "queue", "lanes"] as const).map((option) => (
+            {(["queue", "cards", "lanes"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -82,17 +90,17 @@ export function TasksPage() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-            {["active", "open", "in_progress", "completed", "all"].map((option) => (
+            {TASK_STATUS_FILTERS.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 type="button"
-                onClick={() => setStatus(option)}
+                onClick={() => setStatus(option.value)}
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-medium etched " +
-                  (status === option ? "carved-btn-sage bg-sage-btn text-sage-text" : "carved-btn bg-neutral-btn text-ink-secondary")
+                  (status === option.value ? "carved-btn-sage bg-sage-btn text-sage-text" : "carved-btn bg-neutral-btn text-ink-secondary")
                 }
               >
-                {option.replace(/_/g, " ")}
+                {option.label}
               </button>
             ))}
             <label className="inline-flex items-center gap-2 px-2 text-xs font-medium text-ink-secondary etched">
@@ -293,7 +301,7 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
         <h4 className={(compact ? "text-xs" : "text-sm") + " font-semibold text-ink-primary etched-deep"}>{task.title}</h4>
-        <span className={taskStatusClass(task.status)}>{task.status.replace(/_/g, " ")}</span>
+        <span className={taskStatusClass(task.status)}>{taskStatusLabel(task.status)}</span>
         {getTaskUrgencyLabels(task, today).map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
@@ -336,8 +344,8 @@ function TaskActions({ task, updateTask, compact = false }: { task: TaskRow; upd
 }
 
 function parseView(value: string | null): TaskView {
-  if (value === "queue" || value === "lanes") return value;
-  return "cards";
+  if (value === "cards" || value === "lanes") return value;
+  return "queue";
 }
 
 function workflowLabel(family: WorkflowFamily): string {
@@ -354,6 +362,14 @@ function taskStatusClass(status: string): string {
   if (status === "cancelled") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-cancelled";
   if (status === "in_progress") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-status-awaitingApproval";
   return "rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted";
+}
+
+function taskStatusLabel(status: string): string {
+  if (status === "open") return "Not started";
+  if (status === "in_progress") return "Started";
+  if (status === "completed") return "Done";
+  if (status === "cancelled") return "Cancelled";
+  return status.replace(/_/g, " ");
 }
 
 function urgencyClass(label: string): string {

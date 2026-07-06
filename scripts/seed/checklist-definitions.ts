@@ -124,9 +124,6 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },
   { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
 
-  // 14. EVENT STATUS — mirrors the 6-status lifecycle (canonical lowercase keys)
-  { module: "operations", section: "Event Status", field_key: "event_status", label: "Event Status", field_type: "dropdown", options: ["enquiry", "tentative", "approved", "confirmed", "regret", "cancelled"], default_value: "enquiry" },
-
   // ===== ACCOUNTS TRACKING CHECKLIST (3 sections) =====
   // Note: 3-day notification rule on file_sent_to_accounts.
 
