@@ -93,7 +93,7 @@ export function OrganisationsPage() {
   // "See all N matches" from the banner: there's no freeform date-range facet,
   // so we surface the count via a transient toast and apply the closest recency
   // chip (last-year activity falls in the "inactive 6+ months" bucket by design).
-  function seeAllMatches(_windowDays: number) {
+  function seeAllMatches() {
     setFilters({ ...EMPTY_FILTERS, recency: ["inactive6"] });
     setShowAll(false);
     show("Filtered to organisations inactive 6+ months — last year's matches.");
