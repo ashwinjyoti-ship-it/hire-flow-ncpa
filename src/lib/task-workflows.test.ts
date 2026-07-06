@@ -42,17 +42,17 @@ describe("task workflow helpers", () => {
     expect(getWorkflowFamily(task({ id: "g", title: "Call client" }))).toBe("manual");
   });
 
-  it("orders event command cards by operational importance", () => {
+  it("orders event command cards by due-date urgency before priority", () => {
     const cards = buildEventCommandCards([
       task({ id: "later", title: "Later work", event_id: "ev_later", event_title: "Later Event", due_date: "2026-07-20" }),
-      task({ id: "high", title: "High work", event_id: "ev_high", event_title: "High Event", due_date: "2026-07-12", priority: "high" }),
+      task({ id: "high", title: "High work", event_id: "ev_high", event_title: "High Event", due_date: "2026-08-26", priority: "high" }),
       task({ id: "today", title: "Today work", event_id: "ev_today", event_title: "Today Event", due_date: today }),
       task({ id: "overdue", title: "Overdue work", event_id: "ev_overdue", event_title: "Overdue Event", due_date: "2026-07-05" }),
       task({ id: "soon", title: "Approval blocker", source_rule: "approval_followup", event_id: "ev_soon", event_title: "Soon Event", event_start_date: "2026-07-08", due_date: "2026-07-10" }),
       task({ id: "nodate", title: "No date work", event_id: "ev_nodate", event_title: "No Date Event", due_date: null }),
     ], today);
 
-    expect(cards.map((card) => card.event.id)).toEqual(["ev_overdue", "ev_today", "ev_high", "ev_soon", "ev_later", "ev_nodate"]);
+    expect(cards.map((card) => card.event.id)).toEqual(["ev_overdue", "ev_today", "ev_soon", "ev_later", "ev_high", "ev_nodate"]);
   });
 
   it("groups tasks by timing and workflow lane", () => {

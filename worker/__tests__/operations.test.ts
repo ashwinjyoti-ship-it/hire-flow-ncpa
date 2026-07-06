@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -98,5 +98,34 @@ describe("operational lifecycle readiness", () => {
     expect(approved).toBeUndefined();
     expect(confirm?.allowed).toBe(false);
     expect(confirm?.blockers).toEqual(["Confirmation letter must be made."]);
+  });
+
+  it("does not recalculate completion when an event already has its checklist", async () => {
+    const calls: string[] = [];
+    const db = {
+      prepare(sql: string) {
+        calls.push(sql);
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (sql.includes("FROM events WHERE id = ?")) return { id: "ev_test", event_type: "EE" };
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM checklist_definitions cd")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            throw new Error("Existing checklist reads should not write to the database");
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await ensureChecklistForEvent(db, "ev_test");
+
+    expect(calls.some((sql) => sql.includes("UPDATE events SET ops_completion"))).toBe(false);
   });
 });

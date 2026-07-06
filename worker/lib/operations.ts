@@ -87,13 +87,18 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   const event = await db.prepare("SELECT id, event_type FROM events WHERE id = ?").bind(eventId).first<{ id: string; event_type: string | null }>();
   if (!event) throw new Error("Event not found");
 
-  const now = new Date().toISOString();
   const { results } = await db.prepare(
     `SELECT id, module, section, field_key, label, field_type, default_value, is_computed, sort_order
-     FROM checklist_definitions
-     WHERE vfh_only = 0 OR ? = 'VFH'
+     FROM checklist_definitions cd
+     WHERE (cd.vfh_only = 0 OR ? = 'VFH')
+       AND NOT EXISTS (
+         SELECT 1
+         FROM checklist_items ci
+         WHERE ci.event_id = ?
+           AND ci.field_key = cd.field_key
+       )
      ORDER BY module, sort_order`
-  ).bind(event.event_type).all<{
+  ).bind(event.event_type, eventId).all<{
     id: string;
     module: ChecklistModule;
     section: string;
@@ -105,6 +110,9 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     sort_order: number;
   }>();
 
+  if (!results.length) return;
+
+  const now = new Date().toISOString();
   for (const def of results) {
     const value = def.default_value ?? null;
     const status = itemStatusForValue({ field_type: def.field_type, value, is_computed: def.is_computed });

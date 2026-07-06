@@ -109,7 +109,7 @@ export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday())
     })
     .sort((a, b) => {
       if (a.sortRank !== b.sortRank) return a.sortRank - b.sortRank;
-      return compareNullableDates(a.event.startDate, b.event.startDate) || a.event.title.localeCompare(b.event.title);
+      return compareEventTaskDates(a.tasks, b.tasks) || compareNullableDates(a.event.startDate, b.event.startDate) || a.event.title.localeCompare(b.event.title);
     });
 }
 
@@ -169,8 +169,8 @@ function compareTasksForWorkflow(a: TaskLike, b: TaskLike, todayIso: string, ord
 }
 
 function compareTasksByDueDate(a: TaskLike, b: TaskLike, todayIso: string): number {
-  const urgencyDelta = taskUrgencyRank(a, todayIso) - taskUrgencyRank(b, todayIso);
-  if (urgencyDelta !== 0) return urgencyDelta;
+  const timingDelta = timingRank(getTimingGroup(a, todayIso)) - timingRank(getTimingGroup(b, todayIso));
+  if (timingDelta !== 0) return timingDelta;
   const dateDelta = compareNullableDates(a.due_date, b.due_date);
   if (dateDelta !== 0) return dateDelta;
   const priorityDelta = priorityRank(a.priority) - priorityRank(b.priority);
@@ -178,21 +178,13 @@ function compareTasksByDueDate(a: TaskLike, b: TaskLike, todayIso: string): numb
   return a.title.localeCompare(b.title);
 }
 
-function taskUrgencyRank(task: TaskLike, todayIso: string): number {
-  if (getTimingGroup(task, todayIso) === "overdue") return 0;
-  if (getTimingGroup(task, todayIso) === "today") return 1;
-  if (task.priority === "high") return 2;
-  return 3;
-}
-
 function getEventSortRank(tasks: TaskLike[], todayIso: string): number {
   if (tasks.some((task) => getTimingGroup(task, todayIso) === "overdue")) return 0;
   if (tasks.some((task) => getTimingGroup(task, todayIso) === "today")) return 1;
-  if (tasks.some((task) => task.priority === "high")) return 2;
+  if (tasks.some((task) => getTimingGroup(task, todayIso) === "tomorrow" || getTimingGroup(task, todayIso) === "thisWeek")) return 2;
   if (tasks.some((task) => isSoonBlocker(task, todayIso))) return 3;
-  if (tasks.some((task) => getTimingGroup(task, todayIso) === "tomorrow" || getTimingGroup(task, todayIso) === "thisWeek")) return 4;
-  if (tasks.some((task) => task.due_date)) return 5;
-  return 6;
+  if (tasks.some((task) => task.due_date)) return 4;
+  return 5;
 }
 
 function isSoonBlocker(task: TaskLike, todayIso: string): boolean {
@@ -206,6 +198,21 @@ function priorityRank(priority: TaskLike["priority"]): number {
   if (priority === "high") return 0;
   if (priority === "medium") return 1;
   return 2;
+}
+
+function timingRank(timing: TimingGroupKey): number {
+  return TIMING_ORDER.indexOf(timing);
+}
+
+function compareEventTaskDates(a: TaskLike[], b: TaskLike[]): number {
+  return compareNullableDates(earliestTaskDueDate(a), earliestTaskDueDate(b));
+}
+
+function earliestTaskDueDate(tasks: TaskLike[]): string | null {
+  return tasks
+    .map((task) => task.due_date)
+    .filter((dueDate): dueDate is string => Boolean(dueDate))
+    .sort()[0] ?? null;
 }
 
 function compareNullableDates(a: string | null | undefined, b: string | null | undefined): number {

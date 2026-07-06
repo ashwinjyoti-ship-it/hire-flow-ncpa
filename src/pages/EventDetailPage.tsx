@@ -65,6 +65,12 @@ type ChecklistResponse = {
   };
 };
 
+type EventPageFreshState = {
+  detail: DetailResponse;
+  checklist: ChecklistResponse;
+  tasks: { tasks: Array<Record<string, unknown>> };
+};
+
 type ConflictsResponse = {
   conflicts: Array<Record<string, unknown> & { level: string; venue: string; title: string; status: string; activity_date: string; activity_type: string }>;
 };
@@ -151,24 +157,42 @@ export function EventDetailPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [focusedFieldKey, tab, checklistData]);
 
+  async function fetchFreshEventState(): Promise<EventPageFreshState> {
+    const [detail, checklist, tasks] = await Promise.all([
+      apiGet<DetailResponse>(`/events/${id}`),
+      apiGet<ChecklistResponse>(`/events/${id}/checklist`),
+      apiGet<{ tasks: Array<Record<string, unknown>> }>(`/tasks?event=${id}&status=all`),
+    ]);
+    return { detail, checklist, tasks };
+  }
+
+  function applyFreshEventState(fresh: EventPageFreshState) {
+    qc.setQueryData(["event", id], fresh.detail);
+    qc.setQueryData(["event", id, "checklist"], fresh.checklist);
+    qc.setQueryData(["tasks", id], fresh.tasks);
+    qc.invalidateQueries({ queryKey: ["tasks"], exact: false });
+    qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
+  }
+
   const transition = useMutation({
-    mutationFn: async (args: { to: EventStatus; reason: string }) =>
-      apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason }),
-    onSuccess: () => {
+    mutationFn: async (args: { to: EventStatus; reason: string }) => {
+      await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason });
+      return fetchFreshEventState();
+    },
+    onSuccess: (fresh) => {
       setStatusModal(null);
       setReason("");
-      qc.invalidateQueries({ queryKey: ["event", id] });
-      qc.invalidateQueries({ queryKey: ["event", id, "checklist"] });
+      applyFreshEventState(fresh);
     },
   });
 
   const checklistUpdate = useMutation({
-    mutationFn: async (args: { item: ChecklistItem; value: string | null; status?: string; correctionReason?: string | null }) =>
-      apiPatch(`/events/${id}/checklist/${args.item.id}`, { value: args.value, status: args.status, correction_reason: args.correctionReason }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["event", id] });
-      qc.invalidateQueries({ queryKey: ["event", id, "checklist"] });
-      qc.invalidateQueries({ queryKey: ["tasks", id] });
+    mutationFn: async (args: { item: ChecklistItem; value: string | null; status?: string; correctionReason?: string | null }) => {
+      await apiPatch(`/events/${id}/checklist/${args.item.id}`, { value: args.value, status: args.status, correction_reason: args.correctionReason });
+      return fetchFreshEventState();
+    },
+    onSuccess: (fresh) => {
+      applyFreshEventState(fresh);
     },
   });
 
