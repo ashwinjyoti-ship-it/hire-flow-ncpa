@@ -187,6 +187,31 @@ select.input {
   padding-right: 38px;
 }
 
+/* Print stylesheet: only the marked report area prints (daily report export). */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-hidden {
+    display: none !important;
+  }
+}
+
 /* Thin scrollbar styling for panels */
 .scroll-slim::-webkit-scrollbar {
   width: 8px;

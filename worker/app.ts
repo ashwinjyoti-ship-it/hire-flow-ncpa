@@ -10,6 +10,7 @@ import { lookupRoutes } from "./routes/lookups";
 import { taskRoutes } from "./routes/tasks";
 import { notificationRoutes } from "./routes/notifications";
 import { documentRoutes, eventDocumentRoutes } from "./routes/documents";
+import { reportRoutes } from "./routes/reports";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -70,6 +71,9 @@ export function buildApp(env: Env): Hono<AuthEnv> {
   // Operational workflow routes.
   app.route("/tasks", taskRoutes);
   app.route("/notifications", notificationRoutes);
+
+  // Daily operational reports (immutable snapshots).
+  app.route("/reports", reportRoutes);
 
   return app;
 }
