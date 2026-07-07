@@ -195,6 +195,31 @@ describe("API regressions", () => {
     });
   });
 
+  it("allows lifecycle cards to be fetched across all dates for the dashboard", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("is_archived = 0");
+        expect(sql).not.toContain("milestone_date >= ?");
+        expect(sql).not.toContain("milestone_date <= ?");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar/lifecycle",
+      {
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ entries: [], byDate: {} });
+  });
+
   it("applies text search on the show calendar", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };

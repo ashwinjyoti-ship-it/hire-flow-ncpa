@@ -151,6 +151,42 @@ body {
   outline-offset: 2px;
 }
 
+/* Shared carved form fields. Keep the inset edge visible on tablet Safari,
+   where native selects otherwise flatten into the marble surface. */
+.input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(90, 88, 82, 0.16);
+  border-radius: 12px;
+  background-color: rgba(244, 244, 242, 0.58);
+  padding: 9px 14px;
+  font-size: 14px;
+  color: #5c5850;
+  outline: none;
+}
+
+textarea.input {
+  min-height: 42px;
+}
+
+select.input {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(90, 88, 82, 0.72) 50%),
+    linear-gradient(135deg, rgba(90, 88, 82, 0.72) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(244, 244, 242, 0.22));
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%,
+    0 0;
+  background-size:
+    5px 5px,
+    5px 5px,
+    100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 38px;
+}
+
 /* Thin scrollbar styling for panels */
 .scroll-slim::-webkit-scrollbar {
   width: 8px;

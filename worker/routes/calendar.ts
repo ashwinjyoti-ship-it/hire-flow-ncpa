@@ -19,12 +19,11 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const owner = c.req.query("owner");
   const q = c.req.query("q");
 
-  if (!from || !to) {
-    return c.json({ error: "from and to query params required (yyyy-mm-dd)" }, 400);
-  }
+  const where = ["is_archived = 0"];
+  const binds: unknown[] = [];
 
-  const where = ["milestone_date >= ?", "milestone_date <= ?", "is_archived = 0"];
-  const binds: unknown[] = [from, to];
+  if (from) { where.push("milestone_date >= ?"); binds.push(from); }
+  if (to) { where.push("milestone_date <= ?"); binds.push(to); }
 
   if (status) { where.push("status = ?"); binds.push(status); }
   if (venue) { where.push("venues LIKE ?"); binds.push(`%${venue}%`); }

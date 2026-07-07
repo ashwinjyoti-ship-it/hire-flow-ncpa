@@ -89,6 +89,13 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Collapse");
   });
 
+  it("keeps work lanes visible as the default task view", () => {
+    const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(source).toContain('lanes: "Work lanes"');
+    expect(source).toContain('return "lanes";');
+  });
+
   it("keeps task queues as links to event work instead of completion controls", () => {
     const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
 
@@ -105,5 +112,32 @@ describe("frontend regression guards", () => {
     expect(eventForm).toContain("lookups?.lookups.handled_by");
     expect(settings).toContain('listKeys={["handled_by", "caterer", "decorator"]}');
     expect(settings).toContain("Event Owners");
+  });
+
+  it("keeps event form navigation at both top and bottom", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect((source.match(/<FormNavigation/g) ?? []).length).toBe(2);
+    expect(source).toContain("function FormNavigation");
+  });
+
+  it("captures organisation type when creating an organisation from the event form", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const orgTypes = readFileSync(resolve(root, "src/components/orgs/types.ts"), "utf8");
+
+    expect(eventForm).toContain("Organisation Type");
+    expect(eventForm).toContain("org_type: newOrganisationType || null");
+    expect(eventForm).toContain("ORG_TYPES.map");
+    expect(orgTypes).toContain("Cooperative");
+  });
+
+  it("keeps carved select fields visually embedded on tablet browsers", () => {
+    const css = readFileSync(resolve(root, "src/index.css"), "utf8");
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(css).toContain("select.input");
+    expect(css).toContain("appearance: none");
+    expect(css).toContain("border: 1px solid rgba(90, 88, 82, 0.16)");
+    expect(eventForm).not.toContain("<style>{`.carved.input");
   });
 });

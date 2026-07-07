@@ -4,13 +4,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { useLookups, formatDuration } from "../lib/use-lookups";
+import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
 
-type OrgListItem = { id: string; name: string };
+type OrgListItem = { id: string; name: string; org_type: string | null };
 
 /** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
 function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
@@ -33,6 +34,7 @@ export function EventEditPage() {
   const isEdit = Boolean(id);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [newOrganisationType, setNewOrganisationType] = useState("");
 
   // Form state
   const [form, setForm] = useState<EventInputT>({
@@ -63,7 +65,7 @@ export function EventEditPage() {
       let orgId = form.organisation_id;
       if (orgId.startsWith("new:")) {
         const name = orgId.slice(4).trim();
-        const created = await apiPost<{ id: string }>("/organisations", { name });
+        const created = await apiPost<{ id: string }>("/organisations", { name, org_type: newOrganisationType || null });
         orgId = created.id;
       }
       const payload = { ...form, organisation_id: orgId, event_end_date: singleDay ? null : form.event_end_date };
@@ -158,15 +160,36 @@ export function EventEditPage() {
 
       {error && <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">{error}</div>}
 
+      <FormNavigation
+        step={step}
+        setStep={setStep}
+        canSave={canSave}
+        isEdit={isEdit}
+        isSaving={save.isPending}
+        onSave={() => save.mutate()}
+      />
+
       {/* Step 1: Event & Client — Organisation first (record anchor), then Event Name */}
       {step === 0 && (
         <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
-          <Field label="Organisation Name *">
-            <OrganisationCombobox
-              value={form.organisation_id}
-              onChange={(v) => update({ organisation_id: v })}
-            />
-          </Field>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+            <Field label="Organisation Name *">
+              <OrganisationCombobox
+                value={form.organisation_id}
+                onChange={(v) => update({ organisation_id: v })}
+                onSelectOrganisation={(org) => setNewOrganisationType(org.org_type ?? "")}
+              />
+            </Field>
+            <Field label="Organisation Type">
+              <select value={newOrganisationType} onChange={(e) => setNewOrganisationType(e.target.value)} className="carved input">
+                <option value="">Select…</option>
+                {ORG_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+              {!form.organisation_id.startsWith("new:") && form.organisation_id && (
+                <p className="mt-1 text-[11px] text-ink-muted etched">Existing organisation type shown for reference.</p>
+              )}
+            </Field>
+          </div>
           <Field label="Event Name *">
             <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" placeholder="e.g. Symphony Concert Series" />
           </Field>
@@ -477,6 +500,7 @@ export function EventEditPage() {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Review</h3>
           <dl className="grid gap-3 text-sm md:grid-cols-2">
             <ReviewItem label="Organisation" value={form.organisation_id.startsWith("new:") ? `${form.organisation_id.slice(4)} (new)` : form.organisation_id} />
+            <ReviewItem label="Organisation Type" value={newOrganisationType} />
             <ReviewItem label="Event Name" value={form.title} />
             <ReviewItem label="Type" value={form.event_type} />
             <ReviewItem label="Program Officer" value={form.program_officer} />
@@ -492,43 +516,29 @@ export function EventEditPage() {
         </div>
       )}
 
-      {/* Navigation */}
-      <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
-          disabled={step === 0}
-          className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-40"
-        >
-          ← Back
-        </button>
-        {step < STEPS.length - 1 ? (
-          <button
-            type="button"
-            onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
-            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
-          >
-            Next →
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending || !canSave}
-            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
-          >
-            {save.isPending ? "Saving…" : isEdit ? "Save changes" : "Create event"}
-          </button>
-        )}
-      </div>
-
-      <style>{`.carved.input { width:100%; border-radius:12px; background:rgba(244,244,242,0.4); padding:8px 14px; font-size:14px; color:#5C5850; outline:none; }`}</style>
+      <FormNavigation
+        step={step}
+        setStep={setStep}
+        canSave={canSave}
+        isEdit={isEdit}
+        isSaving={save.isPending}
+        onSave={() => save.mutate()}
+        className="mt-6"
+      />
     </div>
   );
 }
 
 /** Organisation combobox — searches existing orgs by prefix; offers "Create new" when no match. */
-function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function OrganisationCombobox({
+  value,
+  onChange,
+  onSelectOrganisation,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelectOrganisation: (org: OrgListItem) => void;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -573,7 +583,7 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
               <button
                 key={o.id}
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); setQuery(""); setOpen(false); }}
+                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); onSelectOrganisation(o); setQuery(o.name); setOpen(false); }}
                 className="block w-full px-4 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40"
               >
                 {o.name}
@@ -583,7 +593,7 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
             query.trim().length > 0 && (
               <button
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(""); setOpen(false); }}
+                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(query.trim()); setOpen(false); }}
                 className="block w-full px-4 py-2 text-left text-sm text-sage-text hover:bg-marble-shadow/40"
               >
                 + Create new: “{query.trim()}”
@@ -594,6 +604,55 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
             <div className="px-4 py-2 text-xs text-ink-muted etched">Type to search existing organisations.</div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function FormNavigation({
+  step,
+  setStep,
+  canSave,
+  isEdit,
+  isSaving,
+  onSave,
+  className = "mb-5",
+}: {
+  step: number;
+  setStep: React.Dispatch<React.SetStateAction<number>>;
+  canSave: boolean;
+  isEdit: boolean;
+  isSaving: boolean;
+  onSave: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={"flex justify-between " + className}>
+      <button
+        type="button"
+        onClick={() => setStep((s) => Math.max(0, s - 1))}
+        disabled={step === 0}
+        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-40"
+      >
+        Back
+      </button>
+      {step < STEPS.length - 1 ? (
+        <button
+          type="button"
+          onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving || !canSave}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : isEdit ? "Save changes" : "Create event"}
+        </button>
       )}
     </div>
   );

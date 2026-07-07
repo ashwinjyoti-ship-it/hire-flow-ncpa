@@ -18,8 +18,8 @@ export type OrgsResponse = {
   total: number;
 };
 
-/** The four org-type chips the spec calls out. */
-export const ORG_TYPES = ["School", "Foundation", "Production", "Corporate"] as const;
+/** Organisation type chips used by filters and new-event organisation capture. */
+export const ORG_TYPES = ["School", "Foundation", "Production", "Cooperative", "Corporate"] as const;
 export type OrgType = (typeof ORG_TYPES)[number];
 
 /** The three event-count buckets the slider offers. */
