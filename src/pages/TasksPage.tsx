@@ -26,7 +26,7 @@ type TaskView = "cards" | "queue" | "lanes";
 
 const VIEW_LABELS: Record<TaskView, string> = {
   cards: "By event",
-  lanes: "Work area",
+  lanes: "Work lanes",
   queue: "Target date",
 };
 
@@ -328,7 +328,7 @@ function OpenWorkLink({ task, compact = false }: { task: TaskRow; compact?: bool
 
 function parseView(value: string | null): TaskView {
   if (value === "queue" || value === "lanes") return value;
-  return "cards";
+  return "lanes";
 }
 
 function workflowLabel(family: WorkflowFamily): string {
