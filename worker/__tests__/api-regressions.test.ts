@@ -209,6 +209,45 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
   });
 
+  it("allows admins to manage event owner lookup options", async () => {
+    let insertedListKey: string | null = null;
+    let insertedValue: string | null = null;
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("MAX(sort_order)")) return { first: () => ({ next: 5 }) };
+      if (sql.includes("INSERT INTO dropdown_options")) {
+        return {
+          run: () => {
+            insertedListKey = "handled_by";
+            insertedValue = "New Owner";
+            return { success: true };
+          },
+        };
+      }
+      if (sql.includes("INSERT INTO audit_logs")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/lookups/handled_by",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION_COOKIE}=sess_test`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ value: "New Owner" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(201);
+    await expect(res.json()).resolves.toMatchObject({ id: expect.stringMatching(/^opt_/) });
+    expect(insertedListKey).toBe("handled_by");
+    expect(insertedValue).toBe("New Owner");
+  });
+
   it("blocks confirming a VFH event before approval and signed confirmation are complete", async () => {
     let updatedStatus: string | null = null;
     const db = fakeDb((sql) => {

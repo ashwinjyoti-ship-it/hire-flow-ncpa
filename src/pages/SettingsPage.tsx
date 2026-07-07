@@ -101,7 +101,7 @@ export function SettingsPage() {
     <div>
       <PageHeader title="Settings" subtitle="Application configuration (admin)" />
 
-      {isAdmin && <MasterListsSection listKeys={["caterer", "decorator"]} />}
+      {isAdmin && <MasterListsSection listKeys={["handled_by", "caterer", "decorator"]} />}
 
       {msg && (
         <div role="status" className="mb-4 rounded-lg bg-sage/10 px-4 py-2 text-sm text-sage-text">
@@ -241,12 +241,18 @@ function ConfiguredBadge({ configured }: { configured: boolean }) {
   );
 }
 
-// ---- Master Lists section: admin CRUD for caterer / decorator dropdowns ----
+// ---- Master Lists section: admin CRUD for Add Event dropdowns ----
 type LookupOption = {
   id: string;
   value: string;
   sort_order: number;
   is_active: number;
+};
+
+const LIST_LABELS: Record<string, string> = {
+  handled_by: "Event Owners",
+  caterer: "Caterers",
+  decorator: "Decorators",
 };
 
 function MasterListsSection({ listKeys }: { listKeys: string[] }) {
@@ -259,11 +265,11 @@ function MasterListsSection({ listKeys }: { listKeys: string[] }) {
     <section className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-6">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Master Lists</h2>
       <p className="mb-4 text-xs text-ink-muted etched">
-        Manage the Caterer and Decorator option lists used in the Add Event form. Deactivating soft-deletes
-        the option (existing events keep their value).
+        Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form.
+        Deactivating soft-deletes the option (existing events keep their value).
       </p>
       {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-1.5 text-xs text-status-cancelled">{err}</div>}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         {listKeys.map((listKey) => (
           <ListEditor
             key={listKey}
@@ -322,7 +328,7 @@ function ListEditor({
   });
 
   const options = data?.options ?? [];
-  const title = listKey[0]!.toUpperCase() + listKey.slice(1);
+  const title = LIST_LABELS[listKey] ?? listKey[0]!.toUpperCase() + listKey.slice(1);
 
   return (
     <div className="rounded-xl bg-marble-shadow/30 p-4">
