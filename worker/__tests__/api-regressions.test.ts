@@ -91,6 +91,7 @@ describe("API regressions", () => {
         expect(sql).toContain("e.event_start_date AS event_start_date");
         expect(sql).toContain("e.event_end_date AS event_end_date");
         expect(sql).toContain("e.event_owner AS event_owner");
+        expect(sql).toContain("o.name AS organisation_name");
         expect(sql).toContain("event_venues");
         return {
           all: () => ({
@@ -104,6 +105,7 @@ describe("API regressions", () => {
                 event_start_date: "2026-07-12",
                 event_end_date: "2026-07-12",
                 event_owner: "Aditi Rao",
+                organisation_name: "Test Organisation",
                 event_venues: "JBT",
               },
             ],
@@ -127,6 +129,7 @@ describe("API regressions", () => {
       tasks: [
         {
           event_start_date: "2026-07-12",
+          organisation_name: "Test Organisation",
           event_venues: "JBT",
           event_owner: "Aditi Rao",
         },

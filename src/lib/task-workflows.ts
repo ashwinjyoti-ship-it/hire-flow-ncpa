@@ -4,6 +4,7 @@ export type TaskLike = {
   description: string | null;
   event_id: string | null;
   event_title: string | null;
+  organisation_name?: string | null;
   event_status: string | null;
   event_start_date?: string | null;
   event_end_date?: string | null;
@@ -125,7 +126,7 @@ export function getTaskUrgencyLabels(task: TaskLike, todayIso = isoToday()): str
   const labels: string[] = [];
   const timing = getTimingGroup(task, todayIso);
   if (timing === "overdue") labels.push("Overdue");
-  if (timing === "today") labels.push("Due today");
+  if (timing === "today") labels.push("Target today");
   if (task.priority === "high") labels.push("High priority");
   if (!task.assignee_name) labels.push("Unassigned");
   return labels;

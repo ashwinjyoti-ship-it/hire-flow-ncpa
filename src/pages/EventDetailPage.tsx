@@ -643,7 +643,7 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
           </div>
           <div className="mt-1 text-xs text-ink-muted etched">
             {task.task_type === "automatic" ? "Automatic" : "Manual"}
-            {task.due_date ? ` · Due ${formatDate(task.due_date as string)}` : ""}
+            {task.due_date ? ` · Target ${formatDate(task.due_date as string)}` : ""}
             {task.assignee_name ? ` · ${task.assignee_name as string}` : ""}
           </div>
         </div>
