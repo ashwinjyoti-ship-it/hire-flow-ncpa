@@ -18,7 +18,7 @@ import { makeId } from "../lib/id";
 export const lookupRoutes = new Hono<AuthEnv>();
 
 // Lists that admins may manage via this endpoint.
-const MANAGED_LISTS = new Set(["caterer", "decorator"]);
+const MANAGED_LISTS = new Set(["handled_by", "caterer", "decorator"]);
 
 lookupRoutes.get("/:list_key", requireUser, async (c) => {
   const listKey = c.req.param("list_key");

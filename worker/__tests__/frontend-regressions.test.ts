@@ -59,4 +59,13 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Expand");
     expect(source).toContain("Collapse");
   });
+
+  it("exposes event owners as a settings-managed master list", () => {
+    const settings = readFileSync(resolve(root, "src/pages/SettingsPage.tsx"), "utf8");
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain("lookups?.lookups.handled_by");
+    expect(settings).toContain('listKeys={["handled_by", "caterer", "decorator"]}');
+    expect(settings).toContain("Event Owners");
+  });
 });
