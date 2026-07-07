@@ -184,6 +184,14 @@ export function EventDetailPage() {
     qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
   }
 
+  function clearFocusedField() {
+    setFocusedFieldKey(null);
+    const params = new URLSearchParams(searchParams);
+    params.delete("field");
+    setSearchParams(params, { replace: true });
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
   const transition = useMutation({
     mutationFn: async (args: { to: EventStatus; reason: string }) => {
       await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason });
@@ -193,6 +201,7 @@ export function EventDetailPage() {
       setStatusModal(null);
       setReason("");
       applyFreshEventState(fresh);
+      clearFocusedField();
     },
   });
 
@@ -912,8 +921,8 @@ function statusClass(status: string): string {
 }
 
 function taskStatusLabel(status: string): string {
-  if (status === "open") return "Not started";
-  if (status === "in_progress") return "Started";
+  if (status === "open") return "Open";
+  if (status === "in_progress") return "In progress";
   if (status === "completed") return "Done";
   if (status === "cancelled") return "Cancelled";
   return status.replace(/_/g, " ");

@@ -25,17 +25,17 @@ type TaskRow = TaskLike;
 type TaskView = "cards" | "queue" | "lanes";
 
 const VIEW_LABELS: Record<TaskView, string> = {
-  queue: "Target date",
   cards: "By event",
   lanes: "Work area",
+  queue: "Target date",
 };
 
 const TASK_STATUS_FILTERS = [
   { value: "active", label: "To do" },
-  { value: "open", label: "Not started" },
-  { value: "in_progress", label: "Started" },
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Done" },
-  { value: "all", label: "Everything" },
+  { value: "all", label: "All" },
 ] as const;
 
 export function TasksPage() {
@@ -59,7 +59,7 @@ export function TasksPage() {
 
   function selectView(next: TaskView) {
     const params = new URLSearchParams(searchParams);
-    if (next === "queue") params.delete("view");
+    if (next === "cards") params.delete("view");
     else params.set("view", next);
     setSearchParams(params, { replace: true });
   }
@@ -71,7 +71,7 @@ export function TasksPage() {
       <div className="carved-header mb-4 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
-            {(["queue", "cards", "lanes"] as const).map((option) => (
+            {(["cards", "lanes", "queue"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -327,8 +327,8 @@ function OpenWorkLink({ task, compact = false }: { task: TaskRow; compact?: bool
 }
 
 function parseView(value: string | null): TaskView {
-  if (value === "cards" || value === "lanes") return value;
-  return "queue";
+  if (value === "queue" || value === "lanes") return value;
+  return "cards";
 }
 
 function workflowLabel(family: WorkflowFamily): string {
@@ -348,8 +348,8 @@ function taskStatusClass(status: string): string {
 }
 
 function taskStatusLabel(status: string): string {
-  if (status === "open") return "Not started";
-  if (status === "in_progress") return "Started";
+  if (status === "open") return "Open";
+  if (status === "in_progress") return "In progress";
   if (status === "completed") return "Done";
   if (status === "cancelled") return "Cancelled";
   return status.replace(/_/g, " ");

@@ -74,6 +74,8 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Financials", field_key: "installment_3_expected_date", label: "Installment 3 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 3", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_4_expected_date", label: "Installment 4 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 4", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_5_expected_date", label: "Installment 5 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 5", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Awaiting", "Part received", "Full received"], default_value: "Awaiting" },
+  { module: "operations", section: "Financials", field_key: "amount_received", label: "Amount Received", field_type: "number" },
   { module: "operations", section: "Financials", field_key: "full_payment_received", label: "Full Payment Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
   // 7. CONFIRMATION LETTER
