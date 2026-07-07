@@ -45,6 +45,18 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
+/** Multipart upload (documents). Lets the browser set the boundary header. */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  return data;
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`, { method: "DELETE", credentials: "include" });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
