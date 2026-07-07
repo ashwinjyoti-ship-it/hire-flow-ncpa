@@ -159,5 +159,24 @@ export function verifyRecoveryCode(
   return -1;
 }
 
+// ---- Password reset tokens ----
+
+/** SHA-256 hex digest — used to store reset tokens at rest (the token itself carries the entropy). */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return toHex(new Uint8Array(digest));
+}
+
+/** Generate a human-typeable temporary password for admin-forced resets. */
+export function generateTemporaryPassword(): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(16);
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += alphabet[bytes[i]! % alphabet.length];
+  }
+  return out;
+}
+
 /** Constant-time comparison re-export for convenience. */
 export { timingSafeEqual };

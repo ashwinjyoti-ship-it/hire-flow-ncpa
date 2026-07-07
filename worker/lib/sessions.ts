@@ -68,6 +68,29 @@ export async function revokeSession(db: D1Database, sessionId: string): Promise<
     .run();
 }
 
+/**
+ * Revoke all of a user's active sessions (password change/reset hygiene).
+ * Pass `exceptSessionId` to keep the session making the request alive.
+ */
+export async function revokeAllSessions(
+  db: D1Database,
+  userId: string,
+  exceptSessionId?: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (exceptSessionId) {
+    await db
+      .prepare("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? AND revoked_at IS NULL")
+      .bind(now, userId, exceptSessionId)
+      .run();
+  } else {
+    await db
+      .prepare("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
+      .bind(now, userId)
+      .run();
+  }
+}
+
 /** Parse the session cookie from a Cookie header. */
 export function readSessionCookie(cookieHeader: string | null | undefined): string | null {
   if (!cookieHeader) return null;
