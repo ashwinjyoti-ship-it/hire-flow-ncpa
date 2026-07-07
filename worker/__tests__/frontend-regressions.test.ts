@@ -64,14 +64,15 @@ describe("frontend regression guards", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
     expect(dashboard).toContain("task.event_title");
-    expect(dashboard).toContain("task.event_title !== task.organisation_name");
+    expect(dashboard).toContain("eventDisplayName(task.event_title, task.organisation_name)");
   });
 
   it("keeps dashboard lifecycle rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
     expect(dashboard).toContain("e.organisation_name && e.title !== e.organisation_name");
-    expect(dashboard).toContain("{e.title}");
+    expect(dashboard).toContain("eventDisplayName(e.title, e.organisation_name)");
+    expect(dashboard).toContain("function eventDisplayName");
   });
 
   it("keeps task command cards collapsible by default", () => {

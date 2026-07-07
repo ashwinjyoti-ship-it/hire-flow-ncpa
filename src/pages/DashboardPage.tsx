@@ -94,7 +94,7 @@ export function DashboardPage() {
                       </span>
                       {e.organisation_name && e.title !== e.organisation_name && (
                         <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
-                          {e.title}
+                          {eventDisplayName(e.title, e.organisation_name)}
                         </span>
                       )}
                       <span className="mt-0.5 block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
@@ -127,7 +127,7 @@ export function DashboardPage() {
                         {task.title}
                       </span>
                       <span className="mt-0.5 block text-[11px] text-ink-muted etched">
-                        {task.event_title && task.event_title !== task.organisation_name ? `${task.event_title} · ` : ""}
+                        {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
                         {task.due_date ? `Target ${formatDate(task.due_date)}` : "No target date"}
                       </span>
                     </span>
@@ -156,6 +156,15 @@ function taskRank(task: TasksResponse["tasks"][number], todayIso: string): numbe
   if (task.priority === "high") return 2;
   if (task.due_date) return 3;
   return 4;
+}
+
+function eventDisplayName(title: string, organisationName: string | null): string {
+  if (!organisationName) return title;
+  const prefix = `${organisationName} - `;
+  if (title.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) {
+    return title.slice(prefix.length).trim();
+  }
+  return title;
 }
 
 function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href: string }) {
