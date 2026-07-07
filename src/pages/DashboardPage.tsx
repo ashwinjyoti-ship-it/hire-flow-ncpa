@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
@@ -26,6 +27,9 @@ type TasksResponse = {
     event_title: string | null;
     organisation_name: string | null;
     event_status: EventStatus | null;
+    source_module?: "operations" | "accounts" | null;
+    source_field_key?: string | null;
+    source_rule: string | null;
     due_date: string | null;
     priority: "high" | "medium" | "low";
     status: "open" | "in_progress" | "completed" | "cancelled";
@@ -87,7 +91,7 @@ export function DashboardPage() {
             <ul className="space-y-2">
               {lifecycleQueue.slice(0, 8).map((e) => (
                 <li key={e.id}>
-                  <Link to={`/events/${e.event_id}`} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
+                  <Link to={getEventOperationsLink(e.event_id)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
                         {e.organisation_name ?? e.title}
@@ -118,7 +122,7 @@ export function DashboardPage() {
             <ul className="space-y-2">
               {tasks.slice(0, 8).map((task) => (
                 <li key={task.id}>
-                  <Link to={task.event_id ? `/events/${task.event_id}` : "/tasks"} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
+                  <Link to={getTaskWorkLink(task)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
                         {task.organisation_name ?? task.event_title ?? "Unlinked task"}

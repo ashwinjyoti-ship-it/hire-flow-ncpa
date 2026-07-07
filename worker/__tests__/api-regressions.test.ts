@@ -92,6 +92,9 @@ describe("API regressions", () => {
         expect(sql).toContain("e.event_end_date AS event_end_date");
         expect(sql).toContain("e.event_owner AS event_owner");
         expect(sql).toContain("o.name AS organisation_name");
+        expect(sql).toContain("ci.module AS source_module");
+        expect(sql).toContain("ci.field_key AS source_field_key");
+        expect(sql).toContain("LEFT JOIN checklist_items ci");
         expect(sql).toContain("event_venues");
         return {
           all: () => ({
@@ -106,6 +109,8 @@ describe("API regressions", () => {
                 event_end_date: "2026-07-12",
                 event_owner: "Aditi Rao",
                 organisation_name: "Test Organisation",
+                source_module: "operations",
+                source_field_key: "approval_received_on",
                 event_venues: "JBT",
               },
             ],
@@ -130,6 +135,8 @@ describe("API regressions", () => {
         {
           event_start_date: "2026-07-12",
           organisation_name: "Test Organisation",
+          source_module: "operations",
+          source_field_key: "approval_received_on",
           event_venues: "JBT",
           event_owner: "Aditi Rao",
         },

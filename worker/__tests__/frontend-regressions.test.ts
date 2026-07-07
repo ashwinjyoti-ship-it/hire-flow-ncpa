@@ -27,6 +27,10 @@ describe("frontend regression guards", () => {
     expect(source).toContain("LifecycleTrack");
     expect(source).toContain("Confirm decision");
     expect(source).toContain("Regret");
+    expect(source).toContain("useSearchParams");
+    expect(source).toContain("parseEventDetailTab");
+    expect(source).toContain("canShowStatusActions={tab === \"operations\"}");
+    expect(source).toContain("Open Operations to change lifecycle status");
   });
 
   it("keeps notification flyout above routed page controls", () => {
@@ -63,6 +67,7 @@ describe("frontend regression guards", () => {
   it("keeps dashboard task rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
+    expect(dashboard).toContain("getTaskWorkLink(task)");
     expect(dashboard).toContain("task.event_title");
     expect(dashboard).toContain("eventDisplayName(task.event_title, task.organisation_name)");
   });
@@ -73,6 +78,7 @@ describe("frontend regression guards", () => {
     expect(dashboard).toContain("e.organisation_name && e.title !== e.organisation_name");
     expect(dashboard).toContain("eventDisplayName(e.title, e.organisation_name)");
     expect(dashboard).toContain("function eventDisplayName");
+    expect(dashboard).toContain("getEventOperationsLink(e.event_id)");
   });
 
   it("keeps task command cards collapsible by default", () => {
@@ -81,6 +87,15 @@ describe("frontend regression guards", () => {
     expect(source).toContain("aria-expanded");
     expect(source).toContain("Expand");
     expect(source).toContain("Collapse");
+  });
+
+  it("keeps task queues as links to event work instead of completion controls", () => {
+    const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(source).toContain("getTaskWorkLink(task)");
+    expect(source).toContain("Open work");
+    expect(source).not.toContain("updateTask.mutate");
+    expect(source).not.toContain("apiPatch(`/tasks/");
   });
 
   it("exposes event owners as a settings-managed master list", () => {

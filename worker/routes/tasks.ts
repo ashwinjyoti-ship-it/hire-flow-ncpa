@@ -43,11 +43,13 @@ taskRoutes.get("/", requireUser, async (c) => {
             e.event_start_date AS event_start_date, e.event_end_date AS event_end_date,
             e.event_owner AS event_owner,
             o.name AS organisation_name,
+            ci.module AS source_module, ci.field_key AS source_field_key, ci.label AS source_label,
             (SELECT GROUP_CONCAT(vb.venue, ', ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS event_venues,
             u.name AS assignee_name
      FROM tasks t
      LEFT JOIN events e ON e.id = t.event_id
      LEFT JOIN organisations o ON o.id = e.organisation_id
+     LEFT JOIN checklist_items ci ON ci.id = t.source_checklist_item_id
      LEFT JOIN users u ON u.id = t.assignee_id
      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
      ORDER BY COALESCE(t.due_date, '9999-12-31'), t.priority = 'high' DESC, t.created_at DESC

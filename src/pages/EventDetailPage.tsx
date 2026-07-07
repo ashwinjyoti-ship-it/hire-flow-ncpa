@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
@@ -118,15 +118,18 @@ const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey
   },
 };
 
+type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "venues" | "conflicts" | "activity";
+
 export function EventDetailPage() {
   const { id = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "operations" | "accounts" | "tasks" | "venues" | "conflicts" | "activity">("overview");
+  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "overview");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
-  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
 
   const { data, isLoading } = useQuery({
     queryKey: ["event", id],
@@ -147,6 +150,13 @@ export function EventDetailPage() {
     queryKey: ["event", id, "conflicts"],
     queryFn: () => apiGet<ConflictsResponse>(`/events/${id}/conflicts`),
   });
+
+  useEffect(() => {
+    const nextTab = parseEventDetailTab(searchParams.get("tab"));
+    const nextField = searchParams.get("field");
+    if (nextTab && nextTab !== tab) setTab(nextTab);
+    setFocusedFieldKey(nextField);
+  }, [searchParams, tab]);
 
   useEffect(() => {
     if (!focusedFieldKey) return;
@@ -215,8 +225,18 @@ export function EventDetailPage() {
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
-    setTab(target.tab);
-    setFocusedFieldKey(target.fieldKey);
+    selectTab(target.tab, target.fieldKey);
+  }
+
+  function selectTab(next: EventDetailTab, fieldKey: string | null = null) {
+    setTab(next);
+    setFocusedFieldKey(fieldKey);
+    const params = new URLSearchParams(searchParams);
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    if (fieldKey) params.set("field", fieldKey);
+    else params.delete("field");
+    setSearchParams(params, { replace: true });
   }
 
   return (
@@ -250,6 +270,7 @@ export function EventDetailPage() {
         nextAction={checklistData?.lifecycle.nextAction ?? null}
         blockers={checklistData?.lifecycle.blockers ?? []}
         canChangeStatus={canChangeStatus}
+        canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
         onChoose={(status) => {
           setStatusModal(status);
@@ -281,7 +302,7 @@ export function EventDetailPage() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
               (tab === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
@@ -393,6 +414,7 @@ function LifecyclePanel({
   nextAction,
   blockers,
   canChangeStatus,
+  canShowStatusActions,
   onOpenBlocker,
   onChoose,
 }: {
@@ -401,6 +423,7 @@ function LifecyclePanel({
   nextAction: LifecycleAction | null;
   blockers: string[];
   canChangeStatus: boolean;
+  canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onChoose: (status: EventStatus) => void;
 }) {
@@ -452,7 +475,7 @@ function LifecyclePanel({
                   : "No forward milestone available"}
             </p>
           </div>
-          {canChangeStatus && nextAction && (
+          {canChangeStatus && canShowStatusActions && nextAction && (
             <button
               type="button"
               onClick={() => onChoose(nextAction.status)}
@@ -460,6 +483,11 @@ function LifecyclePanel({
             >
               Advance to {milestoneLabel(nextAction.status)}
             </button>
+          )}
+          {canChangeStatus && !canShowStatusActions && (nextAction || closeOutActions.length > 0) && (
+            <span className="rounded-full bg-marble-shadow/50 px-3 py-1.5 text-xs font-medium text-ink-muted etched">
+              Open Operations to change lifecycle status
+            </span>
           )}
         </div>
 
@@ -485,7 +513,7 @@ function LifecyclePanel({
           </div>
         )}
 
-        {canChangeStatus && closeOutActions.length > 0 && (
+        {canChangeStatus && canShowStatusActions && closeOutActions.length > 0 && (
           <div className="mt-4 border-t border-ink-muted/10 pt-3">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Close out</h3>
             <div className="flex flex-wrap gap-2">
@@ -650,6 +678,13 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
       ))}
     </div>
   );
+}
+
+function parseEventDetailTab(value: string | null): EventDetailTab | null {
+  if (value === "operations" || value === "accounts" || value === "tasks" || value === "venues" || value === "conflicts" || value === "activity" || value === "overview") {
+    return value;
+  }
+  return null;
 }
 
 function VenuesView({ bookings }: { bookings: DetailResponse["venue_bookings"] }) {
