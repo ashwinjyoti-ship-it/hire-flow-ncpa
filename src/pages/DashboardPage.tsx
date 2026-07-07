@@ -70,7 +70,7 @@ export function DashboardPage() {
       <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })} lifecycle overview`} />
 
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=lifecycle&status=enquiry&from=${monthStartIso}`} />
         <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=lifecycle&status=tentative&from=${monthStartIso}`} />
         <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href={`/calendar?view=lifecycle&status=approved&from=${monthStartIso}`} />
@@ -79,7 +79,7 @@ export function DashboardPage() {
         <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=lifecycle&status=cancelled&from=${monthStartIso}`} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2 lg:gap-6">
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle Queue</h2>
