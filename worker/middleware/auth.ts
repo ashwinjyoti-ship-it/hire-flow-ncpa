@@ -10,6 +10,7 @@ import type { AuditActor } from "../lib/audit";
 
 interface AuthVars {
   user: AuthUser | null;
+  sessionId: string | null;
 }
 
 export type AuthEnv = {
@@ -34,6 +35,7 @@ export const attachUser = createMiddleware<AuthEnv>(async (c, next) => {
     }
   }
   c.set("user", user);
+  c.set("sessionId", user ? cookie : null);
   await next();
 });
 

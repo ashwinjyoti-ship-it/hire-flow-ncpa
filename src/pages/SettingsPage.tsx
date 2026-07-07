@@ -24,6 +24,9 @@ export function SettingsPage() {
   const [testEmail, setTestEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resetEmail, setResetEmail] = useState("");
+  const [tempPassword, setTempPassword] = useState<{ email: string; temporaryPassword: string } | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.mailFrom) setMailFrom(data.mailFrom);
@@ -97,6 +100,16 @@ export function SettingsPage() {
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e: Error) => setError(e.message),
+  });
+
+  const adminReset = useMutation({
+    mutationFn: async (email: string) => apiPost<{ email: string; temporaryPassword: string }>("/auth/password/admin-reset", { email }),
+    onSuccess: (data) => {
+      setTempPassword(data);
+      setResetEmail("");
+      setResetError(null);
+    },
+    onError: (e: Error) => setResetError(e.message),
   });
 
   const isAdmin = user?.role === "admin";
@@ -228,6 +241,62 @@ export function SettingsPage() {
           </section>
 
           {isAdmin && <MasterListsSection listKeys={["handled_by", "caterer", "decorator"]} />}
+
+          {isAdmin && (
+            <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+              <div className="mb-5 border-b border-ink-muted/10 pb-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Reset a User's Password</h2>
+                <p className="mt-1 text-xs text-ink-muted etched">
+                  Issues a one-time temporary password and signs the user out everywhere. They'll be
+                  prompted to choose their own password on next sign-in. Use this when a user has lost
+                  access and email-based reset isn't an option.
+                </p>
+              </div>
+
+              {resetError && (
+                <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">
+                  {resetError}
+                </div>
+              )}
+
+              {tempPassword ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-status-awaitingApproval etched">
+                    ⚠ Share this password with {tempPassword.email} securely — it is shown only once.
+                  </p>
+                  <code className="carved block rounded-xl bg-marble-shadow/40 px-4 py-2.5 font-mono text-sm text-ink-primary">
+                    {tempPassword.temporaryPassword}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => setTempPassword(null)}
+                    className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="carved min-w-0 flex-1 rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    disabled={adminReset.isPending || !resetEmail.trim()}
+                    onClick={() => adminReset.mutate(resetEmail.trim())}
+                    className="carved-btn-sage shrink-0 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                  >
+                    {adminReset.isPending ? "Resetting…" : "Reset password"}
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
     </div>

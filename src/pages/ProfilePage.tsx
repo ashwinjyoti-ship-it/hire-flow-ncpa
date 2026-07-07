@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABELS } from "../lib/roles";
+import { apiPost } from "../lib/api";
 
 type MfaStatus = { enrolled: boolean; recoveryCodesRemaining?: number };
 type SetupResponse = { secret: string; uri: string };
@@ -9,6 +11,8 @@ type ConfirmResponse = { recoveryCodes: string[] };
 
 export function ProfilePage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const forcePasswordChange = searchParams.get("forcePasswordChange") === "1";
   const [mfaStatus, setMfaStatus] = useState<MfaStatus | null>(null);
   const [setup, setSetup] = useState<SetupResponse | null>(null);
   const [setupPassword, setSetupPassword] = useState("");
@@ -18,6 +22,13 @@ export function ProfilePage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,11 +115,38 @@ export function ProfilePage() {
     setBusy(false);
   }
 
+  async function onChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwError(null);
+    setPwMsg(null);
+    if (newPassword !== confirmPassword) {
+      setPwError("New passwords don't match.");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      await apiPost("/auth/password/change", { currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPwMsg("Password changed. You've been signed out of any other devices.");
+    } catch (err) {
+      setPwError((err as Error).message);
+    }
+    setPwBusy(false);
+  }
+
   if (!user) return null;
 
   return (
     <div>
       <PageHeader title="Profile & Security" subtitle="Manage your account, password, and multi-factor authentication" />
+
+      {forcePasswordChange && (
+        <div role="alert" className="mb-6 rounded-lg bg-status-awaitingApproval/10 px-4 py-3 text-sm text-status-awaitingApproval etched">
+          Your password was reset by an administrator. Please choose a new password below before continuing.
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
@@ -227,6 +265,69 @@ export function ProfilePage() {
               </button>
             </div>
           )}
+        </section>
+
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-sage etched">Change Password</h2>
+          <p className="mb-4 text-xs text-ink-muted etched">
+            Changing your password signs you out of any other devices.
+          </p>
+
+          {pwMsg && (
+            <div role="status" className="mb-4 rounded-lg bg-sage/10 px-3 py-2 text-xs text-sage-text">
+              {pwMsg}
+            </div>
+          )}
+          {pwError && (
+            <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">
+              {pwError}
+            </div>
+          )}
+
+          <form onSubmit={onChangePassword}>
+            <label className="mb-3 block">
+              <span className="mb-1.5 block text-xs font-semibold text-sage etched">Current password</span>
+              <input
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                autoComplete="current-password"
+              />
+            </label>
+            <label className="mb-3 block">
+              <span className="mb-1.5 block text-xs font-semibold text-sage etched">New password</span>
+              <input
+                type="password"
+                required
+                minLength={10}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="mb-4 block">
+              <span className="mb-1.5 block text-xs font-semibold text-sage etched">Confirm new password</span>
+              <input
+                type="password"
+                required
+                minLength={10}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                autoComplete="new-password"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={pwBusy || !currentPassword || newPassword.length < 10}
+              className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+            >
+              {pwBusy ? "Changing…" : "Change password"}
+            </button>
+          </form>
         </section>
       </div>
     </div>

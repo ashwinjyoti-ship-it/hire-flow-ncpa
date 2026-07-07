@@ -1,6 +1,35 @@
 import type { Env } from "../env";
 import { getMailFrom, getResendApiKey } from "./secrets";
 
+/**
+ * Send a single transactional email immediately (not queued via the
+ * notifications table). Used for time-sensitive flows like password reset
+ * links, where waiting for the next cron dispatch would be unacceptable.
+ */
+export async function sendTransactionalEmail(
+  env: Pick<Env, "DB" | "MAIL_FROM" | "RESEND_API_KEY">,
+  message: { to: string; subject: string; text: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const db = env.DB;
+  const apiKey = await getResendApiKey(db, env);
+  if (!apiKey) return { ok: false, error: "Resend is not configured." };
+  const from = await getMailFrom(db, env);
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: message.to, subject: message.subject, text: message.text }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, error: body.slice(0, 250) || `Resend rejected ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 type PendingEmail = {
   id: string;
   title: string;

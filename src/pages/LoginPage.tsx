@@ -1,9 +1,16 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { MarbleBackdrop } from "../components/MarbleBackdrop";
 
 type Phase = "credentials" | "mfa";
 
+function destinationFor(mustChangePassword?: boolean): string {
+  return mustChangePassword ? "/profile?forcePasswordChange=1" : "/dashboard";
+}
+
 export function LoginPage() {
+  const location = useLocation();
+  const stateMessage = (location.state as { message?: string } | null)?.message ?? null;
   const [phase, setPhase] = useState<Phase>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,6 +35,7 @@ export function LoginPage() {
         error?: string;
         mfaRequired?: boolean;
         sessionId?: string;
+        mustChangePassword?: boolean;
       };
       if (!res.ok) {
         setError(data.error ?? "Sign-in failed.");
@@ -40,7 +48,7 @@ export function LoginPage() {
         setLoading(false);
         return;
       }
-      window.location.href = "/dashboard";
+      window.location.href = destinationFor(data.mustChangePassword);
     } catch {
       setError("Network error.");
       setLoading(false);
@@ -58,13 +66,13 @@ export function LoginPage() {
         credentials: "include",
         body: JSON.stringify({ sessionId: mfaSessionId, code, useRecovery }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; mustChangePassword?: boolean };
       if (!res.ok) {
         setError(data.error ?? "Invalid code.");
         setLoading(false);
         return;
       }
-      window.location.href = "/dashboard";
+      window.location.href = destinationFor(data.mustChangePassword);
     } catch {
       setError("Network error.");
       setLoading(false);
@@ -90,6 +98,11 @@ export function LoginPage() {
 
         {phase === "credentials" ? (
           <form onSubmit={onLogin} className="carved-card rounded-2xl bg-marble-highlight/60 p-6 backdrop-blur-sm">
+            {stateMessage && (
+              <div role="status" className="mb-4 rounded-lg bg-sage/10 px-3 py-2 text-xs text-sage-text">
+                {stateMessage}
+              </div>
+            )}
             <label className="mb-4 block">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage etched">Email</span>
               <input
@@ -102,7 +115,7 @@ export function LoginPage() {
                 autoComplete="email"
               />
             </label>
-            <label className="mb-4 block">
+            <label className="mb-2 block">
               <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage etched">Password</span>
               <input
                 type="password"
@@ -113,6 +126,9 @@ export function LoginPage() {
                 autoComplete="current-password"
               />
             </label>
+            <Link to="/forgot-password" className="mb-4 block text-right text-xs text-ink-muted hover:text-sage-text">
+              Forgot password?
+            </Link>
             {error && (
               <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">
                 {error}
