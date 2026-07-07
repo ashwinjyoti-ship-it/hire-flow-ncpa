@@ -1,16 +1,18 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { getEventStatusSurface } from "../lib/event-status-surface";
-import { apiGet, apiPatch } from "../lib/api";
+import { apiGet } from "../lib/api";
 import { formatDate } from "../lib/use-lookups";
 import {
   buildEventCommandCards,
+  getEventOperationsLink,
   groupTasksByTiming,
   groupTasksByWorkflowLane,
   getTaskUrgencyLabels,
+  getTaskWorkLink,
   getTimingGroup,
   getWorkflowFamily,
   WORKFLOW_LABELS,
@@ -37,7 +39,6 @@ const TASK_STATUS_FILTERS = [
 ] as const;
 
 export function TasksPage() {
-  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseView(searchParams.get("view"));
   const [status, setStatus] = useState("active");
@@ -48,11 +49,6 @@ export function TasksPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["tasks", apiStatus, mine],
     queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=${apiStatus}&mine=${mine ? "1" : "0"}`),
-  });
-
-  const updateTask = useMutation({
-    mutationFn: async (args: { id: string; status: TaskRow["status"] }) => apiPatch(`/tasks/${args.id}`, { status: args.status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const tasks = useMemo(() => {
@@ -122,17 +118,17 @@ export function TasksPage() {
       ) : tasks.length === 0 ? (
         <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">No tasks in this view.</div>
       ) : view === "cards" ? (
-        <EventCommandCards tasks={tasks} today={today} updateTask={updateTask} />
+        <EventCommandCards tasks={tasks} today={today} />
       ) : view === "queue" ? (
-        <TodaysWorkQueue tasks={tasks} today={today} updateTask={updateTask} />
+        <TodaysWorkQueue tasks={tasks} today={today} />
       ) : (
-        <WorkflowLanes tasks={tasks} today={today} updateTask={updateTask} />
+        <WorkflowLanes tasks={tasks} today={today} />
       )}
     </div>
   );
 }
 
-function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
+function EventCommandCards({ tasks, today }: TaskViewProps) {
   const cards = buildEventCommandCards(tasks, today);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   function toggleCard(id: string) {
@@ -164,7 +160,7 @@ function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
                     </span>
                   </div>
                   <h3 className="truncate text-base font-semibold text-ink-primary etched-deep">
-                    {card.event.id ? <Link to={`/events/${card.event.id}`} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
+                    {card.event.id ? <Link to={getEventOperationsLink(card.event.id)} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
                   </h3>
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
                     {card.event.startDate && <span>{formatEventDate(card.event.startDate, card.event.endDate)}</span>}
@@ -177,7 +173,9 @@ function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">Next</span>
                         {uniqueUrgentLabels.map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
                       </div>
-                      <div className="mt-1 truncate text-xs font-semibold text-ink-primary etched-deep">{nextTask.title}</div>
+                      <Link to={getTaskWorkLink(nextTask)} className="mt-1 block truncate text-xs font-semibold text-ink-primary etched-deep hover:text-sage-text">
+                        {nextTask.title}
+                      </Link>
                       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-ink-muted etched">
                         <span>{workflowLabel(getWorkflowFamily(nextTask))}</span>
                         {nextTask.due_date && <span>Target {formatDate(nextTask.due_date)}</span>}
@@ -204,7 +202,7 @@ function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
                   <section key={group.key}>
                     <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{workflowLabel(group.key)}</h4>
                     <div className="space-y-2">
-                      {group.tasks.map((task) => <TaskMiniCard key={task.id} task={task} today={today} updateTask={updateTask} />)}
+                      {group.tasks.map((task) => <TaskMiniCard key={task.id} task={task} today={today} />)}
                     </div>
                   </section>
                 ))}
@@ -217,7 +215,7 @@ function EventCommandCards({ tasks, today, updateTask }: TaskViewProps) {
   );
 }
 
-function TodaysWorkQueue({ tasks, today, updateTask }: TaskViewProps) {
+function TodaysWorkQueue({ tasks, today }: TaskViewProps) {
   const groups = groupTasksByTiming(tasks, today);
   return (
     <div className="space-y-4">
@@ -228,7 +226,7 @@ function TodaysWorkQueue({ tasks, today, updateTask }: TaskViewProps) {
             <span className="text-xs text-ink-muted etched">{group.tasks.length}</span>
           </div>
           <div className="space-y-2">
-            {group.tasks.map((task) => <TaskExecutionRow key={task.id} task={task} today={today} updateTask={updateTask} />)}
+            {group.tasks.map((task) => <TaskExecutionRow key={task.id} task={task} today={today} />)}
           </div>
         </section>
       ))}
@@ -236,7 +234,7 @@ function TodaysWorkQueue({ tasks, today, updateTask }: TaskViewProps) {
   );
 }
 
-function WorkflowLanes({ tasks, today, updateTask }: TaskViewProps) {
+function WorkflowLanes({ tasks, today }: TaskViewProps) {
   const lanes = groupTasksByWorkflowLane(tasks, today);
   return (
     <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -247,7 +245,7 @@ function WorkflowLanes({ tasks, today, updateTask }: TaskViewProps) {
             <span className="rounded-full bg-marble-shadow/50 px-2 py-0.5 text-[11px] font-medium text-ink-muted etched">{lane.tasks.length}</span>
           </div>
           <div className="space-y-2">
-            {lane.tasks.map((task) => <LaneTaskCard key={task.id} task={task} today={today} updateTask={updateTask} />)}
+            {lane.tasks.map((task) => <LaneTaskCard key={task.id} task={task} today={today} />)}
           </div>
         </section>
       ))}
@@ -258,34 +256,34 @@ function WorkflowLanes({ tasks, today, updateTask }: TaskViewProps) {
 type TaskViewProps = {
   tasks: TaskRow[];
   today: string;
-  updateTask: UseMutationResult<unknown, Error, { id: string; status: TaskRow["status"] }>;
 };
 
-function TaskMiniCard({ task, today, updateTask }: TaskCardProps) {
+function TaskMiniCard({ task, today }: TaskCardProps) {
   return (
     <div className="rounded-lg bg-marble-highlight/75 px-3 py-2 ring-1 ring-ink-muted/10">
       <TaskCardMain task={task} today={today} compact={false} />
-      <TaskActions task={task} updateTask={updateTask} />
     </div>
   );
 }
 
-function TaskExecutionRow({ task, today, updateTask }: TaskCardProps) {
+function TaskExecutionRow({ task, today }: TaskCardProps) {
   const surface = getEventStatusSurface(task.event_status);
   return (
     <div className={`grid gap-3 rounded-xl px-4 py-3 md:grid-cols-[1fr_auto] md:items-center ${surface.row}`}>
       <TaskCardMain task={task} today={today} compact={false} showEvent />
-      <TaskActions task={task} updateTask={updateTask} />
+      <OpenWorkLink task={task} />
     </div>
   );
 }
 
-function LaneTaskCard({ task, today, updateTask }: TaskCardProps) {
+function LaneTaskCard({ task, today }: TaskCardProps) {
   const surface = getEventStatusSurface(task.event_status);
   return (
     <div className={`rounded-lg px-3 py-2 ${surface.row}`}>
       <TaskCardMain task={task} today={today} compact showEvent />
-      <TaskActions task={task} updateTask={updateTask} compact />
+      <div className="mt-2 flex justify-end">
+        <OpenWorkLink task={task} compact />
+      </div>
     </div>
   );
 }
@@ -293,7 +291,6 @@ function LaneTaskCard({ task, today, updateTask }: TaskCardProps) {
 type TaskCardProps = {
   task: TaskRow;
   today: string;
-  updateTask: TaskViewProps["updateTask"];
 };
 
 function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskRow; today: string; compact: boolean; showEvent?: boolean }) {
@@ -310,36 +307,22 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
         {task.source_rule && <span>{task.source_rule.replace(/_/g, " ")}</span>}
         {task.due_date && <span>Target {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}
-        {showEvent && task.event_id && task.event_title && <Link to={`/events/${task.event_id}`} className="text-sage-text underline">{task.event_title}</Link>}
+        {showEvent && task.event_id && task.event_title && <Link to={getTaskWorkLink(task)} className="text-sage-text underline">{task.event_title}</Link>}
       </div>
       {!compact && task.description && <p className="mt-2 text-xs text-ink-secondary etched">{task.description}</p>}
     </div>
   );
 }
 
-function TaskActions({ task, updateTask, compact = false }: { task: TaskRow; updateTask: TaskCardProps["updateTask"]; compact?: boolean }) {
+function OpenWorkLink({ task, compact = false }: { task: TaskRow; compact?: boolean }) {
   if (task.status === "completed" || task.status === "cancelled") return null;
   return (
-    <div className={"mt-3 flex gap-2 " + (compact ? "justify-end" : "md:mt-0")}>
-      {task.status === "open" && (
-        <button
-          type="button"
-          disabled={updateTask.isPending}
-          onClick={() => updateTask.mutate({ id: task.id, status: "in_progress" })}
-          className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
-        >
-          Start
-        </button>
-      )}
-      <button
-        type="button"
-        disabled={updateTask.isPending}
-        onClick={() => updateTask.mutate({ id: task.id, status: "completed" })}
-        className="carved-btn-sage rounded-full bg-sage-btn px-3 py-1.5 text-xs font-semibold text-sage-text etched"
-      >
-        Complete
-      </button>
-    </div>
+    <Link
+      to={getTaskWorkLink(task)}
+      className={"carved-btn-sage rounded-full bg-sage-btn px-3 py-1.5 text-xs font-semibold text-sage-text etched " + (compact ? "" : "mt-3 md:mt-0")}
+    >
+      Open work
+    </Link>
   );
 }
 

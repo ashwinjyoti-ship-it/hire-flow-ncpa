@@ -11,6 +11,10 @@ export type TaskLike = {
   event_venues?: string | null;
   event_owner?: string | null;
   task_type: "automatic" | "manual";
+  source_checklist_item_id?: string | null;
+  source_module?: "operations" | "accounts" | null;
+  source_field_key?: string | null;
+  source_label?: string | null;
   source_rule: string | null;
   assignee_name: string | null;
   due_date: string | null;
@@ -78,6 +82,19 @@ export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
   if (haystack.includes("account") || haystack.includes("tax") || haystack.includes("ledger") || haystack.includes("tds") || haystack.includes("refund")) return "accounts";
   if (haystack.includes("feedback") || haystack.includes("post") || haystack.includes("report")) return "postEvent";
   return "manual";
+}
+
+export function getEventOperationsLink(eventId: string | null | undefined): string {
+  if (!eventId) return "/tasks";
+  return `/events/${eventId}?tab=operations`;
+}
+
+export function getTaskWorkLink(task: Pick<TaskLike, "event_id" | "source_module" | "source_field_key" | "source_rule" | "title">): string {
+  if (!task.event_id) return "/tasks";
+  const inferred = inferTaskWorkTarget(task);
+  const tab = inferred.module;
+  const field = inferred.fieldKey ? `&field=${encodeURIComponent(inferred.fieldKey)}` : "";
+  return `/events/${task.event_id}?tab=${tab}${field}`;
 }
 
 export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday()): EventCommandCard[] {
@@ -193,6 +210,28 @@ function isSoonBlocker(task: TaskLike, todayIso: string): boolean {
   const daysToEvent = daysBetween(todayIso, task.event_start_date);
   if (daysToEvent < 0 || daysToEvent > 14) return false;
   return getWorkflowFamily(task) !== "manual";
+}
+
+function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_field_key" | "source_rule" | "title">): { module: "operations" | "accounts"; fieldKey: string | null } {
+  if ((task.source_module === "operations" || task.source_module === "accounts") && task.source_field_key) {
+    return { module: task.source_module, fieldKey: task.source_field_key };
+  }
+
+  const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
+  if (haystack.includes("account") || haystack.includes("ledger") || haystack.includes("tds") || haystack.includes("tax") || haystack.includes("refund")) {
+    return { module: "accounts", fieldKey: "final_file_received" };
+  }
+  if (haystack.includes("approval")) return { module: "operations", fieldKey: null };
+  if (haystack.includes("signed")) return { module: "operations", fieldKey: "confirmation_signed_received" };
+  if (haystack.includes("confirmation") || haystack.includes("letter")) return { module: "operations", fieldKey: "confirmation_made" };
+  if (haystack.includes("proforma") || haystack.includes("invoice")) return { module: "operations", fieldKey: "proforma_invoice" };
+  if (haystack.includes("installment") || haystack.includes("instalment") || haystack.includes("payment") || haystack.includes("deposit")) {
+    return { module: "operations", fieldKey: "full_payment_received" };
+  }
+  if (haystack.includes("technical") || haystack.includes("meeting")) return { module: "operations", fieldKey: "technical_meeting_date" };
+  if (haystack.includes("onstage") || haystack.includes("stage")) return { module: "operations", fieldKey: "onstage_received_from_client" };
+  if (haystack.includes("feedback")) return { module: "operations", fieldKey: "feedback_received" };
+  return { module: "operations", fieldKey: null };
 }
 
 function priorityRank(priority: TaskLike["priority"]): number {
