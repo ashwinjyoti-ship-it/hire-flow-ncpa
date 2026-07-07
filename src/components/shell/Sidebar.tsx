@@ -1,5 +1,6 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import clsx from "clsx";
+import { useEffect } from "react";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
@@ -9,33 +10,83 @@ const NAV = [
   { to: "/settings", label: "Settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
-export function Sidebar() {
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+};
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (mobileOpen) onClose?.();
+  }, [location.pathname]);
+
   return (
-    <nav className="sticky top-24 hidden w-56 shrink-0 lg:block" aria-label="Primary">
-      <div className="carved-header rounded-2xl bg-marble-highlight/50 p-3 backdrop-blur-sm">
-        <ul className="space-y-1">
-          {NAV.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sage-btn text-sage-text carved-btn-sage etched"
-                      : "text-ink-secondary hover:bg-marble-shadow/40"
-                  )
-                }
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0">
-                  <path d={item.icon} strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+    <>
+      <nav className="sticky top-24 hidden w-56 shrink-0 lg:block" aria-label="Primary">
+        <SidebarCard onNavigate={onClose} />
+      </nav>
+
+      <div className={clsx("fixed inset-0 z-[60] lg:hidden", mobileOpen ? "pointer-events-auto" : "pointer-events-none")}>
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          onClick={onClose}
+          className={clsx(
+            "absolute inset-0 bg-ink-primary/20 backdrop-blur-[2px] transition-opacity",
+            mobileOpen ? "opacity-100" : "opacity-0"
+          )}
+        />
+        <div
+          className={clsx(
+            "absolute left-4 top-20 w-[min(18rem,calc(100vw-2rem))] transition-transform duration-200 ease-out sm:top-24",
+            mobileOpen ? "translate-x-0" : "-translate-x-[120%]"
+          )}
+        >
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-sage etched">Navigation</div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="carved-btn rounded-full bg-neutral-btn px-3 py-1 text-xs font-medium text-ink-secondary etched"
+            >
+              Close
+            </button>
+          </div>
+          <SidebarCard onNavigate={onClose} />
+        </div>
       </div>
-    </nav>
+    </>
+  );
+}
+
+function SidebarCard({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <div className="carved-header rounded-2xl bg-marble-highlight/70 p-3 backdrop-blur-sm">
+      <ul className="space-y-1">
+        {NAV.map((item) => (
+          <li key={item.to}>
+            <NavLink
+              to={item.to}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                clsx(
+                  "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-sage-btn text-sage-text carved-btn-sage etched"
+                    : "text-ink-secondary hover:bg-marble-shadow/40"
+                )
+              }
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="shrink-0">
+                <path d={item.icon} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {item.label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

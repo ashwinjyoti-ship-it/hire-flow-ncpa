@@ -77,6 +77,6 @@ describe("task workflow helpers", () => {
 
   it("keeps task urgency separate from event status surfaces", () => {
     expect(getTaskUrgencyLabels(task({ id: "a", title: "Late", due_date: "2026-07-05", assignee_name: null }), today)).toEqual(["Overdue", "Unassigned"]);
-    expect(getTaskUrgencyLabels(task({ id: "b", title: "Today", due_date: today, priority: "high" }), today)).toEqual(["Due today", "High priority"]);
+    expect(getTaskUrgencyLabels(task({ id: "b", title: "Today", due_date: today, priority: "high" }), today)).toEqual(["Target today", "High priority"]);
   });
 });

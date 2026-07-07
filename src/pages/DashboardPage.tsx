@@ -24,6 +24,7 @@ type TasksResponse = {
     title: string;
     event_id: string | null;
     event_title: string | null;
+    organisation_name: string | null;
     event_status: EventStatus | null;
     due_date: string | null;
     priority: "high" | "medium" | "low";
@@ -87,9 +88,16 @@ export function DashboardPage() {
               {lifecycleQueue.slice(0, 8).map((e) => (
                 <li key={e.id}>
                   <Link to={`/events/${e.event_id}`} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="flex-1 truncate">
-                      <span className="block text-sm font-medium text-ink-primary etched-deep">{e.organisation_name ?? e.title}</span>
-                      <span className="block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                        {e.organisation_name ?? e.title}
+                      </span>
+                      {e.organisation_name && e.title !== e.organisation_name && (
+                        <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                          {e.title}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
                     </span>
                     <StatusBadge status={e.milestone_type} />
                   </Link>
@@ -111,9 +119,17 @@ export function DashboardPage() {
               {tasks.slice(0, 8).map((task) => (
                 <li key={task.id}>
                   <Link to={task.event_id ? `/events/${task.event_id}` : "/tasks"} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="flex-1 truncate">
-                      <span className="block text-sm font-medium text-ink-primary etched-deep">{task.title}</span>
-                      <span className="block text-[11px] text-ink-muted etched">{task.event_title ?? "Unlinked task"} · {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                        {task.organisation_name ?? task.event_title ?? "Unlinked task"}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                        {task.title}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">
+                        {task.event_title && task.event_title !== task.organisation_name ? `${task.event_title} · ` : ""}
+                        {task.due_date ? `Target ${formatDate(task.due_date)}` : "No target date"}
+                      </span>
                     </span>
                     {task.event_status && <StatusBadge status={task.event_status} />}
                   </Link>

@@ -32,7 +32,7 @@ describe("frontend regression guards", () => {
   it("keeps notification flyout above routed page controls", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
-    expect(source).toContain("relative z-50");
+    expect(source).toContain("sticky top-0 z-50");
     expect(source).toContain("z-[70]");
   });
 
@@ -50,6 +50,28 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("const VenueTimeline");
     expect(dashboard).not.toContain("view=list");
     expect(calendar).toContain("lifecycle");
+  });
+
+  it("keeps calendar month prominent without a today shortcut", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("{title}");
+    expect(calendar).toContain("This month");
+    expect(calendar).not.toContain("Jump to today");
+  });
+
+  it("keeps dashboard task rows tied to a specific event", () => {
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(dashboard).toContain("task.event_title");
+    expect(dashboard).toContain("task.event_title !== task.organisation_name");
+  });
+
+  it("keeps dashboard lifecycle rows tied to a specific event", () => {
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(dashboard).toContain("e.organisation_name && e.title !== e.organisation_name");
+    expect(dashboard).toContain("{e.title}");
   });
 
   it("keeps task command cards collapsible by default", () => {

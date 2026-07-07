@@ -109,7 +109,6 @@ export function CalendarPage() {
     <div>
       <PageHeader
         title={view === "lifecycle" ? "Lifecycle Calendar" : "Show Calendar"}
-        subtitle={title}
         actions={showCreate ? (
           <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
             + New Event
@@ -118,8 +117,9 @@ export function CalendarPage() {
       />
 
       {/* Controls */}
-      <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
-        <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
+      <div className="carved-header mb-6 grid grid-cols-1 items-center gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm xl:grid-cols-[1fr_auto_1fr]">
+        <div className="flex justify-center xl:justify-start">
+          <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
           {(["lifecycle", "show"] as const).map((v) => (
             <button
               key={v}
@@ -130,20 +130,24 @@ export function CalendarPage() {
               {v === "show" ? "Show Calendar" : "Lifecycle"}
             </button>
           ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous month">
+        <div className="mx-auto flex items-center gap-3 rounded-full bg-marble-shadow/30 px-2 py-1">
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous month">
             <Chevron dir="left" />
           </button>
-          <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Jump to today</button>
-            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next month">
+          <div className="min-w-[9rem] text-center">
+            <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">This month</div>
+          </div>
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next month">
             <Chevron dir="right" />
           </button>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
           <input
             type="text"
             value={filters.q}
@@ -242,31 +246,31 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
   const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
   return (
     <div>
-      <div className="mb-3 grid grid-cols-7 gap-3">
+      <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-3">
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {days.map((d) => {
           const key = isoDate(d);
           const entries = byDate[key] ?? [];
           const isToday = key === today;
           const inMonth = d.getMonth() === cursor.getMonth();
           return (
-            <article key={key} className={"min-h-[144px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
+            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex items-center justify-between gap-2">
-                {entries.length > 0 ? <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
-                <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                {entries.length > 0 ? <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1 sm:space-y-1.5">
                 {entries.slice(0, 5).map((entry) => (
                   <LifecycleChip key={entry.id} entry={entry} />
                 ))}
                 {entries.length > 5 && (
-                  <div className="rounded-md bg-marble-shadow/50 px-2 py-1 text-[10px] font-medium text-ink-muted etched">
+                  <div className="truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-[10px] font-medium text-ink-muted etched sm:px-2">
                     +{entries.length - 5} more
                   </div>
                 )}
@@ -284,11 +288,11 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
   return (
     <Link
       to={`/events/${entry.event_id}`}
-      className={"carved-card block rounded-md px-2 py-1 text-left " + surface.chip}
+      className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
         <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + lifecycleDot(entry.milestone_type)} />
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">
+        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
       </div>
@@ -305,12 +309,12 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
   const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
   return (
     <div>
-      <div className="mb-3 grid grid-cols-7 gap-3">
+      <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-3">
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {days.map((d) => {
           const key = isoDate(d);
           const entries = byDate[key] ?? [];
@@ -327,17 +331,17 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           }
           const chips = Array.from(byOrg.values());
           return (
-            <article key={key} className={"min-h-[128px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
+            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex justify-end">
-                <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1 sm:space-y-1.5">
                 {chips.map((c, i) => (
-                  <button key={i} type="button" onClick={() => onPick(c.entry)} className={"carved-card flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left " + getEventStatusSurface(c.status).chip}>
+                  <button key={i} type="button" onClick={() => onPick(c.entry)} className={"carved-card flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left sm:gap-1.5 sm:px-2 " + getEventStatusSurface(c.status).chip}>
                     <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + getEventStatusSurface(c.status).dot} />
-                    <span className="truncate text-[11px] font-medium etched">{c.name}</span>
+                    <span className="min-w-0 truncate text-[10px] font-medium etched sm:text-[11px]">{c.name}</span>
                   </button>
                 ))}
               </div>
