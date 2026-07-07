@@ -39,7 +39,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             type="button"
             onClick={onMenuToggle}
             aria-label="Open navigation menu"
-            className="carved-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-btn text-ink-secondary lg:hidden"
+            className="carved-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-btn text-ink-secondary md:hidden"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />

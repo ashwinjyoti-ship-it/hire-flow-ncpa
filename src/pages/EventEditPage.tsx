@@ -8,6 +8,7 @@ import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../..
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
+const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
 
 type OrgListItem = { id: string; name: string };
 
@@ -140,15 +141,17 @@ export function EventEditPage() {
       <PageHeader title={isEdit ? "Edit Event" : "New Event"} subtitle={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`} />
 
       {/* Step indicator */}
-      <div className="mb-6 flex gap-1">
+      <div className="mb-6 flex gap-1.5">
         {STEPS.map((label, i) => (
           <button
             key={label}
             type="button"
             onClick={() => setStep(i)}
-            className={"flex-1 rounded-full px-3 py-1.5 text-xs font-medium etched " + (i === step ? "bg-sage-btn text-sage-text carved-btn-sage" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
+            aria-current={i === step ? "step" : undefined}
+            className={"flex min-h-10 flex-1 items-center justify-center rounded-full px-2 py-1.5 text-center text-xs font-medium leading-tight etched md:px-3 " + (i === step ? "bg-sage-btn text-sage-text carved-btn-sage" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
           >
-            {i + 1}. {label}
+            <span className="hidden lg:inline">{i + 1}. {label}</span>
+            <span className="lg:hidden">{i + 1}. {STEP_SHORT_LABELS[i]}</span>
           </button>
         ))}
       </div>
