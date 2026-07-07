@@ -357,6 +357,16 @@ export function EventEditPage() {
                   <input type="time" value={(reqs.loaders_call_time as string) ?? ""} onChange={(e) => setReq("loaders_call_time", e.target.value || null)} className="carved input" />
                 </Field>
               )}
+              <Field label="House Seats Release">
+                <YesNoSelect value={(reqs.house_seats_release as string) ?? ""} onChange={(v) => setReq("house_seats_release", v || null)} yesValue="Yes" noValue="No" />
+              </Field>
+              <Field label="House Tickets">
+                <select value={(reqs.house_tickets as string) ?? ""} onChange={(e) => setReq("house_tickets", e.target.value || null)} className="carved input">
+                  <option value="">Select…</option>
+                  <option value="Client pass">Client pass</option>
+                  <option value="NCPA pass">NCPA pass</option>
+                </select>
+              </Field>
             </div>
           </section>
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">

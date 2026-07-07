@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
@@ -21,9 +21,13 @@ export function SettingsPage() {
   const { data, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const [apiKey, setApiKey] = useState("");
   const [mailFrom, setMailFrom] = useState("");
-  const [testEmail, setTestEmail] = useState(user?.email ?? "");
+  const [testEmail, setTestEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data?.mailFrom) setMailFrom(data.mailFrom);
+  }, [data?.mailFrom]);
 
   const saveKey = useMutation({
     mutationFn: async (key: string) => {
@@ -101,8 +105,6 @@ export function SettingsPage() {
     <div>
       <PageHeader title="Settings" subtitle="Application configuration (admin)" />
 
-      {isAdmin && <MasterListsSection listKeys={["handled_by", "caterer", "decorator"]} />}
-
       {msg && (
         <div role="status" className="mb-4 rounded-lg bg-sage/10 px-4 py-2 text-sm text-sage-text">
           {msg}
@@ -117,112 +119,115 @@ export function SettingsPage() {
       {isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="space-y-6">
           {/* Resend / email configuration */}
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Email — Resend</h2>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-ink-muted/10 pb-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Email Configuration</h2>
+                <p className="mt-1 text-xs text-ink-muted etched">
+                  Configure the notification sender, Resend API key, and an optional test message.
+                </p>
+              </div>
               <ConfiguredBadge configured={data?.resend.configured ?? false} />
             </div>
-            <p className="mb-4 text-xs text-ink-muted etched">
-              Email notifications use Resend. Until a key is configured, email sending gracefully no-ops (logged); in-app notifications work regardless.
-            </p>
-            {data?.resend.configured && (
-              <p className="mb-4 text-xs text-ink-secondary etched">
-                Current key: <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">{data.resend.keyHint}</code>{" "}
-                <span className="text-ink-muted">(source: {data.resend.source})</span>
-              </p>
-            )}
 
             {isAdmin ? (
-              <>
-                <label className="mb-4 block">
-                  <span className="mb-1.5 block text-xs font-semibold text-sage etched">Resend API key</span>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="re_…"
-                    className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-                    autoComplete="off"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={saveKey.isPending || apiKey.length < 10}
-                    onClick={() => saveKey.mutate(apiKey)}
-                    className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
-                  >
-                    {saveKey.isPending ? "Saving…" : "Save key"}
-                  </button>
+              <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+                <div className="min-w-0">
+                  <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Resend API</h3>
                   {data?.resend.configured && (
-                    <button
-                      type="button"
-                      disabled={clearKey.isPending}
-                      onClick={() => clearKey.mutate()}
-                      className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
-                    >
-                      {clearKey.isPending ? "Clearing…" : "Clear"}
-                    </button>
+                    <p className="mb-3 text-xs text-ink-secondary etched">
+                      Current key: <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">{data.resend.keyHint}</code>{" "}
+                      <span className="text-ink-muted">(source: {data.resend.source})</span>
+                    </p>
                   )}
-                </div>
-
-                <div className="mt-6 border-t border-ink-muted/10 pt-4">
-                  <span className="mb-1.5 block text-xs font-semibold text-sage etched">Send a test email</span>
-                  <div className="flex gap-2">
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">API key</span>
                     <input
-                      type="email"
-                      value={testEmail}
-                      onChange={(e) => setTestEmail(e.target.value)}
-                      className="carved flex-1 rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-                      placeholder="you@example.com"
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="re_…"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      autoComplete="off"
                     />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      disabled={sendTest.isPending || !data?.resend.configured || !testEmail}
-                      onClick={() => sendTest.mutate(testEmail)}
-                      className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                      disabled={saveKey.isPending || apiKey.length < 10}
+                      onClick={() => saveKey.mutate(apiKey)}
+                      className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
                     >
-                      {sendTest.isPending ? "Sending…" : "Send test"}
+                      {saveKey.isPending ? "Saving…" : "Save key"}
                     </button>
+                    {data?.resend.configured && (
+                      <button
+                        type="button"
+                        disabled={clearKey.isPending}
+                        onClick={() => clearKey.mutate()}
+                        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                      >
+                        {clearKey.isPending ? "Clearing…" : "Clear"}
+                      </button>
+                    )}
                   </div>
                 </div>
-              </>
+
+                <div className="min-w-0 border-t border-ink-muted/10 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                  <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Sender & Test</h3>
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">From address</span>
+                    <input
+                      type="text"
+                      value={mailFrom}
+                      onChange={(e) => setMailFrom(e.target.value)}
+                      placeholder="NCPA Venue Hire <noreply@example.com>"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={saveMailFrom.isPending || !mailFrom.trim() || mailFrom === data?.mailFrom}
+                    onClick={() => saveMailFrom.mutate(mailFrom.trim())}
+                    className="carved-btn-sage mb-5 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                  >
+                    {saveMailFrom.isPending ? "Saving…" : "Save from address"}
+                  </button>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">Send a test email</span>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="email"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                        className="carved min-w-0 flex-1 rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                        placeholder="recipient@example.com"
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        disabled={sendTest.isPending || !data?.resend.configured || !testEmail.trim()}
+                        onClick={() => sendTest.mutate(testEmail.trim())}
+                        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                      >
+                        {sendTest.isPending ? "Sending…" : "Send test"}
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              </div>
             ) : (
-              <p className="text-xs text-ink-muted etched">Only admins can configure the Resend key.</p>
+              <div>
+                <p className="text-sm text-ink-secondary etched">{data?.mailFrom ?? "—"}</p>
+                <p className="mt-1 text-xs text-ink-muted etched">Only admins can change email settings.</p>
+              </div>
             )}
           </section>
 
-          {/* Mail-from address */}
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">From Address</h2>
-            <p className="mb-4 text-xs text-ink-muted etched">The sender address for outgoing notifications. Use a verified domain in Resend.</p>
-            {isAdmin ? (
-              <>
-                <label className="mb-4 block">
-                  <span className="mb-1.5 block text-xs font-semibold text-sage etched">From</span>
-                  <input
-                    type="text"
-                    value={mailFrom || (data?.mailFrom ?? "")}
-                    onChange={(e) => setMailFrom(e.target.value)}
-                    placeholder="NCPA Venue Hire <noreply@example.com>"
-                    className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={saveMailFrom.isPending || !mailFrom}
-                  onClick={() => saveMailFrom.mutate(mailFrom)}
-                  className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
-                >
-                  {saveMailFrom.isPending ? "Saving…" : "Save from address"}
-                </button>
-              </>
-            ) : (
-              <p className="text-sm text-ink-secondary etched">{data?.mailFrom ?? "—"}</p>
-            )}
-          </section>
+          {isAdmin && <MasterListsSection listKeys={["handled_by", "caterer", "decorator"]} />}
         </div>
       )}
     </div>
@@ -262,12 +267,14 @@ function MasterListsSection({ listKeys }: { listKeys: string[] }) {
   const [err, setErr] = useState<string | null>(null);
 
   return (
-    <section className="carved-card mb-6 rounded-2xl bg-marble-highlight/50 p-6">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Master Lists</h2>
-      <p className="mb-4 text-xs text-ink-muted etched">
-        Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form.
-        Deactivating soft-deletes the option (existing events keep their value).
-      </p>
+    <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+      <div className="mb-5 border-b border-ink-muted/10 pb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Master Lists</h2>
+        <p className="mt-1 text-xs text-ink-muted etched">
+          Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form.
+          Deactivating soft-deletes the option (existing events keep their value).
+        </p>
+      </div>
       {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-1.5 text-xs text-status-cancelled">{err}</div>}
       <div className="grid gap-6 lg:grid-cols-3">
         {listKeys.map((listKey) => (
@@ -331,25 +338,29 @@ function ListEditor({
   const title = LIST_LABELS[listKey] ?? listKey[0]!.toUpperCase() + listKey.slice(1);
 
   return (
-    <div className="rounded-xl bg-marble-shadow/30 p-4">
+    <div className="min-w-0">
       <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">{title}</h3>
       {isLoading ? <p className="text-xs text-ink-muted etched">Loading…</p> : (
-        <ul className="mb-3 space-y-1.5">
+        <ul className="mb-3 divide-y divide-ink-muted/10 border-y border-ink-muted/10">
           {options.length === 0 && <li className="text-xs text-ink-muted etched">No options yet.</li>}
           {options.map((o) => (
-            <li key={o.id} className="flex items-center gap-2">
+            <li key={o.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center">
               {editingId === o.id ? (
                 <>
-                  <input value={editingValue} onChange={(e) => onEditChange(o.id, e.target.value)} className="carved flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                  <button type="button" disabled={update.isPending} onClick={() => update.mutate({ id: o.id, value: editingValue.trim() })} className="text-xs text-sage-text hover:underline">Save</button>
-                  <button type="button" onClick={() => onEditChange(null, "")} className="text-xs text-ink-muted hover:underline">Cancel</button>
+                  <input value={editingValue} onChange={(e) => onEditChange(o.id, e.target.value)} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
+                  <div className="flex shrink-0 gap-3">
+                    <button type="button" disabled={update.isPending} onClick={() => update.mutate({ id: o.id, value: editingValue.trim() })} className="text-xs text-sage-text hover:underline">Save</button>
+                    <button type="button" onClick={() => onEditChange(null, "")} className="text-xs text-ink-muted hover:underline">Cancel</button>
+                  </div>
                 </>
               ) : (
                 <>
-                  <span className={"flex-1 text-sm " + (o.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{o.value}</span>
-                  <button type="button" onClick={() => onEditChange(o.id, o.value)} className="text-xs text-sage-text hover:underline">Edit</button>
-                  <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: o.id, active: !o.is_active })} className="text-xs text-ink-secondary hover:underline">{o.is_active ? "Deactivate" : "Activate"}</button>
-                  <button type="button" disabled={remove.isPending} onClick={() => remove.mutate(o.id)} className="text-xs text-status-cancelled hover:underline">Delete</button>
+                  <span className={"min-w-0 flex-1 text-sm " + (o.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{o.value}</span>
+                  <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
+                    <button type="button" onClick={() => onEditChange(o.id, o.value)} className="text-xs text-sage-text hover:underline">Edit</button>
+                    <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: o.id, active: !o.is_active })} className="text-xs text-ink-secondary hover:underline">{o.is_active ? "Deactivate" : "Activate"}</button>
+                    <button type="button" disabled={remove.isPending} onClick={() => remove.mutate(o.id)} className="text-xs text-status-cancelled hover:underline">Delete</button>
+                  </div>
                 </>
               )}
             </li>
