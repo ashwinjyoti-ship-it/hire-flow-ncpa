@@ -50,7 +50,7 @@ const GRANTS: Record<UserRole, Permission[]> = {
     "event.create", "event.view", "event.view.all", "event.edit", "event.edit.all",
     "event.status.change", "event.cancel", "event.archive",
     "checklist.update", "task.create", "task.complete", "task.assign", "task.view.all",
-    "document.upload", "conflict.override", "date.correct",
+    "document.upload", "document.delete", "conflict.override", "date.correct",
     "report.generate", "report.view", "analytics.view",
   ],
   coordinator: [

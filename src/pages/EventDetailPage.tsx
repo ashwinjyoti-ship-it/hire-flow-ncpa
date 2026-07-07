@@ -3,12 +3,13 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiGet, apiPatch, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
 import { formatDate, formatDateTime, formatDuration } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
+import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -118,7 +119,18 @@ const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey
   },
 };
 
-type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "venues" | "conflicts" | "activity";
+type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "documents" | "venues" | "conflicts" | "activity";
+
+type EventDocument = {
+  id: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | null;
+  category: string | null;
+  notes: string | null;
+  uploaded_at: string;
+  uploaded_by_name: string | null;
+};
 
 export function EventDetailPage() {
   const { id = "" } = useParams();
@@ -149,6 +161,11 @@ export function EventDetailPage() {
   const { data: conflictsData } = useQuery({
     queryKey: ["event", id, "conflicts"],
     queryFn: () => apiGet<ConflictsResponse>(`/events/${id}/conflicts`),
+  });
+
+  const { data: documentsData } = useQuery({
+    queryKey: ["event", id, "documents"],
+    queryFn: () => apiGet<{ documents: EventDocument[] }>(`/events/${id}/documents`),
   });
 
   useEffect(() => {
@@ -304,6 +321,7 @@ export function EventDetailPage() {
           ["operations", "Operations"],
           ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
+          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
           ["venues", `Venues & Schedule${data?.venue_bookings.length ? ` (${data.venue_bookings.length})` : ""}`],
           ["conflicts", `Conflicts${conflictsData?.conflicts.length ? ` (${conflictsData.conflicts.length})` : ""}`],
           ["activity", "Activity"],
@@ -381,6 +399,14 @@ export function EventDetailPage() {
         </section>
       )}
 
+      {tab === "documents" && (
+        <DocumentsView
+          eventId={id}
+          documents={documentsData?.documents ?? []}
+          canUpload={can(user?.role ?? "viewer", "document.upload")}
+          canArchive={can(user?.role ?? "viewer", "document.delete")}
+        />
+      )}
       {tab === "venues" && <VenuesView bookings={data?.venue_bookings ?? []} />}
       {tab === "conflicts" && <ConflictsView conflicts={conflictsData?.conflicts ?? []} />}
       {tab === "activity" && <ActivityView activity={data?.activity ?? []} />}
@@ -690,10 +716,172 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
 }
 
 function parseEventDetailTab(value: string | null): EventDetailTab | null {
-  if (value === "operations" || value === "accounts" || value === "tasks" || value === "venues" || value === "conflicts" || value === "activity" || value === "overview") {
+  if (value === "operations" || value === "accounts" || value === "tasks" || value === "documents" || value === "venues" || value === "conflicts" || value === "activity" || value === "overview") {
     return value;
   }
   return null;
+}
+
+const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  DOCUMENT_CATEGORIES.map((c) => [c, c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())])
+);
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsView({
+  eventId,
+  documents,
+  canUpload,
+  canArchive,
+}: {
+  eventId: string;
+  documents: EventDocument[];
+  canUpload: boolean;
+  canArchive: boolean;
+}) {
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [category, setCategory] = useState<string>("other");
+  const [notes, setNotes] = useState("");
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const upload = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error("Choose a file first");
+      const form = new FormData();
+      form.append("file", file);
+      form.append("category", category);
+      if (notes.trim()) form.append("notes", notes.trim());
+      return apiUpload(`/events/${eventId}/documents`, form);
+    },
+    onSuccess: () => {
+      setFile(null);
+      setNotes("");
+      setCategory("other");
+      setFileInputKey((k) => k + 1);
+      qc.invalidateQueries({ queryKey: ["event", eventId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["event", eventId] });
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: (docId: string) => apiDelete(`/documents/${docId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["event", eventId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["event", eventId] });
+    },
+  });
+
+  const tooLarge = file != null && file.size > MAX_DOCUMENT_BYTES;
+
+  return (
+    <div className="space-y-4">
+      {canUpload && (
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Upload document</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold text-ink-secondary etched">File (max 25 MB)</span>
+              <input
+                key={fileInputKey}
+                type="file"
+                onChange={(ev) => setFile(ev.target.files?.[0] ?? null)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary file:mr-3 file:rounded-full file:border-0 file:bg-neutral-btn file:px-3 file:py-1 file:text-xs file:font-medium"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-ink-secondary etched">Category</span>
+              <select
+                value={category}
+                onChange={(ev) => setCategory(ev.target.value)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+              >
+                {DOCUMENT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-xs font-semibold text-ink-secondary etched">Notes (optional)</span>
+              <input
+                value={notes}
+                onChange={(ev) => setNotes(ev.target.value)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+                placeholder="Context for this document"
+              />
+            </label>
+          </div>
+          {tooLarge && <p className="mt-2 text-xs text-status-cancelled etched">This file exceeds the 25 MB limit.</p>}
+          {upload.error && <p role="alert" className="mt-2 text-xs text-status-cancelled etched">{(upload.error as Error).message}</p>}
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              disabled={!file || tooLarge || upload.isPending}
+              onClick={() => upload.mutate()}
+              className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+            >
+              {upload.isPending ? "Uploading..." : "Upload"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Documents</h3>
+        {documents.length === 0 ? (
+          <p className="text-sm text-ink-muted etched">No documents uploaded for this event.</p>
+        ) : (
+          <div className="space-y-2">
+            {documents.map((doc) => (
+              <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-marble-shadow/30 px-4 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-ink-primary etched-deep">{doc.file_name}</span>
+                    <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-sage-text">
+                      {CATEGORY_LABELS[doc.category ?? "other"] ?? doc.category}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-ink-muted etched">
+                    {formatFileSize(doc.file_size)} · {formatDateTime(doc.uploaded_at)}
+                    {doc.uploaded_by_name ? ` · ${doc.uploaded_by_name}` : ""}
+                    {doc.notes ? ` · ${doc.notes}` : ""}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/documents/${doc.id}/download`}
+                    className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+                  >
+                    Download
+                  </a>
+                  {canArchive && (
+                    <button
+                      type="button"
+                      disabled={archive.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Archive "${doc.file_name}"? It will no longer appear for this event.`)) {
+                          archive.mutate(doc.id);
+                        }
+                      }}
+                      className="carved-btn rounded-full bg-status-cancelled/10 px-3 py-1.5 text-xs font-medium text-status-cancelled etched disabled:opacity-60"
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {archive.error && <p role="alert" className="mt-2 text-xs text-status-cancelled etched">{(archive.error as Error).message}</p>}
+      </section>
+    </div>
+  );
 }
 
 function VenuesView({ bookings }: { bookings: DetailResponse["venue_bookings"] }) {

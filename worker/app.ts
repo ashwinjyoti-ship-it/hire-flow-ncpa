@@ -9,6 +9,7 @@ import { calendarRoutes } from "./routes/calendar";
 import { lookupRoutes } from "./routes/lookups";
 import { taskRoutes } from "./routes/tasks";
 import { notificationRoutes } from "./routes/notifications";
+import { documentRoutes, eventDocumentRoutes } from "./routes/documents";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -53,6 +54,12 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Event routes (with nested venue bookings + schedule entries).
   app.route("/events", eventRoutes);
+
+  // Event-scoped document upload/list (R2-backed via the FILES binding).
+  app.route("/events", eventDocumentRoutes);
+
+  // Document metadata / download / archive.
+  app.route("/documents", documentRoutes);
 
   // Calendar routes (schedule entries in a date range).
   app.route("/calendar", calendarRoutes);
