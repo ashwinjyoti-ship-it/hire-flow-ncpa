@@ -24,7 +24,8 @@ export const eventRoutes = new Hono<AuthEnv>();
 
 // GET / — list with filters
 eventRoutes.get("/", requireUser, async (c) => {
-  const { status, venue, org, type, owner, q, from, to } = c.req.query();
+  const { status, venue, org, type, owner, q, from, to, mine } = c.req.query();
+  const user = c.get("user");
   const where: string[] = ["e.is_archived = 0"];
   const binds: unknown[] = [];
   if (status) { where.push("e.status = ?"); binds.push(status); }
@@ -32,6 +33,8 @@ eventRoutes.get("/", requireUser, async (c) => {
   if (org) { where.push("e.organisation_id = ?"); binds.push(org); }
   if (type) { where.push("e.event_type = ?"); binds.push(type); }
   if (owner) { where.push("e.event_owner = ?"); binds.push(owner); }
+  // Phase 8b: "My events" — restrict to events owned by the signed-in user.
+  if (mine === "1" && user) { where.push("e.event_owner_id = ?"); binds.push(user.id); }
   if (q) {
     where.push("(LOWER(e.title) LIKE ? OR LOWER(e.event_code) LIKE ? OR LOWER(COALESCE((SELECT name FROM organisations WHERE id = e.organisation_id), '')) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;
@@ -41,7 +44,7 @@ eventRoutes.get("/", requireUser, async (c) => {
   if (to) { where.push("(e.event_start_date IS NULL OR e.event_start_date <= ?)"); binds.push(to); }
 
   const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
-               o.name AS organisation_name, e.event_owner,
+               o.name AS organisation_name, e.event_owner, e.event_owner_id,
                (SELECT GROUP_CONCAT(venue, ' · ') FROM venue_bookings WHERE event_id = e.id) AS venues,
                e.overall_completion
                FROM events e LEFT JOIN organisations o ON o.id = e.organisation_id
@@ -110,14 +113,14 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
 
   await db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
-       event_type, program_officer, event_owner,
+       event_type, program_officer, event_owner, event_owner_id,
        event_start_date, event_end_date, status, form_status, approval_status, confirmation_status,
        enquiry_source, priority, requirements, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, makeId("code"), d.title, d.description ?? null, d.organisation_id, d.primary_contact_id ?? null,
     d.event_type ?? null,
-    d.program_officer ?? null, d.event_owner ?? null,
+    d.program_officer ?? null, d.event_owner ?? null, d.event_owner_id ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null,
     // Approval status default: pending if VFH else not_required
     d.event_type === "VFH" ? "pending" : "not_required",
@@ -187,7 +190,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
        organisation_id = COALESCE(?, organisation_id), primary_contact_id = COALESCE(?, primary_contact_id),
        event_type = COALESCE(?, event_type),
        program_officer = COALESCE(?, program_officer),
-       event_owner = COALESCE(?, event_owner),
+       event_owner = COALESCE(?, event_owner), event_owner_id = COALESCE(?, event_owner_id),
        event_start_date = COALESCE(?, event_start_date), event_end_date = COALESCE(?, event_end_date),
        enquiry_source = COALESCE(?, enquiry_source), priority = COALESCE(?, priority),
        requirements = COALESCE(?, requirements), notes = COALESCE(?, notes),
@@ -195,7 +198,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   ).bind(
     d.title ?? null, d.description ?? null, d.organisation_id ?? null, d.primary_contact_id ?? null,
     d.event_type ?? null,
-    d.program_officer ?? null, d.event_owner ?? null,
+    d.program_officer ?? null, d.event_owner ?? null, d.event_owner_id ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null, d.enquiry_source ?? null,
     d.priority ?? null,
     d.requirements ? JSON.stringify(d.requirements) : null,
