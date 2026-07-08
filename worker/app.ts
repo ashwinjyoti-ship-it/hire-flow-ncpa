@@ -7,6 +7,7 @@ import { organisationRoutes } from "./routes/organisations";
 import { eventRoutes } from "./routes/events";
 import { calendarRoutes } from "./routes/calendar";
 import { lookupRoutes } from "./routes/lookups";
+import { userRoutes } from "./routes/users";
 import { taskRoutes } from "./routes/tasks";
 import { notificationRoutes } from "./routes/notifications";
 import { documentRoutes, eventDocumentRoutes } from "./routes/documents";
@@ -68,6 +69,7 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Lookup (dropdown_options) admin CRUD — public reads still go to GET /lookups above.
   app.route("/lookups", lookupRoutes);
+  app.route("/users", userRoutes);
 
   // Operational workflow routes.
   app.route("/tasks", taskRoutes);
