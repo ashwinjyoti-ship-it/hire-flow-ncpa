@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
-import { useLookups, formatDate } from "../lib/use-lookups";
+import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -16,12 +16,27 @@ type CalEntry = {
   activity_date: string;
   start_time: string | null;
   end_time: string | null;
+  with_ac_start: string | null;
+  with_ac_end: string | null;
+  with_ac_minutes: number | null;
+  without_ac_start: string | null;
+  without_ac_end: string | null;
+  without_ac_minutes: number | null;
+  schedule_notes: string | null;
   event_id: string;
+  event_code: string | null;
   title: string;
   status: EventStatus;
   event_type: string | null;
+  event_owner: string | null;
+  description: string | null;
+  event_notes: string | null;
   organisation_name: string | null;
   venue: string;
+  booking_status: string | null;
+  number_of_shows: number | null;
+  requirements: string | null;
+  venue_notes: string | null;
 };
 type CalResponse = { entries: CalEntry[]; byDate: Record<string, CalEntry[]> };
 
@@ -206,32 +221,92 @@ export function CalendarPage() {
         <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} />
       )}
 
-      {/* Side panel */}
-      {sideEvent && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/20 backdrop-blur-sm" onClick={() => setSideEvent(null)}>
-          <aside className={"carved-card h-full w-full max-w-md overflow-y-auto scroll-slim rounded-l-2xl border-l-4 bg-marble-highlight p-6 " + getEventStatusSurface(sideEvent.status).card + " " + getEventStatusSurface(sideEvent.status).border} onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-start justify-between">
-              <div>
-                <div className="text-[11px] uppercase tracking-wider text-sage etched">{sideEvent.activity_type.replace(/_/g, " ")}</div>
-                <h3 className="text-lg font-semibold text-ink-primary etched-deep">{sideEvent.title}</h3>
-              </div>
-              <button type="button" onClick={() => setSideEvent(null)} className="text-ink-muted hover:text-ink-secondary" aria-label="Close">✕</button>
-            </div>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between"><dt className="text-ink-muted">Venue</dt><dd className="font-medium text-ink-primary etched-deep">{sideEvent.venue}</dd></div>
-              <div className="flex justify-between"><dt className="text-ink-muted">Date</dt><dd className="font-medium text-ink-primary etched-deep">{formatDate(sideEvent.activity_date)}</dd></div>
-              <div className="flex justify-between"><dt className="text-ink-muted">Time</dt><dd className="font-medium text-ink-primary etched-deep">{sideEvent.start_time ?? "—"}{sideEvent.end_time ? ` – ${sideEvent.end_time}` : ""}</dd></div>
-              <div className="flex justify-between"><dt className="text-ink-muted">Organisation</dt><dd className="font-medium text-ink-primary etched-deep">{sideEvent.organisation_name ?? "—"}</dd></div>
-              <div className="flex justify-between"><dt className="text-ink-muted">Type</dt><dd className="font-medium text-ink-primary etched-deep">{sideEvent.event_type ?? "—"}</dd></div>
-            </dl>
-            <Link to={`/events/${sideEvent.event_id}`} className="carved-btn-sage mt-6 inline-block rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
-              Open full record →
-            </Link>
-          </aside>
-        </div>
-      )}
+      {sideEvent && <ShowCalendarDetailPanel entry={sideEvent} onClose={() => setSideEvent(null)} />}
     </div>
   );
+}
+
+function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose: () => void }) {
+  const surface = getEventStatusSurface(entry.status);
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/20 backdrop-blur-sm" onClick={onClose}>
+      <aside className={"carved-card h-full w-full max-w-xl overflow-y-auto scroll-slim rounded-l-2xl border-l-4 bg-marble-highlight p-6 " + surface.card + " " + surface.border} onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wider text-sage etched">View show details</div>
+            <h3 className="text-xl font-semibold text-ink-primary etched-deep">{entry.title}</h3>
+            <p className="mt-1 text-xs text-ink-muted etched">
+              {entry.organisation_name ?? "No organisation"}{entry.event_code ? ` · ${entry.event_code}` : ""}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-ink-muted hover:text-ink-secondary" aria-label="Close">x</button>
+        </div>
+
+        <section className="mb-4 grid grid-cols-2 gap-3 text-xs">
+          <SummaryPill label="Venue" value={entry.venue} />
+          <SummaryPill label="Activity" value={entry.activity_type.replace(/_/g, " ")} />
+          <SummaryPill label="Date" value={formatDate(entry.activity_date)} />
+          <SummaryPill label="Time" value={formatRange(entry.start_time, entry.end_time)} />
+          <SummaryPill label="Shows" value={String(entry.number_of_shows ?? 1)} />
+          <SummaryPill label="Booking" value={entry.booking_status ?? "-"} />
+          <SummaryPill label="Owner" value={entry.event_owner ?? "-"} />
+          <SummaryPill label="Type" value={entry.event_type ?? "-"} />
+        </section>
+
+        <section className="mb-4 rounded-xl bg-marble-shadow/30 p-4">
+          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">AC timings</h4>
+          <dl className="space-y-2 text-sm">
+            <DetailLine label="With AC" value={formatTimedDuration(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes)} />
+            <DetailLine label="Without AC" value={formatTimedDuration(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes)} />
+          </dl>
+        </section>
+
+        <section className="rounded-xl bg-marble-shadow/30 p-4">
+          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Show notes</h4>
+          <dl className="space-y-2 text-sm">
+            <DetailLine label="Requirements" value={entry.requirements ?? "-"} />
+            <DetailLine label="Venue notes" value={entry.venue_notes ?? "-"} />
+            <DetailLine label="Schedule notes" value={entry.schedule_notes ?? "-"} />
+            <DetailLine label="Event notes" value={entry.event_notes ?? entry.description ?? "-"} />
+          </dl>
+        </section>
+
+        <Link to={`/events/${entry.event_id}?tab=venues`} className="carved-btn mt-6 inline-block rounded-full bg-neutral-btn px-5 py-2 text-sm font-semibold text-ink-secondary etched">
+          Open full record
+        </Link>
+      </aside>
+    </div>
+  );
+}
+
+function SummaryPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-marble-shadow/30 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
+      <div className="mt-1 font-semibold capitalize text-ink-primary etched-deep">{value}</div>
+    </div>
+  );
+}
+
+function DetailLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[8rem_1fr]">
+      <dt className="text-ink-muted etched">{label}</dt>
+      <dd className="font-medium text-ink-primary etched-deep">{value}</dd>
+    </div>
+  );
+}
+
+function formatRange(start: string | null, end: string | null): string {
+  if (!start && !end) return "-";
+  if (!end) return start ?? "-";
+  return `${start ?? "-"} - ${end}`;
+}
+
+function formatTimedDuration(start: string | null, end: string | null, minutes: number | null): string {
+  const range = formatRange(start, end);
+  if (range === "-" && minutes == null) return "-";
+  return minutes == null ? range : `${range} (${formatDuration(minutes)})`;
 }
 
 // ---- Month grid (one chip per organisation per day) ----
