@@ -330,6 +330,74 @@ describe("API regressions", () => {
     expect(capturedBinds).not.toContain("confirmed");
   });
 
+  it("serves show-specific details for the show calendar drawer", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se")) {
+        expect(sql).toContain("se.with_ac_start");
+        expect(sql).toContain("se.with_ac_end");
+        expect(sql).toContain("se.without_ac_start");
+        expect(sql).toContain("se.without_ac_end");
+        expect(sql).toContain("se.notes AS schedule_notes");
+        expect(sql).toContain("vb.number_of_shows");
+        expect(sql).toContain("vb.requirements");
+        expect(sql).toContain("vb.notes AS venue_notes");
+        expect(sql).toContain("e.event_code");
+        expect(sql).toContain("e.event_owner");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "se_1",
+                activity_type: "show",
+                activity_date: "2026-09-10",
+                start_time: "19:00",
+                end_time: "21:00",
+                with_ac_start: "18:00",
+                with_ac_end: "21:30",
+                without_ac_start: "14:00",
+                without_ac_end: "17:00",
+                schedule_notes: "Main performance",
+                event_id: "ev_1",
+                event_code: "NCPA-001",
+                title: "Classical Recital",
+                status: "confirmed",
+                event_type: "VFH",
+                organisation_name: "ACE Production",
+                event_owner: "Aditi Rao",
+                venue: "JBT",
+                booking_status: "confirmed",
+                number_of_shows: 2,
+                requirements: "Green room",
+                venue_notes: "Piano tuned",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+    const body = await res.json() as { entries: Array<Record<string, unknown>> };
+
+    expect(res.status).toBe(200);
+    expect(body.entries[0]).toMatchObject({
+      event_code: "NCPA-001",
+      event_owner: "Aditi Rao",
+      with_ac_start: "18:00",
+      without_ac_start: "14:00",
+      number_of_shows: 2,
+      requirements: "Green room",
+      venue_notes: "Piano tuned",
+    });
+  });
+
   it("links events to the event owner account (event_owner_id) on create", async () => {
     // Phase 8b: the events INSERT must carry event_owner_id so tasks auto-route
     // and "My events" can filter by owner identity. We assert the SQL + bind

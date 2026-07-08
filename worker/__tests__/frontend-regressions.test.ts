@@ -85,6 +85,16 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("Jump to today");
   });
 
+  it("keeps show calendar details separate from lifecycle record navigation", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("ShowCalendarDetailPanel");
+    expect(calendar).toContain("Open full record");
+    expect(calendar).toContain("View show details");
+    expect(calendar).toContain("with_ac_start");
+    expect(calendar).not.toContain("Open full record →");
+  });
+
   it("keeps dashboard task rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 

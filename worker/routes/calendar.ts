@@ -136,9 +136,13 @@ calendarRoutes.get("/", requireUser, async (c) => {
   }
 
   const sql = `SELECT se.id, se.activity_type, se.activity_date, se.start_time, se.end_time,
-      e.id AS event_id, e.title, e.status, e.event_type,
+      se.with_ac_start, se.with_ac_end, se.with_ac_minutes,
+      se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
+      se.notes AS schedule_notes,
+      e.id AS event_id, e.event_code, e.title, e.status, e.event_type, e.event_owner,
+      e.description, e.notes AS event_notes,
       o.name AS organisation_name,
-      vb.venue
+      vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
     FROM schedule_entries se
     JOIN events e ON e.id = se.event_id
     JOIN venue_bookings vb ON vb.id = se.venue_booking_id
