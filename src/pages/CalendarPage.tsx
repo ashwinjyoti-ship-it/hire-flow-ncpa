@@ -75,6 +75,9 @@ export function CalendarPage() {
     owner: searchParams.get("owner") ?? "",
     q: searchParams.get("q") ?? "",
   });
+  // Phase 8b: "My events" restricts the calendar to events owned by the
+  // signed-in user (event_owner_id = me). Applies to both calendar views.
+  const [mine, setMine] = useState(searchParams.get("mine") === "1");
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
 
   // Visible range = the exact calendar month being viewed (1st → last day).
@@ -84,16 +87,16 @@ export function CalendarPage() {
     return { from: isoDate(startOfMonth(cursor)), to: isoDate(endOfMonth(cursor)) };
   }, [cursor]);
 
-  const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+  const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
   const { data, isLoading } = useQuery({
-    queryKey: ["calendar", range.from, range.to, filters],
+    queryKey: ["calendar", range.from, range.to, filters, mine],
     queryFn: () => apiGet<CalResponse>(`/calendar?${q.toString()}`),
     enabled: view !== "lifecycle",
   });
 
-  const lifecycleQuery = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+  const lifecycleQuery = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
   const { data: lifecycleData, isLoading: lifecycleLoading } = useQuery({
-    queryKey: ["calendar-lifecycle", range.from, range.to, filters],
+    queryKey: ["calendar-lifecycle", range.from, range.to, filters, mine],
     queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?${lifecycleQuery.toString()}`),
     enabled: view === "lifecycle",
   });
@@ -175,6 +178,10 @@ export function CalendarPage() {
           <FilterSelect value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
           <FilterSelect value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
           <FilterSelect value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
+          <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
+            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
+            My events
+          </label>
         </div>
       </div>
 

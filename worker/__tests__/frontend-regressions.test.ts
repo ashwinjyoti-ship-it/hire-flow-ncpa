@@ -126,8 +126,12 @@ describe("frontend regression guards", () => {
     const settings = readFileSync(resolve(root, "src/pages/SettingsPage.tsx"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
-    // The event form still sources its dropdown from handled_by lookups.
-    expect(eventForm).toContain("lookups?.lookups.handled_by");
+    // Phase 8b: the event form now sources its owner dropdown from real accounts
+    // (/users) and sets event_owner_id, not the free-text handled_by lookup.
+    expect(eventForm).toContain('queryKey: ["users"]');
+    expect(eventForm).toContain("apiGet(\"/users\")");
+    expect(eventForm).toContain("event_owner_id");
+    expect(eventForm).not.toContain("lookups?.lookups.handled_by");
     // Settings must NOT present handled_by as a free-text master list anymore.
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
     expect(settings).toContain('listKeys={["caterer", "decorator"]}');

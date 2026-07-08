@@ -71,6 +71,10 @@ export const EventInput = z.object({
   event_type: z.enum(["EE", "FR", "VFH", "Free Event"]).nullish(),
   program_officer: z.string().nullish(),
   event_owner: z.string().nullish(),
+  // Phase 8b: optional link to the owning user account. When set, tasks
+  // auto-route to this user and "My events" filters on it. event_owner (text)
+  // is kept as a denormalised display label.
+  event_owner_id: z.string().nullish(),
   event_start_date: z.string().nullish(),
   event_end_date: z.string().nullish(),
   enquiry_source: z.string().nullish(),

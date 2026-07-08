@@ -24,6 +24,7 @@ type EventDetailResponse = {
     event_type: EventInputT["event_type"];
     program_officer: string | null;
     event_owner: string | null;
+    event_owner_id: string | null;
     event_start_date: string | null;
     event_end_date: string | null;
     enquiry_source: string | null;
@@ -102,6 +103,7 @@ export function EventEditPage() {
     event_type: null,
     program_officer: null,
     event_owner: null,
+    event_owner_id: null,
     event_start_date: null,
     event_end_date: null,
     enquiry_source: null,
@@ -159,6 +161,7 @@ export function EventEditPage() {
       event_type: e.event_type ?? null,
       program_officer: e.program_officer ?? null,
       event_owner: e.event_owner ?? null,
+      event_owner_id: (e as { event_owner_id?: string | null }).event_owner_id ?? null,
       event_start_date: e.event_start_date ?? null,
       event_end_date: e.event_end_date ?? null,
       enquiry_source: e.enquiry_source ?? null,
@@ -198,9 +201,17 @@ export function EventEditPage() {
 
   const venues = lookups?.lookups.venue ?? [];
   const programOfficers = lookups?.lookups.program_officer ?? [];
-  const owners = lookups?.lookups.handled_by ?? [];
   const sources = lookups?.lookups.enquiry_source ?? [];
   const isVfh = form.event_type === "VFH";
+
+  // Phase 8b: the Event Owner dropdown is sourced from real accounts. Choosing
+  // one sets both the display label (event_owner) and the identity FK
+  // (event_owner_id), so tasks auto-route and "My events" works.
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; is_active: number }> }>({
+    queryKey: ["users"],
+    queryFn: () => apiGet("/users"),
+  });
+  const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
 
   // ---- Venue booking helpers ----
   const addVenue = () => {
@@ -339,11 +350,21 @@ export function EventEditPage() {
                 {programOfficers.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
               </select>
             </Field>
-            <Field label="Event Owner (Handled By)">
-              <select value={form.event_owner ?? ""} onChange={(e) => update({ event_owner: e.target.value || null })} className="carved input">
+            <Field label="Event Owner">
+              <select
+                value={form.event_owner_id ?? ""}
+                onChange={(e) => {
+                  const u = activeOwners.find((o) => o.id === e.target.value);
+                  update({ event_owner_id: e.target.value || null, event_owner: u?.name ?? null });
+                }}
+                className="carved input"
+              >
                 <option value="">Select…</option>
-                {owners.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                {activeOwners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
+              {form.event_owner && !form.event_owner_id && (
+                <p className="mt-1 text-[11px] text-ink-muted etched">Legacy owner “{form.event_owner}” has no linked account — pick an owner above to link one.</p>
+              )}
             </Field>
           </div>
 

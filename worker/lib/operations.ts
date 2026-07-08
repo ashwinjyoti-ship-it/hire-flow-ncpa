@@ -289,11 +289,19 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   const dueDate = addDays(baseDate, Number(rule.due_after_days ?? 0));
   const idempotency = `checklist:${item.id}:${rule.rule}`;
   const now = new Date().toISOString();
+
+  // Phase 8b: auto-assign the task to the event's owner when one is linked, so
+  // the owner's "My tasks" list picks it up. Falls back to unassigned (the
+  // notification still routes to the venue_manager role).
+  const ownerRow = await db.prepare("SELECT event_owner_id FROM events WHERE id = ?").bind(item.event_id)
+    .first<{ event_owner_id: string | null }>();
+  const assigneeId = ownerRow?.event_owner_id ?? null;
+
   await db.prepare(
     `INSERT OR IGNORE INTO tasks
      (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
-      idempotency_key, due_date, priority, status, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, 'medium', 'open', ?, ?, ?)`
+      idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', ?, ?, ?)`
   ).bind(
     makeId("task"),
     rule.title,
@@ -302,6 +310,7 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
     item.id,
     rule.rule,
     idempotency,
+    assigneeId,
     dueDate,
     createdBy,
     now,
@@ -310,7 +319,8 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 
   await createNotification(db, {
     idempotencyKey: `task-created:${idempotency}`,
-    recipientRole: "venue_manager",
+    recipientId: assigneeId ?? undefined,
+    recipientRole: assigneeId ? undefined : "venue_manager",
     title: "Follow-up task created",
     body: `${rule.title} for ${item.label}.`,
     relatedEventId: item.event_id,

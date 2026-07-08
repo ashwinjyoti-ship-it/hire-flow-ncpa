@@ -330,6 +330,57 @@ describe("API regressions", () => {
     expect(capturedBinds).not.toContain("confirmed");
   });
 
+  it("links events to the event owner account (event_owner_id) on create", async () => {
+    // Phase 8b: the events INSERT must carry event_owner_id so tasks auto-route
+    // and "My events" can filter by owner identity. We assert the SQL + bind
+    // rather than the full create flow (which spans many tables).
+    let eventsSql = "";
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "INSERT INTO events", onSql: (sql) => { eventsSql = sql; }, run: () => ({ success: true }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    await app.request(
+      "/events",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Owner-linked event",
+          organisation_id: "org_1",
+          event_owner: "Aditi Rao",
+          event_owner_id: "demo_user_aditi",
+          venue_bookings: [{ venue: "JBT" }],
+        }),
+      },
+      { DB: db } as never
+    );
+
+    expect(eventsSql).toContain("event_owner_id");
+    expect(capturedBinds).toContain("demo_user_aditi");
+  });
+
+  it("filters the event list to the signed-in owner when mine=1", async () => {
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "FROM events e LEFT JOIN organisations", all: () => ({ results: [] }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events?mine=1",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    // sessionRow's user_id is "user_admin" — mine=1 must bind that id.
+    expect(capturedBinds).toContain("user_admin");
+  });
+
   it("allows admins to manage event owner lookup options", async () => {
     let insertedListKey: string | null = null;
     let insertedValue: string | null = null;
