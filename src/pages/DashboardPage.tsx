@@ -36,6 +36,8 @@ type TasksResponse = {
   }>;
 };
 
+const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_letter"]);
+
 export function DashboardPage() {
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -51,7 +53,7 @@ export function DashboardPage() {
 
   const lifecycleEntries = lifecycleData?.entries ?? [];
   const tasks = (taskData?.tasks ?? [])
-    .filter((task) => task.status === "open" || task.status === "in_progress")
+    .filter(isDashboardActionableTask)
     .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
 
   const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: 0, cancelled: 0 };
@@ -156,6 +158,12 @@ function taskRank(task: TasksResponse["tasks"][number], todayIso: string): numbe
   if (task.priority === "high") return 2;
   if (task.due_date) return 3;
   return 4;
+}
+
+function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolean {
+  if (task.status !== "open" && task.status !== "in_progress") return false;
+  if (task.event_status === "confirmed" && task.source_rule && STALE_CONFIRMED_TASK_RULES.has(task.source_rule)) return false;
+  return true;
 }
 
 function eventDisplayName(title: string, organisationName: string | null): string {

@@ -465,7 +465,7 @@ function demoTaskSpecs(event: DemoEvent): DemoTaskSpec[] {
   // Enquiry-stage: only the "what to do next" tasks are open.
   specs.push({
     slug: "approval",
-    title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Internal approval checkpoint",
+    title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Lifecycle readiness checkpoint",
     description: "Confirm whether the event can move to the next lifecycle stage.",
     sourceRule: "approval_followup",
     assigneeId: "demo_user_aditi",

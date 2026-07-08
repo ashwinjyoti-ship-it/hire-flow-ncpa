@@ -22,7 +22,7 @@ export type TaskLike = {
   status: "open" | "in_progress" | "completed" | "cancelled";
 };
 
-export type WorkflowFamily = "approval" | "confirmation" | "payments" | "operations" | "accounts" | "postEvent" | "manual";
+export type WorkflowFamily = "beforeConfirmation" | "payments" | "operations" | "accounts" | "postEvent" | "manual";
 export type TimingGroupKey = "overdue" | "today" | "tomorrow" | "thisWeek" | "later" | "noDate";
 
 export type TaskGroup<T extends string> = {
@@ -50,17 +50,16 @@ export type EventCommandCard = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const WORKFLOW_LABELS: Record<WorkflowFamily, string> = {
-  approval: "Approval",
-  payments: "Payments",
-  confirmation: "Confirmation",
-  operations: "Operations",
-  accounts: "Accounts",
-  postEvent: "Post-event",
-  manual: "Manual/Other",
+  beforeConfirmation: "Required before confirmation",
+  payments: "Payment follow-up",
+  operations: "Operational follow-up",
+  accounts: "Accounts follow-up",
+  postEvent: "Post-event follow-up",
+  manual: "Manual follow-up",
 };
 
-const CARD_WORKFLOW_ORDER: WorkflowFamily[] = ["approval", "confirmation", "payments", "operations", "accounts", "postEvent", "manual"];
-const LANE_WORKFLOW_ORDER: WorkflowFamily[] = ["approval", "payments", "confirmation", "operations", "accounts", "postEvent", "manual"];
+const CARD_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
+const LANE_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
 
 const TIMING_LABELS: Record<TimingGroupKey, string> = {
   overdue: "Overdue",
@@ -75,13 +74,17 @@ const TIMING_ORDER: TimingGroupKey[] = ["overdue", "today", "tomorrow", "thisWee
 
 export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
   const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
-  if (haystack.includes("approval")) return "approval";
-  if (haystack.includes("confirmation") || haystack.includes("letter") || haystack.includes("signed")) return "confirmation";
+  if (haystack.includes("approval")) return "beforeConfirmation";
+  if (haystack.includes("confirmation") || haystack.includes("letter") || haystack.includes("signed")) return "beforeConfirmation";
   if (haystack.includes("payment") || haystack.includes("installment") || haystack.includes("instalment") || haystack.includes("invoice") || haystack.includes("deposit")) return "payments";
   if (haystack.includes("technical") || haystack.includes("onstage") || haystack.includes("stage") || haystack.includes("noc") || haystack.includes("meeting") || haystack.includes("setup")) return "operations";
   if (haystack.includes("account") || haystack.includes("tax") || haystack.includes("ledger") || haystack.includes("tds") || haystack.includes("refund")) return "accounts";
   if (haystack.includes("feedback") || haystack.includes("post") || haystack.includes("report")) return "postEvent";
   return "manual";
+}
+
+export function getTaskIntentLabel(task: TaskLike): string {
+  return WORKFLOW_LABELS[getWorkflowFamily(task)];
 }
 
 export function getEventOperationsLink(eventId: string | null | undefined): string {

@@ -46,6 +46,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Open Operations to change lifecycle status");
   });
 
+  it("keeps lifecycle decision notes visible in activity", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("note: args.note");
+    expect(source).toContain("formatActivityDetail");
+    expect(source).toContain("Lifecycle note");
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
@@ -100,6 +108,13 @@ describe("frontend regression guards", () => {
     expect(source).toContain("aria-expanded");
     expect(source).toContain("Expand");
     expect(source).toContain("Collapse");
+  });
+
+  it("keeps stale lifecycle tasks out of dashboard attention", () => {
+    const source = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(source).toContain("isDashboardActionableTask");
+    expect(source).toContain("STALE_CONFIRMED_TASK_RULES");
   });
 
   it("keeps work lanes visible as the default task view", () => {
