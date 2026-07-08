@@ -111,7 +111,12 @@ calendarRoutes.get("/", requireUser, async (c) => {
   ];
   const binds: unknown[] = [from, to];
 
-  if (status) { where.push("e.status = ?"); binds.push(status); }
+  // The Show Calendar represents what's committed at the venue. By default it
+  // surfaces only confirmed events — enquiries and tentative holds don't earn a
+  // card here (they live on the Lifecycle Calendar). An explicit status choice
+  // from the filter still overrides, so a user can deliberately inspect any
+  // single status.
+  where.push("e.status = ?"); binds.push(status ?? "confirmed");
   if (venue) { where.push("vb.venue = ?"); binds.push(venue); }
   if (type) { where.push("e.event_type = ?"); binds.push(type); }
   if (owner) { where.push("e.event_owner = ?"); binds.push(owner); }

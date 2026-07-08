@@ -30,6 +30,45 @@ function fakeDb(handlerFor: (sql: string) => QueryHandler): D1Database {
   } as unknown as D1Database;
 }
 
+/**
+ * Variant of fakeDb that captures the bind arguments of the *first* statement
+ * matching a rule's `match` substring. Use to assert which values a route binds
+ * (e.g. confirming a default filter value). Each rule optionally inspects SQL
+ * via `onSql` and returns data via `first`/`all`/`run`.
+ */
+type BindRule = {
+  match: string;
+  first?: () => unknown;
+  all?: () => unknown;
+  run?: () => unknown;
+  onSql?: (sql: string) => void;
+};
+function bindCapturingDb(rules: BindRule[], onBinds: (binds: unknown[]) => void): D1Database {
+  return {
+    prepare(sql: string) {
+      const rule = rules.find((r) => sql.includes(r.match));
+      if (rule) {
+        rule.onSql?.(sql);
+        let lastBinds: unknown[] = [];
+        // Only the matched rule reports binds, so unrelated statements (e.g.
+        // the session lookup) can't clobber the captured value.
+        return {
+          bind(...args: unknown[]) { lastBinds = args; return this; },
+          async first() { onBinds(lastBinds); return rule.first?.() ?? null; },
+          async all() { onBinds(lastBinds); return rule.all?.() ?? { results: [] }; },
+          async run() { onBinds(lastBinds); return rule.run?.() ?? { success: true }; },
+        };
+      }
+      return {
+        bind() { return this; },
+        async first() { return null; },
+        async all() { return { results: [] }; },
+        async run() { return { success: true }; },
+      };
+    },
+  } as unknown as D1Database;
+}
+
 function sessionRow() {
   return {
     id: "sess_test",
@@ -242,6 +281,53 @@ describe("API regressions", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+
+  it("gates the show calendar to confirmed events by default", async () => {
+    // Regression: an enquiry entered today with a September show date used to
+    // appear on the September show calendar. The show calendar now defaults to
+    // confirmed-only — a venue earns a card once approved/confirmed.
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      {
+        match: "FROM schedule_entries se",
+        onSql: (sql) => expect(sql).toContain("e.status = ?"),
+        all: () => ({ results: [] }),
+      },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedBinds).toContain("confirmed");
+  });
+
+  it("honours an explicit status choice on the show calendar over the confirmed default", async () => {
+    // When a user deliberately picks a status from the filter (e.g. to inspect
+    // tentative holds), that exact choice wins — the default does not override
+    // their intent.
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "FROM schedule_entries se", all: () => ({ results: [] }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30&status=tentative",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedBinds).toContain("tentative");
+    expect(capturedBinds).not.toContain("confirmed");
   });
 
   it("allows admins to manage event owner lookup options", async () => {
