@@ -54,7 +54,8 @@ type LifecycleType =
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function startOfWeek(d: Date): Date { const x = new Date(d); x.setDate(d.getDate() - d.getDay()); x.setHours(0, 0, 0, 0); return x; }
+/** Last calendar day of the month (local). day 0 of next month = last day of this month. */
+function endOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
 function isoDate(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(d.getDate() + n); return x; }
 
@@ -76,9 +77,11 @@ export function CalendarPage() {
   });
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
 
-  // Determine the visible date range based on the view.
+  // Visible range = the exact calendar month being viewed (1st → last day).
+  // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
+  // adjacent-month events from leaking into the grid.
   const range = useMemo(() => {
-    return { from: isoDate(startOfWeek(startOfMonth(cursor))), to: isoDate(addDays(startOfWeek(startOfMonth(cursor)), 41)) };
+    return { from: isoDate(startOfMonth(cursor)), to: isoDate(endOfMonth(cursor)) };
   }, [cursor]);
 
   const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
@@ -101,7 +104,10 @@ export function CalendarPage() {
   const venues = lookups?.lookups.venue ?? [];
   const owners = lookups?.lookups.handled_by ?? [];
 
-  const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
+  const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  // "This month" only when the viewed cursor is the actual current month/year.
+  const nowDate = new Date();
+  const isCurrentMonth = cursor.getFullYear() === nowDate.getFullYear() && cursor.getMonth() === nowDate.getMonth();
 
   const showCreate = can(user?.role ?? "viewer", "event.create");
 
@@ -139,7 +145,7 @@ export function CalendarPage() {
           </button>
           <div className="min-w-[9rem] text-center">
             <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">This month</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
           </div>
           <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next month">
             <Chevron dir="right" />
@@ -242,8 +248,21 @@ function lifecycleDot(type: LifecycleType): string {
 }
 
 function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date }) {
-  const start = startOfWeek(startOfMonth(cursor));
-  const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  // Build cells for ONLY the viewed month: leading blanks (so the 1st lands under
+  // its correct weekday), days 1..N, then trailing blanks to complete the last row.
+  // No adjacent-month dates are rendered, so no events leak across months.
+  const monthStart = startOfMonth(cursor);
+  const daysInMonth = endOfMonth(cursor).getDate();
+  const leadingBlanks = monthStart.getDay();
+  const cells: Array<{ date: Date | null; key: string }> = [
+    ...Array.from({ length: leadingBlanks }, (_, i) => ({ date: null, key: `b-${i}` })),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = addDays(monthStart, i);
+      return { date: d, key: isoDate(d) };
+    }),
+  ];
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  for (let i = 0; i < trailingBlanks; i++) cells.push({ date: null, key: `t-${i}` });
   return (
     <div>
       <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
@@ -252,16 +271,15 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
-        {days.map((d) => {
-          const key = isoDate(d);
+        {cells.map(({ date: d, key }) => {
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/10 sm:min-h-[132px] lg:min-h-[144px]" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
-          const inMonth = d.getMonth() === cursor.getMonth();
           return (
             <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 {entries.length > 0 ? <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
-                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : "text-ink-primary")}>
                   {d.getDate()}
                 </span>
               </div>
@@ -305,8 +323,19 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
 }
 
 function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void }) {
-  const start = startOfWeek(startOfMonth(cursor));
-  const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  // Build cells for ONLY the viewed month (see LifecycleMonthGrid for the rationale).
+  const monthStart = startOfMonth(cursor);
+  const daysInMonth = endOfMonth(cursor).getDate();
+  const leadingBlanks = monthStart.getDay();
+  const cells: Array<{ date: Date | null; key: string }> = [
+    ...Array.from({ length: leadingBlanks }, (_, i) => ({ date: null, key: `b-${i}` })),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = addDays(monthStart, i);
+      return { date: d, key: isoDate(d) };
+    }),
+  ];
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  for (let i = 0; i < trailingBlanks; i++) cells.push({ date: null, key: `t-${i}` });
   return (
     <div>
       <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
@@ -315,11 +344,10 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
-        {days.map((d) => {
-          const key = isoDate(d);
+        {cells.map(({ date: d, key }) => {
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/10 sm:min-h-[118px] lg:min-h-[128px]" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
-          const inMonth = d.getMonth() === cursor.getMonth();
           // Group entries by organisation, pick the "worst" (lowest-rank) status as the chip colour.
           const byOrg = new Map<string, { name: string; status: EventStatus; entry: CalEntry }>();
           for (const e of entries) {
@@ -333,7 +361,7 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           return (
             <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex justify-end">
-                <span className={"flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : "text-ink-primary")}>
                   {d.getDate()}
                 </span>
               </div>

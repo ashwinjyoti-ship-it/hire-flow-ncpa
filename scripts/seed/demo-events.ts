@@ -242,25 +242,25 @@ type DemoEvent = {
 
 /**
  * Six enquiry-stage events. Every event starts at `enquiry` so the lifecycle
- * can be driven manually from the UI. Enquiry dates fall in June (the lifecycle
- * starts ~1 month before "today"); show dates begin in September and stay ≥ 1
- * month ahead of the enquiry date.
+ * can be driven manually from the UI. Four enquiry dates fall in June and two
+ * in early July (the lifecycle starts ~1 month before "today"); show dates
+ * begin in September and stay ≥ 1 month ahead of the enquiry date.
  *
  *   #  enquiry     show         type        venues
  *   1  2026-06-08  2026-09-10   VFH         JBT, TATA
  *   2  2026-06-12  2026-09-18   EE          TATA, LT
  *   3  2026-06-17  2026-09-25   FR          TET
  *   4  2026-06-20  2026-10-02   Free Event  JBT, TATA, TET
- *   5  2026-06-24  2026-10-09   VFH         GDT
- *   6  2026-06-28  2026-10-16   EE          LT
+ *   5  2026-07-01  2026-10-09   VFH         GDT
+ *   6  2026-07-05  2026-10-16   EE          LT
  */
 const DEMO_EVENTS: Array<Pick<DemoEvent, "enquiryDate" | "startDate" | "eventType" | "nature" | "venues">> = [
   { enquiryDate: "2026-06-08", startDate: "2026-09-10", eventType: "VFH", nature: "Classical Recital", venues: ["JBT", "TATA"] },
   { enquiryDate: "2026-06-12", startDate: "2026-09-18", eventType: "EE", nature: "Corporate Leadership Summit", venues: ["TATA", "LT"] },
   { enquiryDate: "2026-06-17", startDate: "2026-09-25", eventType: "FR", nature: "Fundraiser Gala", venues: ["TET"] },
   { enquiryDate: "2026-06-20", startDate: "2026-10-02", eventType: "Free Event", nature: "Dance Performance", venues: ["JBT", "TATA", "TET"] },
-  { enquiryDate: "2026-06-24", startDate: "2026-10-09", eventType: "VFH", nature: "Music Concert", venues: ["GDT"] },
-  { enquiryDate: "2026-06-28", startDate: "2026-10-16", eventType: "EE", nature: "Awards Evening", venues: ["LT"] },
+  { enquiryDate: "2026-07-01", startDate: "2026-10-09", eventType: "VFH", nature: "Music Concert", venues: ["GDT"] },
+  { enquiryDate: "2026-07-05", startDate: "2026-10-16", eventType: "EE", nature: "Awards Evening", venues: ["LT"] },
 ];
 
 function durationDays(venues: string[]): number {
@@ -275,7 +275,8 @@ function buildEvents(orgNames: string[]): DemoEvent[] {
     const orgName = orgNames[index % orgNames.length]!;
     const duration = durationDays(spec.venues);
     const endDate = addDays(spec.startDate, duration - 1);
-    const code = `DEMO-2026-${pad(6)}-${pad(index + 1)}`;
+    const enquiryMonth = Number(spec.enquiryDate.slice(5, 7));
+    const code = `DEMO-2026-${pad(enquiryMonth)}-${pad(index + 1)}`;
     events.push({
       index,
       id: `demo_ev_${pad(index + 1)}`,
