@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
@@ -13,6 +13,62 @@ async function fetchSettings(): Promise<Settings> {
   const res = await fetch("/api/settings", { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load settings");
   return (await res.json()) as Settings;
+}
+
+/**
+ * Collapsible settings panel. Header doubles as a toggle button with a rotating
+ * chevron. Auto-opens when the URL hash matches `id` (so deep links like
+ * /settings#event-owners from UserManagementPage still land on an open panel).
+ */
+function CollapsibleSection({
+  id,
+  title,
+  description,
+  defaultOpen = false,
+  children,
+}: {
+  id?: string;
+  title: string;
+  description: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const hashMatches = id && typeof window !== "undefined" && window.location.hash === `#${id}`;
+  const [open, setOpen] = useState(defaultOpen || Boolean(hashMatches));
+
+  // Respect a deep link that arrives after first paint (e.g. client-side nav).
+  useEffect(() => {
+    if (!id) return;
+    if (window.location.hash === `#${id}`) setOpen(true);
+  }, [id]);
+
+  return (
+    <section id={id} className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 px-6 py-5 text-left transition-colors hover:bg-marble-shadow/30 focus:outline-none"
+      >
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">{title}</h2>
+          <p className="mt-1 text-xs text-ink-muted etched">{description}</p>
+        </div>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          className={"mt-0.5 shrink-0 text-ink-secondary transition-transform duration-200 " + (open ? "rotate-180" : "")}
+        >
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && <div className="border-t border-ink-muted/10 p-6">{children}</div>}
+    </section>
+  );
 }
 
 export function SettingsPage() {
@@ -240,9 +296,25 @@ export function SettingsPage() {
             )}
           </section>
 
-          {isAdmin && <EventOwnersSection />}
+          {isAdmin && (
+            <CollapsibleSection
+              id="event-owners"
+              title="Event Owners (Accounts)"
+              description="Each event owner is a login. Adding one generates a one-time temporary password — share it with the owner securely. They will be prompted to choose their own password on first sign-in."
+              defaultOpen
+            >
+              <EventOwnersSection />
+            </CollapsibleSection>
+          )}
 
-          {isAdmin && <MasterListsSection listKeys={["caterer", "decorator"]} />}
+          {isAdmin && (
+            <CollapsibleSection
+              title="Master Lists"
+              description="Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form. Deactivating soft-deletes the option (existing events keep their value)."
+            >
+              <MasterListsSection listKeys={["caterer", "decorator"]} />
+            </CollapsibleSection>
+          )}
 
           {isAdmin && (
             <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
@@ -338,14 +410,7 @@ function MasterListsSection({ listKeys }: { listKeys: string[] }) {
   const [err, setErr] = useState<string | null>(null);
 
   return (
-    <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
-      <div className="mb-5 border-b border-ink-muted/10 pb-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Master Lists</h2>
-        <p className="mt-1 text-xs text-ink-muted etched">
-          Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form.
-          Deactivating soft-deletes the option (existing events keep their value).
-        </p>
-      </div>
+    <div>
       {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-1.5 text-xs text-status-cancelled">{err}</div>}
       <div className="grid gap-6 lg:grid-cols-3">
         {listKeys.map((listKey) => (
@@ -362,7 +427,7 @@ function MasterListsSection({ listKeys }: { listKeys: string[] }) {
           />
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -521,16 +586,7 @@ function EventOwnersSection() {
   const users = data?.users ?? [];
 
   return (
-    <section id="event-owners" className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
-      <div className="mb-5 border-b border-ink-muted/10 pb-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Event Owners (Accounts)</h2>
-        <p className="mt-1 text-xs text-ink-muted etched">
-          Each event owner is a login. Adding one generates a one-time temporary password — share it with the owner
-          securely. They will be prompted to choose their own password on first sign-in. Existing owners imported from
-          the dropdown have a placeholder password (<code>ChangeMe!Handoff2026</code>) that you must reset before handover.
-        </p>
-      </div>
-
+    <div>
       {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">{err}</div>}
 
       {created && (
@@ -620,6 +676,6 @@ function EventOwnersSection() {
           })}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
