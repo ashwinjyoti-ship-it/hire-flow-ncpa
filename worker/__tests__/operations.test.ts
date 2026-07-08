@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -70,6 +70,13 @@ describe("operational lifecycle readiness", () => {
     expect(readiness.canConfirm).toBe(true);
     expect(confirm?.allowed).toBe(true);
     expect(confirm?.recommended).toBe(true);
+  });
+
+  it("completes stale lifecycle tasks as events advance", () => {
+    expect(taskRulesCompletedByLifecycleTransition("enquiry", "approved")).toEqual(["approval_followup"]);
+    expect(taskRulesCompletedByLifecycleTransition("enquiry", "confirmed")).toEqual(["approval_followup", "confirmation_letter"]);
+    expect(taskRulesCompletedByLifecycleTransition("approved", "confirmed")).toEqual(["approval_followup", "confirmation_letter"]);
+    expect(taskRulesCompletedByLifecycleTransition("confirmed", "cancelled")).toEqual([]);
   });
 
   it("does not recommend regret when confirmation is blocked", () => {

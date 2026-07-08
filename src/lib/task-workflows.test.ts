@@ -4,6 +4,7 @@ import {
   groupTasksByTiming,
   groupTasksByWorkflowLane,
   getTaskUrgencyLabels,
+  getTaskIntentLabel,
   getWorkflowFamily,
   type TaskLike,
 } from "./task-workflows";
@@ -33,8 +34,8 @@ function task(overrides: Partial<TaskLike> & Pick<TaskLike, "id" | "title">): Ta
 
 describe("task workflow helpers", () => {
   it("classifies workflow families from source rules and task titles", () => {
-    expect(getWorkflowFamily(task({ id: "a", title: "Approval follow up", source_rule: "approval_followup" }))).toBe("approval");
-    expect(getWorkflowFamily(task({ id: "b", title: "Send confirmation letter" }))).toBe("confirmation");
+    expect(getWorkflowFamily(task({ id: "a", title: "Approval follow up", source_rule: "approval_followup" }))).toBe("beforeConfirmation");
+    expect(getWorkflowFamily(task({ id: "b", title: "Send confirmation letter" }))).toBe("beforeConfirmation");
     expect(getWorkflowFamily(task({ id: "c", title: "Collect installment 2" }))).toBe("payments");
     expect(getWorkflowFamily(task({ id: "d", title: "OnStage technical sheet" }))).toBe("operations");
     expect(getWorkflowFamily(task({ id: "e", title: "Accounts file status" }))).toBe("accounts");
@@ -69,10 +70,17 @@ describe("task workflow helpers", () => {
     ]);
 
     expect(groupTasksByWorkflowLane(tasks, today).map((lane) => [lane.key, lane.tasks.map((t) => t.id)])).toEqual([
-      ["approval", ["overdue"]],
+      ["beforeConfirmation", ["overdue"]],
       ["payments", ["tomorrow"]],
       ["manual", ["nodate"]],
     ]);
+  });
+
+  it("uses user-facing task intent labels instead of raw workflow rules", () => {
+    expect(getTaskIntentLabel(task({ id: "a", title: "Internal approval checkpoint", source_rule: "approval_followup" }))).toBe("Required before confirmation");
+    expect(getTaskIntentLabel(task({ id: "b", title: "Reconcile proforma invoice", source_rule: "proforma_invoice" }))).toBe("Payment follow-up");
+    expect(getTaskIntentLabel(task({ id: "c", title: "Technical Meeting", source_rule: "technical_meeting" }))).toBe("Operational follow-up");
+    expect(getTaskIntentLabel(task({ id: "d", title: "Manual client follow-up", task_type: "manual" }))).toBe("Manual follow-up");
   });
 
   it("keeps task urgency separate from event status surfaces", () => {

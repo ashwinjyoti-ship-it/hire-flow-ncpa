@@ -540,7 +540,7 @@ function demoTaskSpecs(event: DemoEvent): DemoTaskSpec[] {
   if (event.status === "enquiry" || event.status === "tentative" || event.status === "approved") {
     specs.push({
       slug: "approval",
-      title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Internal approval checkpoint",
+      title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Lifecycle readiness checkpoint",
       description: "Confirm whether the event can move to the next lifecycle stage.",
       sourceRule: "approval_followup",
       assigneeId: "demo_user_aditi",

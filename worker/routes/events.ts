@@ -17,7 +17,15 @@ import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
-import { blockersForTransition, ensureChecklistForEvent, getChecklistItems, getEventLifecycle, updateChecklistItem } from "../lib/operations";
+import {
+  blockersForTransition,
+  completeTasksForSourceRules,
+  ensureChecklistForEvent,
+  getChecklistItems,
+  getEventLifecycle,
+  taskRulesCompletedByLifecycleTransition,
+  updateChecklistItem,
+} from "../lib/operations";
 import { z } from "zod";
 
 export const eventRoutes = new Hono<AuthEnv>();
@@ -255,18 +263,28 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   }
 
   const now = new Date().toISOString();
+  const lifecycleNote = parsed.data.note?.trim() || null;
+  const lifecycleReason = parsed.data.reason?.trim() || null;
   await db.prepare("UPDATE events SET status = ?, updated_at = ? WHERE id = ?").bind(to, now, id).run();
   await db.prepare(
     `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason, note)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(makeId("sh"), id, from, to, user.id, now, parsed.data.reason ?? null, parsed.data.note ?? null).run();
+  ).bind(makeId("sh"), id, from, to, user.id, now, lifecycleReason, lifecycleNote).run();
+
+  await completeTasksForSourceRules(
+    db,
+    id,
+    taskRulesCompletedByLifecycleTransition(from, to),
+    user.id,
+    "Completed automatically from lifecycle transition."
+  );
 
   await audit({
     db, actor: actorFrom(user), action: "event.status_changed",
-    targetType: "event", targetId: id, detail: { from, to, reason: parsed.data.reason },
+    targetType: "event", targetId: id, detail: { from, to, reason: lifecycleReason, note: lifecycleNote },
     ipHint: ipHint(c.req.raw),
   });
-  await eventActivity(db, id, "status_changed", actorFrom(user).id, { from, to, reason: parsed.data.reason });
+  await eventActivity(db, id, "status_changed", actorFrom(user).id, { from, to, reason: lifecycleReason, note: lifecycleNote });
   return c.json({ ok: true, status: to });
 });
 

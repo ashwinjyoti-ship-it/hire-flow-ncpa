@@ -175,8 +175,8 @@ export function EventDetailPage() {
   }
 
   const transition = useMutation({
-    mutationFn: async (args: { to: EventStatus; reason: string }) => {
-      await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason });
+    mutationFn: async (args: { to: EventStatus; reason?: string | null; note?: string | null }) => {
+      await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason, note: args.note });
       return fetchFreshEventState();
     },
     onSuccess: (fresh) => {
@@ -374,7 +374,14 @@ export function EventDetailPage() {
               <button
                 type="button"
                 disabled={transition.isPending || (requiresReason(e.status, statusModal) && !reason.trim())}
-                onClick={() => transition.mutate({ to: statusModal, reason })}
+                onClick={() => {
+                  const trimmed = reason.trim();
+                  transition.mutate({
+                    to: statusModal,
+                    reason: requiresReason(e.status, statusModal) ? trimmed : null,
+                    note: requiresReason(e.status, statusModal) ? null : trimmed || null,
+                  });
+                }}
                 className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
               >
                 {transition.isPending ? "Saving..." : "Confirm decision"}
@@ -741,20 +748,53 @@ function ActivityView({ activity }: { activity: DetailResponse["activity"] }) {
   return (
     <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
       <ol className="space-y-3">
-        {activity.map((a) => (
-          <li key={a.id as string} className="flex items-start gap-3 text-sm">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sage" />
-            <div>
-              <span className="font-medium text-ink-primary etched-deep">{ACTIVITY_LABELS[a.activity_type as string] ?? String(a.activity_type)}</span>
-              {a.actor_name ? <span className="text-ink-muted"> · {a.actor_name as string}</span> : null}
-              <div className="text-[11px] text-ink-muted">{formatDateTime(a.created_at as string)}</div>
-            </div>
-          </li>
-        ))}
+        {activity.map((a) => {
+          const detail = formatActivityDetail(a);
+          return (
+            <li key={a.id as string} className="flex items-start gap-3 text-sm">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sage" />
+              <div>
+                <span className="font-medium text-ink-primary etched-deep">{ACTIVITY_LABELS[a.activity_type as string] ?? String(a.activity_type)}</span>
+                {a.actor_name ? <span className="text-ink-muted"> · {a.actor_name as string}</span> : null}
+                {detail && <div className="mt-1 whitespace-pre-wrap text-xs text-ink-secondary etched">{detail}</div>}
+                <div className="text-[11px] text-ink-muted">{formatDateTime(a.created_at as string)}</div>
+              </div>
+            </li>
+          );
+        })}
         {activity.length === 0 && <li className="text-sm text-ink-muted etched">No activity yet.</li>}
       </ol>
     </div>
   );
+}
+
+function formatActivityDetail(activity: Record<string, unknown>): string | null {
+  const detail = parseActivityDetail(activity.detail);
+  if (!detail) return null;
+
+  if (activity.activity_type === "status_changed") {
+    const from = typeof detail.from === "string" ? statusLabel(detail.from as EventStatus) : null;
+    const to = typeof detail.to === "string" ? statusLabel(detail.to as EventStatus) : null;
+    const lines = from && to ? [`${from} to ${to}`] : [];
+    if (typeof detail.reason === "string" && detail.reason.trim()) lines.push(`Reason: ${detail.reason.trim()}`);
+    if (typeof detail.note === "string" && detail.note.trim()) lines.push(`Lifecycle note: ${detail.note.trim()}`);
+    return lines.join("\n") || null;
+  }
+
+  if (typeof detail.note === "string" && detail.note.trim()) return detail.note.trim();
+  return null;
+}
+
+function parseActivityDetail(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw !== "string") return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {

@@ -328,13 +328,33 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
   if (fieldKey === "full_payment_received" && v === "yes") rules.push("instalment");
   if (!rules.length) return;
 
+  await completeTasksForSourceRules(db, eventId, rules, userId, "Completed automatically from checklist update.");
+}
+
+export function taskRulesCompletedByLifecycleTransition(from: EventStatus, to: EventStatus): string[] {
+  if (from === "confirmed") return [];
+  const rules = new Set<string>();
+  if (to === "approved" || to === "confirmed") rules.add("approval_followup");
+  if (to === "confirmed") rules.add("confirmation_letter");
+  return Array.from(rules);
+}
+
+export async function completeTasksForSourceRules(
+  db: D1Database,
+  eventId: string,
+  rules: string[],
+  userId: string,
+  completionNote: string
+): Promise<void> {
+  if (!rules.length) return;
+
   const now = new Date().toISOString();
   for (const rule of rules) {
     await db.prepare(
       `UPDATE tasks
        SET status = 'completed', completed_at = ?, completed_by = ?, completion_note = ?, updated_at = ?
        WHERE event_id = ? AND source_rule = ? AND status IN ('open','in_progress')`
-    ).bind(now, userId, "Completed automatically from checklist update.", now, eventId, rule).run();
+    ).bind(now, userId, completionNote, now, eventId, rule).run();
   }
 }
 

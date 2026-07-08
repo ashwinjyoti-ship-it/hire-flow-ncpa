@@ -10,6 +10,7 @@ import {
   buildEventCommandCards,
   groupTasksByTiming,
   groupTasksByWorkflowLane,
+  getTaskIntentLabel,
   getTaskUrgencyLabels,
   getTimingGroup,
   getWorkflowFamily,
@@ -306,8 +307,7 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
         <span>{task.task_type === "automatic" ? "Automatic" : "Manual"}</span>
-        <span>{workflowLabel(getWorkflowFamily(task))}</span>
-        {task.source_rule && <span>{task.source_rule.replace(/_/g, " ")}</span>}
+        <span>{getTaskIntentLabel(task)}</span>
         {task.due_date && <span>Due {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}
         {showEvent && task.event_id && task.event_title && <Link to={`/events/${task.event_id}`} className="text-sage-text underline">{task.event_title}</Link>}
