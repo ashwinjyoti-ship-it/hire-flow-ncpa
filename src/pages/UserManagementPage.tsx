@@ -1,12 +1,10 @@
-import { PageHeader } from "../components/PageHeader";
+import { Navigate } from "react-router-dom";
 
+/**
+ * User management lives in Settings → Event Owners, where account creation is
+ * unified with the event-owner dropdown (each owner is a real login). This
+ * route redirects there so the sidebar entry still resolves.
+ */
 export function UserManagementPage() {
-  return (
-    <div>
-      <PageHeader title="User Management" />
-      <div className="carved-card rounded-2xl bg-marble-highlight/50 p-8 text-sm text-ink-secondary etched">
-        <p className="text-ink-tertiary">This section is part of the active build roadmap.</p>
-      </div>
-    </div>
-  );
+  return <Navigate to="/settings#event-owners" replace />;
 }

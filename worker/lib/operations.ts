@@ -55,7 +55,7 @@ export type LifecycleReadiness = {
   actions: LifecycleAction[];
 };
 
-const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "ready", "applicable"]);
+const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "ready", "applicable", "full received"]);
 const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a."]);
 
 function todayIso(): string {
@@ -289,11 +289,19 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   const dueDate = addDays(baseDate, Number(rule.due_after_days ?? 0));
   const idempotency = `checklist:${item.id}:${rule.rule}`;
   const now = new Date().toISOString();
+
+  // Phase 8b: auto-assign the task to the event's owner when one is linked, so
+  // the owner's "My tasks" list picks it up. Falls back to unassigned (the
+  // notification still routes to the venue_manager role).
+  const ownerRow = await db.prepare("SELECT event_owner_id FROM events WHERE id = ?").bind(item.event_id)
+    .first<{ event_owner_id: string | null }>();
+  const assigneeId = ownerRow?.event_owner_id ?? null;
+
   await db.prepare(
     `INSERT OR IGNORE INTO tasks
      (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
-      idempotency_key, due_date, priority, status, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, 'medium', 'open', ?, ?, ?)`
+      idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', ?, ?, ?)`
   ).bind(
     makeId("task"),
     rule.title,
@@ -302,6 +310,7 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
     item.id,
     rule.rule,
     idempotency,
+    assigneeId,
     dueDate,
     createdBy,
     now,
@@ -310,7 +319,8 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 
   await createNotification(db, {
     idempotencyKey: `task-created:${idempotency}`,
-    recipientRole: "venue_manager",
+    recipientId: assigneeId ?? undefined,
+    recipientRole: assigneeId ? undefined : "venue_manager",
     title: "Follow-up task created",
     body: `${rule.title} for ${item.label}.`,
     relatedEventId: item.event_id,
@@ -324,8 +334,10 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
   if (fieldKey === "confirmation_signed_received" && v === "yes") rules.push("confirmation_letter");
   if (fieldKey === "onstage_received_from_client" && v) rules.push("onstage");
   if (fieldKey === "feedback_received" && v) rules.push("feedback");
+  if (fieldKey === "file_sent_to_accounts" && v) rules.push("send_file_to_accounts");
   if (fieldKey === "final_file_received" && v === "yes") rules.push("accounts_file");
   if (fieldKey === "full_payment_received" && v === "yes") rules.push("instalment");
+  if (fieldKey === "payment_status" && v === "full received") rules.push("instalment");
   if (!rules.length) return;
 
   await completeTasksForSourceRules(db, eventId, rules, userId, "Completed automatically from checklist update.");
@@ -356,6 +368,53 @@ export async function completeTasksForSourceRules(
        WHERE event_id = ? AND source_rule = ? AND status IN ('open','in_progress')`
     ).bind(now, userId, completionNote, now, eventId, rule).run();
   }
+}
+
+async function createFileToAccountsReminders(db: D1Database, today: string, now: string): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT e.id AS event_id,
+            e.event_end_date,
+            e.event_start_date,
+            ci.id AS checklist_item_id
+     FROM events e
+     JOIN checklist_items ci ON ci.event_id = e.id
+       AND ci.module = 'accounts'
+       AND ci.field_key = 'file_sent_to_accounts'
+     WHERE e.status = 'confirmed'
+       AND COALESCE(e.event_end_date, e.event_start_date) IS NOT NULL
+       AND COALESCE(e.event_end_date, e.event_start_date) < ?
+       AND (ci.value IS NULL OR TRIM(ci.value) = '')`
+  ).bind(today).all<{
+    event_id: string;
+    event_end_date: string | null;
+    event_start_date: string | null;
+    checklist_item_id: string;
+  }>();
+
+  let created = 0;
+  for (const event of results) {
+    const finalShowDate = event.event_end_date ?? event.event_start_date;
+    if (!finalShowDate) continue;
+    const dueDate = addDays(finalShowDate, 1);
+    const inserted = await db.prepare(
+      `INSERT OR IGNORE INTO tasks
+       (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
+        idempotency_key, due_date, priority, status, created_at, updated_at)
+       VALUES (?, 'Send file to accounts', 'Event is over; send the venue hire file to Accounts.',
+        ?, ?, 'automatic', 'send_file_to_accounts', ?, ?, ?, 'open', ?, ?)`
+    ).bind(
+      makeId("task"),
+      event.event_id,
+      event.checklist_item_id,
+      `post-event:${event.event_id}:send-file-to-accounts`,
+      dueDate,
+      dueDate < today ? "high" : "medium",
+      now,
+      now
+    ).run();
+    if (inserted.meta.changes > 0) created++;
+  }
+  return created;
 }
 
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness }> {
@@ -472,6 +531,8 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
     await maybeCreateTaskForChecklistItem(db, item, null);
     tasks++;
   }
+
+  tasks += await createFileToAccountsReminders(db, today, now);
 
   const { results: dueTasks } = await db.prepare(
     `SELECT t.id, t.title, t.event_id, t.assignee_id, e.event_owner

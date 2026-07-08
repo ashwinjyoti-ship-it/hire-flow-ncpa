@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, runOperationalJobs, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -134,5 +134,52 @@ describe("operational lifecycle readiness", () => {
     await ensureChecklistForEvent(db, "ev_test");
 
     expect(calls.some((sql) => sql.includes("UPDATE events SET ops_completion"))).toBe(false);
+  });
+
+  it("creates a post-show accounts reminder when the file has not been sent", async () => {
+    const inserts: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("cd.triggers_task IS NOT NULL")) return { results: [] };
+            if (sql.includes("JOIN checklist_items ci ON ci.event_id = e.id")) {
+              return {
+                results: [{
+                  event_id: "ev_after_show",
+                  event_end_date: "2026-07-06",
+                  event_start_date: "2026-07-05",
+                  checklist_item_id: "cli_file_sent",
+                }],
+              };
+            }
+            if (sql.includes("FROM tasks t")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            if (sql.includes("INSERT OR IGNORE INTO tasks")) {
+              inserts.push({ sql, binds: this.binds });
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const result = await runOperationalJobs(db);
+
+    expect(result.tasks).toBe(1);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.sql).toContain("Send file to accounts");
+    expect(inserts[0]?.binds).toContain("ev_after_show");
+    expect(inserts[0]?.binds).toContain("cli_file_sent");
+    expect(inserts[0]?.binds).toContain("2026-07-07");
   });
 });

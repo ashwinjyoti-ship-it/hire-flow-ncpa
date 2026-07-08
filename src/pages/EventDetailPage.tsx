@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiGet, apiPatch, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
 import { formatDate, formatDateTime, formatDuration } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
+import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -118,15 +119,29 @@ const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey
   },
 };
 
+type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "documents" | "venues" | "conflicts" | "activity";
+
+type EventDocument = {
+  id: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | null;
+  category: string | null;
+  notes: string | null;
+  uploaded_at: string;
+  uploaded_by_name: string | null;
+};
+
 export function EventDetailPage() {
   const { id = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview" | "operations" | "accounts" | "tasks" | "venues" | "conflicts" | "activity">("overview");
+  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "overview");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
-  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
 
   const { data, isLoading } = useQuery({
     queryKey: ["event", id],
@@ -147,6 +162,18 @@ export function EventDetailPage() {
     queryKey: ["event", id, "conflicts"],
     queryFn: () => apiGet<ConflictsResponse>(`/events/${id}/conflicts`),
   });
+
+  const { data: documentsData } = useQuery({
+    queryKey: ["event", id, "documents"],
+    queryFn: () => apiGet<{ documents: EventDocument[] }>(`/events/${id}/documents`),
+  });
+
+  useEffect(() => {
+    const nextTab = parseEventDetailTab(searchParams.get("tab"));
+    const nextField = searchParams.get("field");
+    if (nextTab && nextTab !== tab) setTab(nextTab);
+    setFocusedFieldKey(nextField);
+  }, [searchParams, tab]);
 
   useEffect(() => {
     if (!focusedFieldKey) return;
@@ -174,6 +201,14 @@ export function EventDetailPage() {
     qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
   }
 
+  function clearFocusedField() {
+    setFocusedFieldKey(null);
+    const params = new URLSearchParams(searchParams);
+    params.delete("field");
+    setSearchParams(params, { replace: true });
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
   const transition = useMutation({
     mutationFn: async (args: { to: EventStatus; reason?: string | null; note?: string | null }) => {
       await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason, note: args.note });
@@ -183,6 +218,7 @@ export function EventDetailPage() {
       setStatusModal(null);
       setReason("");
       applyFreshEventState(fresh);
+      clearFocusedField();
     },
   });
 
@@ -215,8 +251,18 @@ export function EventDetailPage() {
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
-    setTab(target.tab);
-    setFocusedFieldKey(target.fieldKey);
+    selectTab(target.tab, target.fieldKey);
+  }
+
+  function selectTab(next: EventDetailTab, fieldKey: string | null = null) {
+    setTab(next);
+    setFocusedFieldKey(fieldKey);
+    const params = new URLSearchParams(searchParams);
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    if (fieldKey) params.set("field", fieldKey);
+    else params.delete("field");
+    setSearchParams(params, { replace: true });
   }
 
   return (
@@ -250,6 +296,7 @@ export function EventDetailPage() {
         nextAction={checklistData?.lifecycle.nextAction ?? null}
         blockers={checklistData?.lifecycle.blockers ?? []}
         canChangeStatus={canChangeStatus}
+        canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
         onChoose={(status) => {
           setStatusModal(status);
@@ -274,6 +321,7 @@ export function EventDetailPage() {
           ["operations", "Operations"],
           ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
+          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
           ["venues", `Venues & Schedule${data?.venue_bookings.length ? ` (${data.venue_bookings.length})` : ""}`],
           ["conflicts", `Conflicts${conflictsData?.conflicts.length ? ` (${conflictsData.conflicts.length})` : ""}`],
           ["activity", "Activity"],
@@ -281,7 +329,7 @@ export function EventDetailPage() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
               (tab === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
@@ -351,6 +399,14 @@ export function EventDetailPage() {
         </section>
       )}
 
+      {tab === "documents" && (
+        <DocumentsView
+          eventId={id}
+          documents={documentsData?.documents ?? []}
+          canUpload={can(user?.role ?? "viewer", "document.upload")}
+          canArchive={can(user?.role ?? "viewer", "document.delete")}
+        />
+      )}
       {tab === "venues" && <VenuesView bookings={data?.venue_bookings ?? []} />}
       {tab === "conflicts" && <ConflictsView conflicts={conflictsData?.conflicts ?? []} />}
       {tab === "activity" && <ActivityView activity={data?.activity ?? []} />}
@@ -400,6 +456,7 @@ function LifecyclePanel({
   nextAction,
   blockers,
   canChangeStatus,
+  canShowStatusActions,
   onOpenBlocker,
   onChoose,
 }: {
@@ -408,6 +465,7 @@ function LifecyclePanel({
   nextAction: LifecycleAction | null;
   blockers: string[];
   canChangeStatus: boolean;
+  canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onChoose: (status: EventStatus) => void;
 }) {
@@ -459,7 +517,7 @@ function LifecyclePanel({
                   : "No forward milestone available"}
             </p>
           </div>
-          {canChangeStatus && nextAction && (
+          {canChangeStatus && canShowStatusActions && nextAction && (
             <button
               type="button"
               onClick={() => onChoose(nextAction.status)}
@@ -467,6 +525,11 @@ function LifecyclePanel({
             >
               Advance to {milestoneLabel(nextAction.status)}
             </button>
+          )}
+          {canChangeStatus && !canShowStatusActions && (nextAction || closeOutActions.length > 0) && (
+            <span className="rounded-full bg-marble-shadow/50 px-3 py-1.5 text-xs font-medium text-ink-muted etched">
+              Open Operations to change lifecycle status
+            </span>
           )}
         </div>
 
@@ -492,7 +555,7 @@ function LifecyclePanel({
           </div>
         )}
 
-        {canChangeStatus && closeOutActions.length > 0 && (
+        {canChangeStatus && canShowStatusActions && closeOutActions.length > 0 && (
           <div className="mt-4 border-t border-ink-muted/10 pt-3">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Close out</h3>
             <div className="flex flex-wrap gap-2">
@@ -650,11 +713,180 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
           </div>
           <div className="mt-1 text-xs text-ink-muted etched">
             {task.task_type === "automatic" ? "Automatic" : "Manual"}
-            {task.due_date ? ` · Due ${formatDate(task.due_date as string)}` : ""}
+            {task.due_date ? ` · Target ${formatDate(task.due_date as string)}` : ""}
             {task.assignee_name ? ` · ${task.assignee_name as string}` : ""}
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function parseEventDetailTab(value: string | null): EventDetailTab | null {
+  if (value === "operations" || value === "accounts" || value === "tasks" || value === "documents" || value === "venues" || value === "conflicts" || value === "activity" || value === "overview") {
+    return value;
+  }
+  return null;
+}
+
+const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+  DOCUMENT_CATEGORIES.map((c) => [c, c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())])
+);
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsView({
+  eventId,
+  documents,
+  canUpload,
+  canArchive,
+}: {
+  eventId: string;
+  documents: EventDocument[];
+  canUpload: boolean;
+  canArchive: boolean;
+}) {
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [category, setCategory] = useState<string>("other");
+  const [notes, setNotes] = useState("");
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const upload = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error("Choose a file first");
+      const form = new FormData();
+      form.append("file", file);
+      form.append("category", category);
+      if (notes.trim()) form.append("notes", notes.trim());
+      return apiUpload(`/events/${eventId}/documents`, form);
+    },
+    onSuccess: () => {
+      setFile(null);
+      setNotes("");
+      setCategory("other");
+      setFileInputKey((k) => k + 1);
+      qc.invalidateQueries({ queryKey: ["event", eventId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["event", eventId] });
+    },
+  });
+
+  const archive = useMutation({
+    mutationFn: (docId: string) => apiDelete(`/documents/${docId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["event", eventId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["event", eventId] });
+    },
+  });
+
+  const tooLarge = file != null && file.size > MAX_DOCUMENT_BYTES;
+
+  return (
+    <div className="space-y-4">
+      {canUpload && (
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Upload document</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold text-ink-secondary etched">File (max 25 MB)</span>
+              <input
+                key={fileInputKey}
+                type="file"
+                onChange={(ev) => setFile(ev.target.files?.[0] ?? null)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary file:mr-3 file:rounded-full file:border-0 file:bg-neutral-btn file:px-3 file:py-1 file:text-xs file:font-medium"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-ink-secondary etched">Category</span>
+              <select
+                value={category}
+                onChange={(ev) => setCategory(ev.target.value)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+              >
+                {DOCUMENT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-xs font-semibold text-ink-secondary etched">Notes (optional)</span>
+              <input
+                value={notes}
+                onChange={(ev) => setNotes(ev.target.value)}
+                className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+                placeholder="Context for this document"
+              />
+            </label>
+          </div>
+          {tooLarge && <p className="mt-2 text-xs text-status-cancelled etched">This file exceeds the 25 MB limit.</p>}
+          {upload.error && <p role="alert" className="mt-2 text-xs text-status-cancelled etched">{(upload.error as Error).message}</p>}
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              disabled={!file || tooLarge || upload.isPending}
+              onClick={() => upload.mutate()}
+              className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+            >
+              {upload.isPending ? "Uploading..." : "Upload"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Documents</h3>
+        {documents.length === 0 ? (
+          <p className="text-sm text-ink-muted etched">No documents uploaded for this event.</p>
+        ) : (
+          <div className="space-y-2">
+            {documents.map((doc) => (
+              <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-marble-shadow/30 px-4 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-ink-primary etched-deep">{doc.file_name}</span>
+                    <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-sage-text">
+                      {CATEGORY_LABELS[doc.category ?? "other"] ?? doc.category}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-ink-muted etched">
+                    {formatFileSize(doc.file_size)} · {formatDateTime(doc.uploaded_at)}
+                    {doc.uploaded_by_name ? ` · ${doc.uploaded_by_name}` : ""}
+                    {doc.notes ? ` · ${doc.notes}` : ""}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/documents/${doc.id}/download`}
+                    className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+                  >
+                    Download
+                  </a>
+                  {canArchive && (
+                    <button
+                      type="button"
+                      disabled={archive.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Archive "${doc.file_name}"? It will no longer appear for this event.`)) {
+                          archive.mutate(doc.id);
+                        }
+                      }}
+                      className="carved-btn rounded-full bg-status-cancelled/10 px-3 py-1.5 text-xs font-medium text-status-cancelled etched disabled:opacity-60"
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {archive.error && <p role="alert" className="mt-2 text-xs text-status-cancelled etched">{(archive.error as Error).message}</p>}
+      </section>
     </div>
   );
 }
@@ -917,8 +1149,8 @@ function statusClass(status: string): string {
 }
 
 function taskStatusLabel(status: string): string {
-  if (status === "open") return "Not started";
-  if (status === "in_progress") return "Started";
+  if (status === "open") return "Open";
+  if (status === "in_progress") return "In progress";
   if (status === "completed") return "Done";
   if (status === "cancelled") return "Cancelled";
   return status.replace(/_/g, " ");

@@ -7,8 +7,12 @@ import { organisationRoutes } from "./routes/organisations";
 import { eventRoutes } from "./routes/events";
 import { calendarRoutes } from "./routes/calendar";
 import { lookupRoutes } from "./routes/lookups";
+import { userRoutes } from "./routes/users";
 import { taskRoutes } from "./routes/tasks";
 import { notificationRoutes } from "./routes/notifications";
+import { documentRoutes, eventDocumentRoutes } from "./routes/documents";
+import { reportRoutes } from "./routes/reports";
+import { analyticsRoutes } from "./routes/analytics";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -54,15 +58,26 @@ export function buildApp(env: Env): Hono<AuthEnv> {
   // Event routes (with nested venue bookings + schedule entries).
   app.route("/events", eventRoutes);
 
+  // Event-scoped document upload/list (R2-backed via the FILES binding).
+  app.route("/events", eventDocumentRoutes);
+
+  // Document metadata / download / archive.
+  app.route("/documents", documentRoutes);
+
   // Calendar routes (schedule entries in a date range).
   app.route("/calendar", calendarRoutes);
 
   // Lookup (dropdown_options) admin CRUD — public reads still go to GET /lookups above.
   app.route("/lookups", lookupRoutes);
+  app.route("/users", userRoutes);
 
   // Operational workflow routes.
   app.route("/tasks", taskRoutes);
   app.route("/notifications", notificationRoutes);
+
+  // Daily operational reports (immutable snapshots) + analytics.
+  app.route("/reports", reportRoutes);
+  app.route("/analytics", analyticsRoutes);
 
   return app;
 }

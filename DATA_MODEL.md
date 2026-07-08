@@ -22,6 +22,7 @@ Organisation / Client
 |---|---|
 | `users` | Auth principals (email, scrypt hash, role, TOTP secret, recovery codes) |
 | `sessions` | httpOnly secure server-side sessions |
+| `password_reset_tokens` | Single-use, time-limited tokens for self-service password reset (hashed at rest) |
 | `audit_logs` | System-level audit (auth, role changes, overrides, date corrections) |
 | `organisations` | Clients (name, GST/PAN/TAN, bank details, notes) |
 | `contacts` | People at organisations (1 org → many contacts) |

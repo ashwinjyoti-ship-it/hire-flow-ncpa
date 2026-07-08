@@ -30,6 +30,45 @@ function fakeDb(handlerFor: (sql: string) => QueryHandler): D1Database {
   } as unknown as D1Database;
 }
 
+/**
+ * Variant of fakeDb that captures the bind arguments of the *first* statement
+ * matching a rule's `match` substring. Use to assert which values a route binds
+ * (e.g. confirming a default filter value). Each rule optionally inspects SQL
+ * via `onSql` and returns data via `first`/`all`/`run`.
+ */
+type BindRule = {
+  match: string;
+  first?: () => unknown;
+  all?: () => unknown;
+  run?: () => unknown;
+  onSql?: (sql: string) => void;
+};
+function bindCapturingDb(rules: BindRule[], onBinds: (binds: unknown[]) => void): D1Database {
+  return {
+    prepare(sql: string) {
+      const rule = rules.find((r) => sql.includes(r.match));
+      if (rule) {
+        rule.onSql?.(sql);
+        let lastBinds: unknown[] = [];
+        // Only the matched rule reports binds, so unrelated statements (e.g.
+        // the session lookup) can't clobber the captured value.
+        return {
+          bind(...args: unknown[]) { lastBinds = args; return this; },
+          async first() { onBinds(lastBinds); return rule.first?.() ?? null; },
+          async all() { onBinds(lastBinds); return rule.all?.() ?? { results: [] }; },
+          async run() { onBinds(lastBinds); return rule.run?.() ?? { success: true }; },
+        };
+      }
+      return {
+        bind() { return this; },
+        async first() { return null; },
+        async all() { return { results: [] }; },
+        async run() { return { success: true }; },
+      };
+    },
+  } as unknown as D1Database;
+}
+
 function sessionRow() {
   return {
     id: "sess_test",
@@ -91,6 +130,10 @@ describe("API regressions", () => {
         expect(sql).toContain("e.event_start_date AS event_start_date");
         expect(sql).toContain("e.event_end_date AS event_end_date");
         expect(sql).toContain("e.event_owner AS event_owner");
+        expect(sql).toContain("o.name AS organisation_name");
+        expect(sql).toContain("ci.module AS source_module");
+        expect(sql).toContain("ci.field_key AS source_field_key");
+        expect(sql).toContain("LEFT JOIN checklist_items ci");
         expect(sql).toContain("event_venues");
         return {
           all: () => ({
@@ -104,6 +147,9 @@ describe("API regressions", () => {
                 event_start_date: "2026-07-12",
                 event_end_date: "2026-07-12",
                 event_owner: "Aditi Rao",
+                organisation_name: "Test Organisation",
+                source_module: "operations",
+                source_field_key: "approval_received_on",
                 event_venues: "JBT",
               },
             ],
@@ -127,6 +173,9 @@ describe("API regressions", () => {
       tasks: [
         {
           event_start_date: "2026-07-12",
+          organisation_name: "Test Organisation",
+          source_module: "operations",
+          source_field_key: "approval_received_on",
           event_venues: "JBT",
           event_owner: "Aditi Rao",
         },
@@ -185,6 +234,31 @@ describe("API regressions", () => {
     });
   });
 
+  it("allows lifecycle cards to be fetched across all dates for the dashboard", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("is_archived = 0");
+        expect(sql).not.toContain("milestone_date >= ?");
+        expect(sql).not.toContain("milestone_date <= ?");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar/lifecycle",
+      {
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ entries: [], byDate: {} });
+  });
+
   it("applies text search on the show calendar", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
@@ -207,6 +281,104 @@ describe("API regressions", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+
+  it("gates the show calendar to confirmed events by default", async () => {
+    // Regression: an enquiry entered today with a September show date used to
+    // appear on the September show calendar. The show calendar now defaults to
+    // confirmed-only — a venue earns a card once approved/confirmed.
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      {
+        match: "FROM schedule_entries se",
+        onSql: (sql) => expect(sql).toContain("e.status = ?"),
+        all: () => ({ results: [] }),
+      },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedBinds).toContain("confirmed");
+  });
+
+  it("honours an explicit status choice on the show calendar over the confirmed default", async () => {
+    // When a user deliberately picks a status from the filter (e.g. to inspect
+    // tentative holds), that exact choice wins — the default does not override
+    // their intent.
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "FROM schedule_entries se", all: () => ({ results: [] }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30&status=tentative",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedBinds).toContain("tentative");
+    expect(capturedBinds).not.toContain("confirmed");
+  });
+
+  it("links events to the event owner account (event_owner_id) on create", async () => {
+    // Phase 8b: the events INSERT must carry event_owner_id so tasks auto-route
+    // and "My events" can filter by owner identity. We assert the SQL + bind
+    // rather than the full create flow (which spans many tables).
+    let eventsSql = "";
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "INSERT INTO events", onSql: (sql) => { eventsSql = sql; }, run: () => ({ success: true }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    await app.request(
+      "/events",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Owner-linked event",
+          organisation_id: "org_1",
+          event_owner: "Aditi Rao",
+          event_owner_id: "demo_user_aditi",
+          venue_bookings: [{ venue: "JBT" }],
+        }),
+      },
+      { DB: db } as never
+    );
+
+    expect(eventsSql).toContain("event_owner_id");
+    expect(capturedBinds).toContain("demo_user_aditi");
+  });
+
+  it("filters the event list to the signed-in owner when mine=1", async () => {
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "FROM events e LEFT JOIN organisations", all: () => ({ results: [] }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events?mine=1",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    // sessionRow's user_id is "user_admin" — mine=1 must bind that id.
+    expect(capturedBinds).toContain("user_admin");
   });
 
   it("allows admins to manage event owner lookup options", async () => {

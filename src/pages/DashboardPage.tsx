@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
@@ -24,11 +25,14 @@ type TasksResponse = {
     title: string;
     event_id: string | null;
     event_title: string | null;
+    organisation_name: string | null;
     event_status: EventStatus | null;
+    source_module?: "operations" | "accounts" | null;
+    source_field_key?: string | null;
+    source_rule: string | null;
     due_date: string | null;
     priority: "high" | "medium" | "low";
     status: "open" | "in_progress" | "completed" | "cancelled";
-    source_rule: string | null;
   }>;
 };
 
@@ -36,15 +40,11 @@ const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_l
 
 export function DashboardPage() {
   const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const monthStartIso = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}-${String(monthStart.getDate()).padStart(2, "0")}`;
-  const monthEndIso = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
 
   const { data: lifecycleData } = useQuery({
-    queryKey: ["calendar-lifecycle", "dashboard", monthStartIso, monthEndIso],
-    queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?from=${monthStartIso}&to=${monthEndIso}`),
+    queryKey: ["calendar-lifecycle", "dashboard", "all-records"],
+    queryFn: () => apiGet<LifecycleResponse>("/calendar/lifecycle"),
   });
   const { data: taskData } = useQuery({
     queryKey: ["tasks", "dashboard", "active"],
@@ -65,34 +65,41 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle={`${today.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })} lifecycle overview`} />
+      <PageHeader title="Dashboard" subtitle="All active lifecycle records and work needing attention" />
 
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={`/calendar?view=lifecycle&status=enquiry&from=${monthStartIso}`} />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={`/calendar?view=lifecycle&status=tentative&from=${monthStartIso}`} />
-        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href={`/calendar?view=lifecycle&status=approved&from=${monthStartIso}`} />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={`/calendar?view=lifecycle&status=confirmed&from=${monthStartIso}`} />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={`/calendar?view=lifecycle&status=regret&from=${monthStartIso}`} />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={`/calendar?view=lifecycle&status=cancelled&from=${monthStartIso}`} />
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href="/calendar?view=lifecycle&status=enquiry" />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href="/calendar?view=lifecycle&status=tentative" />
+        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href="/calendar?view=lifecycle&status=approved" />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href="/calendar?view=lifecycle&status=confirmed" />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/calendar?view=lifecycle&status=regret" />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href="/calendar?view=lifecycle&status=cancelled" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2 lg:gap-6">
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle Queue</h2>
             <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
           </div>
           {lifecycleQueue.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">No lifecycle cards this month.</p>
+            <p className="text-sm text-ink-muted etched">No active lifecycle records.</p>
           ) : (
             <ul className="space-y-2">
               {lifecycleQueue.slice(0, 8).map((e) => (
                 <li key={e.id}>
-                  <Link to={`/events/${e.event_id}`} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="flex-1 truncate">
-                      <span className="block text-sm font-medium text-ink-primary etched-deep">{e.organisation_name ?? e.title}</span>
-                      <span className="block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
+                  <Link to={getEventOperationsLink(e.event_id)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                        {e.organisation_name ?? e.title}
+                      </span>
+                      {e.organisation_name && e.title !== e.organisation_name && (
+                        <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                          {eventDisplayName(e.title, e.organisation_name)}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
                     </span>
                     <StatusBadge status={e.milestone_type} />
                   </Link>
@@ -113,10 +120,18 @@ export function DashboardPage() {
             <ul className="space-y-2">
               {tasks.slice(0, 8).map((task) => (
                 <li key={task.id}>
-                  <Link to={task.event_id ? `/events/${task.event_id}` : "/tasks"} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="flex-1 truncate">
-                      <span className="block text-sm font-medium text-ink-primary etched-deep">{task.title}</span>
-                      <span className="block text-[11px] text-ink-muted etched">{task.event_title ?? "Unlinked task"} · {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}</span>
+                  <Link to={getTaskWorkLink(task)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                        {task.organisation_name ?? task.event_title ?? "Unlinked task"}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                        {task.title}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">
+                        {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
+                        {task.due_date ? `Target ${formatDate(task.due_date)}` : "No target date"}
+                      </span>
                     </span>
                     {task.event_status && <StatusBadge status={task.event_status} />}
                   </Link>
@@ -149,6 +164,15 @@ function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolea
   if (task.status !== "open" && task.status !== "in_progress") return false;
   if (task.event_status === "confirmed" && task.source_rule && STALE_CONFIRMED_TASK_RULES.has(task.source_rule)) return false;
   return true;
+}
+
+function eventDisplayName(title: string, organisationName: string | null): string {
+  if (!organisationName) return title;
+  const prefix = `${organisationName} - `;
+  if (title.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) {
+    return title.slice(prefix.length).trim();
+  }
+  return title;
 }
 
 function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href: string }) {

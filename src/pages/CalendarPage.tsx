@@ -54,7 +54,8 @@ type LifecycleType =
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function startOfWeek(d: Date): Date { const x = new Date(d); x.setDate(d.getDate() - d.getDay()); x.setHours(0, 0, 0, 0); return x; }
+/** Last calendar day of the month (local). day 0 of next month = last day of this month. */
+function endOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
 function isoDate(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(d.getDate() + n); return x; }
 
@@ -74,23 +75,28 @@ export function CalendarPage() {
     owner: searchParams.get("owner") ?? "",
     q: searchParams.get("q") ?? "",
   });
+  // Phase 8b: "My events" restricts the calendar to events owned by the
+  // signed-in user (event_owner_id = me). Applies to both calendar views.
+  const [mine, setMine] = useState(searchParams.get("mine") === "1");
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
 
-  // Determine the visible date range based on the view.
+  // Visible range = the exact calendar month being viewed (1st → last day).
+  // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
+  // adjacent-month events from leaking into the grid.
   const range = useMemo(() => {
-    return { from: isoDate(startOfWeek(startOfMonth(cursor))), to: isoDate(addDays(startOfWeek(startOfMonth(cursor)), 41)) };
+    return { from: isoDate(startOfMonth(cursor)), to: isoDate(endOfMonth(cursor)) };
   }, [cursor]);
 
-  const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+  const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
   const { data, isLoading } = useQuery({
-    queryKey: ["calendar", range.from, range.to, filters],
+    queryKey: ["calendar", range.from, range.to, filters, mine],
     queryFn: () => apiGet<CalResponse>(`/calendar?${q.toString()}`),
     enabled: view !== "lifecycle",
   });
 
-  const lifecycleQuery = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) });
+  const lifecycleQuery = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
   const { data: lifecycleData, isLoading: lifecycleLoading } = useQuery({
-    queryKey: ["calendar-lifecycle", range.from, range.to, filters],
+    queryKey: ["calendar-lifecycle", range.from, range.to, filters, mine],
     queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?${lifecycleQuery.toString()}`),
     enabled: view === "lifecycle",
   });
@@ -101,7 +107,10 @@ export function CalendarPage() {
   const venues = lookups?.lookups.venue ?? [];
   const owners = lookups?.lookups.handled_by ?? [];
 
-  const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
+  const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  // "This month" only when the viewed cursor is the actual current month/year.
+  const nowDate = new Date();
+  const isCurrentMonth = cursor.getFullYear() === nowDate.getFullYear() && cursor.getMonth() === nowDate.getMonth();
 
   const showCreate = can(user?.role ?? "viewer", "event.create");
 
@@ -109,7 +118,6 @@ export function CalendarPage() {
     <div>
       <PageHeader
         title={view === "lifecycle" ? "Lifecycle Calendar" : "Show Calendar"}
-        subtitle={title}
         actions={showCreate ? (
           <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
             + New Event
@@ -118,8 +126,9 @@ export function CalendarPage() {
       />
 
       {/* Controls */}
-      <div className="carved-header mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm">
-        <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
+      <div className="carved-header mb-6 grid grid-cols-1 items-center gap-3 rounded-2xl bg-marble-highlight/60 p-3 backdrop-blur-sm xl:grid-cols-[1fr_auto_1fr]">
+        <div className="flex justify-center xl:justify-start">
+          <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
           {(["lifecycle", "show"] as const).map((v) => (
             <button
               key={v}
@@ -130,20 +139,24 @@ export function CalendarPage() {
               {v === "show" ? "Show Calendar" : "Lifecycle"}
             </button>
           ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Previous month">
+        <div className="mx-auto flex items-center gap-3 rounded-full bg-marble-shadow/30 px-2 py-1">
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
             <Chevron dir="left" />
           </button>
-          <button type="button" onClick={() => setCursor(new Date())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched">Jump to today</button>
-            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn flex h-8 w-8 items-center justify-center rounded-full bg-neutral-btn text-sage-text" aria-label="Next month">
+          <div className="min-w-[9rem] text-center">
+            <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
+          </div>
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Next month">
             <Chevron dir="right" />
           </button>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
           <input
             type="text"
             value={filters.q}
@@ -151,10 +164,24 @@ export function CalendarPage() {
             placeholder="Search title, org…"
             className="carved rounded-full bg-marble-shadow/40 px-3 py-1.5 text-xs text-ink-primary focus:outline-none"
           />
-          <FilterSelect value={filters.status} onChange={(v) => setFilters((f) => ({ ...f, status: v }))} options={[{ value: "", label: "All statuses" }, ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v }))]} />
+          <FilterSelect
+            value={filters.status}
+            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+            options={[
+              // Show Calendar shows confirmed events by default (see worker
+              // /calendar route). Lifecycle Calendar shows all lifecycle
+              // milestones, so its default reads "All statuses".
+              { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
+              ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
+            ]}
+          />
           <FilterSelect value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
           <FilterSelect value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
           <FilterSelect value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
+          <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
+            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
+            My events
+          </label>
         </div>
       </div>
 
@@ -238,35 +265,47 @@ function lifecycleDot(type: LifecycleType): string {
 }
 
 function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date }) {
-  const start = startOfWeek(startOfMonth(cursor));
-  const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  // Build cells for ONLY the viewed month: leading blanks (so the 1st lands under
+  // its correct weekday), days 1..N, then trailing blanks to complete the last row.
+  // No adjacent-month dates are rendered, so no events leak across months.
+  const monthStart = startOfMonth(cursor);
+  const daysInMonth = endOfMonth(cursor).getDate();
+  const leadingBlanks = monthStart.getDay();
+  const cells: Array<{ date: Date | null; key: string }> = [
+    ...Array.from({ length: leadingBlanks }, (_, i) => ({ date: null, key: `b-${i}` })),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = addDays(monthStart, i);
+      return { date: d, key: isoDate(d) };
+    }),
+  ];
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  for (let i = 0; i < trailingBlanks; i++) cells.push({ date: null, key: `t-${i}` });
   return (
     <div>
-      <div className="mb-3 grid grid-cols-7 gap-3">
+      <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-3">
-        {days.map((d) => {
-          const key = isoDate(d);
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
+        {cells.map(({ date: d, key }) => {
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/20 p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
-          const inMonth = d.getMonth() === cursor.getMonth();
           return (
-            <article key={key} className={"min-h-[144px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
+            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex items-center justify-between gap-2">
-                {entries.length > 0 ? <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
-                <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                {entries.length > 0 ? <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : "text-ink-primary")}>
                   {d.getDate()}
                 </span>
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1 sm:space-y-1.5">
                 {entries.slice(0, 5).map((entry) => (
                   <LifecycleChip key={entry.id} entry={entry} />
                 ))}
                 {entries.length > 5 && (
-                  <div className="rounded-md bg-marble-shadow/50 px-2 py-1 text-[10px] font-medium text-ink-muted etched">
+                  <div className="truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-[10px] font-medium text-ink-muted etched sm:px-2">
                     +{entries.length - 5} more
                   </div>
                 )}
@@ -284,11 +323,11 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
   return (
     <Link
       to={`/events/${entry.event_id}`}
-      className={"carved-card block rounded-md px-2 py-1 text-left " + surface.chip}
+      className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
         <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + lifecycleDot(entry.milestone_type)} />
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">
+        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
       </div>
@@ -301,21 +340,31 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
 }
 
 function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void }) {
-  const start = startOfWeek(startOfMonth(cursor));
-  const days: Date[] = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  // Build cells for ONLY the viewed month (see LifecycleMonthGrid for the rationale).
+  const monthStart = startOfMonth(cursor);
+  const daysInMonth = endOfMonth(cursor).getDate();
+  const leadingBlanks = monthStart.getDay();
+  const cells: Array<{ date: Date | null; key: string }> = [
+    ...Array.from({ length: leadingBlanks }, (_, i) => ({ date: null, key: `b-${i}` })),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = addDays(monthStart, i);
+      return { date: d, key: isoDate(d) };
+    }),
+  ];
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  for (let i = 0; i < trailingBlanks; i++) cells.push({ date: null, key: `t-${i}` });
   return (
     <div>
-      <div className="mb-3 grid grid-cols-7 gap-3">
+      <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-3">
-        {days.map((d) => {
-          const key = isoDate(d);
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
+        {cells.map(({ date: d, key }) => {
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/20 p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
-          const inMonth = d.getMonth() === cursor.getMonth();
           // Group entries by organisation, pick the "worst" (lowest-rank) status as the chip colour.
           const byOrg = new Map<string, { name: string; status: EventStatus; entry: CalEntry }>();
           for (const e of entries) {
@@ -327,17 +376,17 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           }
           const chips = Array.from(byOrg.values());
           return (
-            <article key={key} className={"min-h-[128px] rounded-xl p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
+            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : "carved bg-marble-highlight/40")}>
               <div className="mb-2 flex justify-end">
-                <span className={"flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold etched " + (isToday ? "bg-sage text-white sage-pip" : inMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : "text-ink-primary")}>
                   {d.getDate()}
                 </span>
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1 sm:space-y-1.5">
                 {chips.map((c, i) => (
-                  <button key={i} type="button" onClick={() => onPick(c.entry)} className={"carved-card flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left " + getEventStatusSurface(c.status).chip}>
+                  <button key={i} type="button" onClick={() => onPick(c.entry)} className={"carved-card flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left sm:gap-1.5 sm:px-2 " + getEventStatusSurface(c.status).chip}>
                     <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + getEventStatusSurface(c.status).dot} />
-                    <span className="truncate text-[11px] font-medium etched">{c.name}</span>
+                    <span className="min-w-0 truncate text-[10px] font-medium etched sm:text-[11px]">{c.name}</span>
                   </button>
                 ))}
               </div>

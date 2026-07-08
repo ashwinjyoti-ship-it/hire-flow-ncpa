@@ -14,12 +14,16 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../middleware/auth";
-import { actorFrom, ipHint, requireUser } from "../middleware/auth";
-import { hashPassword, verifyPassword, generateTotpSecret, verifyTotp, totpUri, generateRecoveryCodes, hashRecoveryCode, verifyRecoveryCode } from "../lib/crypto";
-import { createSession, revokeSession, readSessionCookie, sessionCookieHeader, clearSessionCookieHeader, SESSION_MAX_AGE_DAYS } from "../lib/sessions";
+import { actorFrom, ipHint, requirePermission, requireUser } from "../middleware/auth";
+import { hashPassword, verifyPassword, generateTotpSecret, verifyTotp, totpUri, generateRecoveryCodes, hashRecoveryCode, verifyRecoveryCode, sha256Hex, generateTemporaryPassword } from "../lib/crypto";
+import { createSession, revokeSession, revokeAllSessions, readSessionCookie, sessionCookieHeader, clearSessionCookieHeader, SESSION_MAX_AGE_DAYS } from "../lib/sessions";
 import { recordFailedLogin, recordSuccessfulLogin, isLocked } from "../lib/rate-limit";
 import { audit } from "../lib/audit";
-import { makeId } from "../lib/id";
+import { makeId, randomToken } from "../lib/id";
+import { sendTransactionalEmail } from "../lib/email";
+
+const PASSWORD_RESET_TTL_MINUTES = 30;
+const PasswordSchema = z.string().min(10, "Password must be at least 10 characters");
 
 export const authRoutes = new Hono<AuthEnv>();
 
@@ -45,9 +49,9 @@ authRoutes.post("/login", async (c) => {
   const db = c.env.DB;
 
   const user = await db
-    .prepare("SELECT id, email, name, role, password_hash, totp_secret, is_active FROM users WHERE email = ?")
+    .prepare("SELECT id, email, name, role, password_hash, totp_secret, is_active, must_change_password FROM users WHERE email = ?")
     .bind(email.toLowerCase())
-    .first<{ id: string; email: string; name: string; role: string; password_hash: string; totp_secret: string | null; is_active: number }>();
+    .first<{ id: string; email: string; name: string; role: string; password_hash: string; totp_secret: string | null; is_active: number; must_change_password: number }>();
 
   if (!user || user.is_active !== 1) {
     // Don't reveal whether the email exists.
@@ -89,6 +93,7 @@ authRoutes.post("/login", async (c) => {
   return c.json({
     user: { id: user.id, email: user.email, name: user.name, role: user.role, organisation: null },
     csrfToken: session.csrfToken,
+    mustChangePassword: Boolean(user.must_change_password),
   });
 });
 
@@ -103,11 +108,11 @@ authRoutes.post("/mfa", async (c) => {
 
   const session = await db
     .prepare(
-      `SELECT s.user_id, s.expires_at, s.revoked_at, u.totp_secret, u.recovery_codes, u.email, u.name, u.role
+      `SELECT s.user_id, s.expires_at, s.revoked_at, u.totp_secret, u.recovery_codes, u.email, u.name, u.role, u.must_change_password
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
     )
     .bind(sessionId)
-    .first<{ user_id: string; expires_at: string; revoked_at: string | null; totp_secret: string | null; recovery_codes: string | null; email: string; name: string; role: string }>();
+    .first<{ user_id: string; expires_at: string; revoked_at: string | null; totp_secret: string | null; recovery_codes: string | null; email: string; name: string; role: string; must_change_password: number }>();
 
   if (!session || session.revoked_at || new Date(session.expires_at).getTime() < Date.now()) {
     return c.json({ error: "Session expired" }, 401);
@@ -149,6 +154,7 @@ authRoutes.post("/mfa", async (c) => {
   });
   return c.json({
     user: { id: session.user_id, email: session.email, name: session.name, role: session.role, organisation: null },
+    mustChangePassword: Boolean(session.must_change_password),
   });
 });
 
@@ -281,6 +287,130 @@ authRoutes.post("/recovery/regenerate", requireUser, async (c) => {
     db, actor: actorFrom(user), action: "auth.recovery_regenerated", targetType: "user", targetId: user.id,
   });
   return c.json({ recoveryCodes });
+});
+
+// POST /password/change — logged-in user changes their own password.
+const ChangePasswordSchema = z.object({ currentPassword: z.string().min(1), newPassword: PasswordSchema });
+authRoutes.post("/password/change", requireUser, async (c) => {
+  const parsed = ChangePasswordSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0]?.message ?? "Invalid input" }, 400);
+  const user = c.get("user")!;
+  const db = c.env.DB;
+
+  const row = await db.prepare("SELECT password_hash FROM users WHERE id = ?").bind(user.id)
+    .first<{ password_hash: string }>();
+  if (!row || !verifyPassword(parsed.data.currentPassword, row.password_hash)) {
+    return c.json({ error: "Current password is incorrect" }, 401);
+  }
+
+  const now = new Date().toISOString();
+  await db.prepare(
+    "UPDATE users SET password_hash = ?, password_updated_at = ?, must_change_password = 0 WHERE id = ?"
+  ).bind(hashPassword(parsed.data.newPassword), now, user.id).run();
+
+  // Keep the current session alive; sign the account out everywhere else.
+  await revokeAllSessions(db, user.id, c.get("sessionId") ?? undefined);
+
+  await audit({ db, actor: actorFrom(user), action: "auth.password_changed", targetType: "user", targetId: user.id, ipHint: ipHint(c.req.raw) });
+  return c.json({ ok: true });
+});
+
+// POST /password/forgot — request a reset link. Always returns { ok: true } to avoid revealing whether an email exists.
+const ForgotSchema = z.object({ email: z.string().email() });
+authRoutes.post("/password/forgot", async (c) => {
+  const parsed = ForgotSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ ok: true });
+  const db = c.env.DB;
+
+  const user = await db.prepare("SELECT id, email, name, is_active FROM users WHERE email = ?")
+    .bind(parsed.data.email.toLowerCase())
+    .first<{ id: string; email: string; name: string; is_active: number }>();
+
+  if (user && user.is_active === 1) {
+    // Soft throttle: skip issuing a new token if one was requested in the last minute.
+    const recent = await db.prepare(
+      "SELECT created_at FROM password_reset_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT 1"
+    ).bind(user.id).first<{ created_at: string }>();
+    const throttled = recent && Date.now() - new Date(recent.created_at).getTime() < 60_000;
+
+    if (!throttled) {
+      const token = randomToken(32);
+      const tokenHash = await sha256Hex(token);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MINUTES * 60_000).toISOString();
+      await db.prepare(
+        `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)`
+      ).bind(makeId("prt"), user.id, tokenHash, expiresAt, now.toISOString()).run();
+
+      const link = `${c.env.APP_URL}/reset-password?token=${token}`;
+      const result = await sendTransactionalEmail(c.env, {
+        to: user.email,
+        subject: "Reset your NCPA Venue for Hire password",
+        text: `Hello ${user.name},\n\nUse the link below to reset your password. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes and can only be used once.\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+      });
+      await audit({
+        db, action: result.ok ? "auth.password_reset_requested" : "auth.password_reset_email_failed",
+        targetType: "user", targetId: user.id, detail: result.ok ? undefined : { error: result.error },
+        ipHint: ipHint(c.req.raw),
+      });
+    }
+  }
+
+  return c.json({ ok: true, message: "If that email is registered, a reset link has been sent." });
+});
+
+// POST /password/reset — complete a reset using the emailed token.
+const ResetSchema = z.object({ token: z.string().min(1), newPassword: PasswordSchema });
+authRoutes.post("/password/reset", async (c) => {
+  const parsed = ResetSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: parsed.error.errors[0]?.message ?? "Invalid input" }, 400);
+  const db = c.env.DB;
+
+  const tokenHash = await sha256Hex(parsed.data.token);
+  const row = await db.prepare(
+    "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?"
+  ).bind(tokenHash).first<{ id: string; user_id: string; expires_at: string; used_at: string | null }>();
+
+  if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) {
+    return c.json({ error: "This reset link is invalid or has expired. Request a new one." }, 400);
+  }
+
+  const now = new Date().toISOString();
+  await db.prepare(
+    "UPDATE users SET password_hash = ?, password_updated_at = ?, must_change_password = 0 WHERE id = ?"
+  ).bind(hashPassword(parsed.data.newPassword), now, row.user_id).run();
+  await db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE id = ?").bind(now, row.id).run();
+  await revokeAllSessions(db, row.user_id);
+
+  await audit({ db, action: "auth.password_reset", targetType: "user", targetId: row.user_id, ipHint: ipHint(c.req.raw) });
+  return c.json({ ok: true });
+});
+
+// POST /password/admin-reset — Admin forces a temporary password for another user (e.g. lost access, no email configured).
+const AdminResetSchema = z.object({ email: z.string().email() });
+authRoutes.post("/password/admin-reset", requirePermission("user.manage"), async (c) => {
+  const parsed = AdminResetSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Valid email required" }, 400);
+  const admin = c.get("user")!;
+  const db = c.env.DB;
+
+  const target = await db.prepare("SELECT id, email, name, is_active FROM users WHERE email = ?")
+    .bind(parsed.data.email.toLowerCase())
+    .first<{ id: string; email: string; name: string; is_active: number }>();
+  if (!target || target.is_active !== 1) return c.json({ error: "No active user with that email" }, 404);
+
+  const temporaryPassword = generateTemporaryPassword();
+  const now = new Date().toISOString();
+  await db.prepare(
+    "UPDATE users SET password_hash = ?, password_updated_at = ?, must_change_password = 1 WHERE id = ?"
+  ).bind(hashPassword(temporaryPassword), now, target.id).run();
+  await revokeAllSessions(db, target.id);
+
+  await audit({
+    db, actor: actorFrom(admin), action: "auth.password_admin_reset",
+    targetType: "user", targetId: target.id, ipHint: ipHint(c.req.raw),
+  });
+  return c.json({ ok: true, email: target.email, name: target.name, temporaryPassword });
 });
 
 /** Internal helper exported for bootstrap: create a user with a hashed password. */

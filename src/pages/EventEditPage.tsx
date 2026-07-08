@@ -1,15 +1,75 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { useLookups, formatDuration } from "../lib/use-lookups";
+import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
+const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
 
-type OrgListItem = { id: string; name: string };
+type OrgListItem = { id: string; name: string; org_type: string | null };
+
+/** Shape returned by GET /events/:id. Only the fields we need to hydrate the form. */
+type EventDetailResponse = {
+  event: Record<string, unknown> & {
+    id: string;
+    title: string;
+    description: string | null;
+    organisation_id: string;
+    primary_contact_id: string | null;
+    event_type: EventInputT["event_type"];
+    program_officer: string | null;
+    event_owner: string | null;
+    event_owner_id: string | null;
+    event_start_date: string | null;
+    event_end_date: string | null;
+    enquiry_source: string | null;
+    priority: EventInputT["priority"];
+    requirements: Record<string, unknown> | string | null;
+    notes: string | null;
+  };
+  venue_bookings: Array<{
+    id: string;
+    venue: string;
+    booking_status: VenueBookingInputT["booking_status"];
+    number_of_shows: number;
+    requirements: Record<string, unknown> | string | null;
+    notes: string | null;
+    schedule_entries: Array<{
+      id: string;
+      activity_type: ScheduleEntryInputT["activity_type"];
+      activity_date: string;
+      start_time: string | null;
+      end_time: string | null;
+      with_ac_start: string | null;
+      with_ac_end: string | null;
+      with_ac_minutes: number | null;
+      without_ac_start: string | null;
+      without_ac_end: string | null;
+      without_ac_minutes: number | null;
+      notes: string | null;
+    }>;
+  }>;
+};
+
+/** Parse a requirements value that may arrive as a JSON string or already-decoded object. */
+function parseRequirements(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") return value as Record<string, unknown>;
+  return null;
+}
 
 /** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
 function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
@@ -32,6 +92,7 @@ export function EventEditPage() {
   const isEdit = Boolean(id);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [newOrganisationType, setNewOrganisationType] = useState("");
 
   // Form state
   const [form, setForm] = useState<EventInputT>({
@@ -42,6 +103,7 @@ export function EventEditPage() {
     event_type: null,
     program_officer: null,
     event_owner: null,
+    event_owner_id: null,
     event_start_date: null,
     event_end_date: null,
     enquiry_source: null,
@@ -54,6 +116,64 @@ export function EventEditPage() {
   // Defaults ON (most events are single-day). Synced from existing form data on edit.
   const [singleDay, setSingleDay] = useState(true);
 
+  // In edit mode, hydrate the form from the existing event. Without this the
+  // edit page renders an empty form regardless of which event was opened —
+  // affecting both the lifecycle and show calendars, which both route here via
+  // the detail page's Edit button.
+  const [hydrated, setHydrated] = useState(false);
+  const { data: existing, isLoading: existingLoading } = useQuery({
+    queryKey: ["event", id, "edit"],
+    queryFn: () => apiGet<EventDetailResponse>(`/events/${id}`),
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (!isEdit || !existing || hydrated) return;
+    const e = existing.event;
+    const bookings: VenueBookingInputT[] = existing.venue_bookings?.length
+      ? existing.venue_bookings.map((vb) => ({
+          venue: vb.venue ?? "",
+          booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
+          number_of_shows: vb.number_of_shows ?? 1,
+          requirements: parseRequirements(vb.requirements),
+          notes: vb.notes ?? null,
+          schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
+            activity_type: se.activity_type,
+            activity_date: se.activity_date,
+            start_time: se.start_time,
+            end_time: se.end_time,
+            with_ac_start: se.with_ac_start,
+            with_ac_end: se.with_ac_end,
+            with_ac_minutes: se.with_ac_minutes,
+            without_ac_start: se.without_ac_start,
+            without_ac_end: se.without_ac_end,
+            without_ac_minutes: se.without_ac_minutes,
+            notes: se.notes,
+          })),
+        }))
+      : [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }];
+
+    setForm({
+      title: e.title ?? "",
+      description: e.description ?? null,
+      organisation_id: e.organisation_id ?? "",
+      primary_contact_id: e.primary_contact_id ?? null,
+      event_type: e.event_type ?? null,
+      program_officer: e.program_officer ?? null,
+      event_owner: e.event_owner ?? null,
+      event_owner_id: (e as { event_owner_id?: string | null }).event_owner_id ?? null,
+      event_start_date: e.event_start_date ?? null,
+      event_end_date: e.event_end_date ?? null,
+      enquiry_source: e.enquiry_source ?? null,
+      priority: e.priority ?? "medium",
+      requirements: parseRequirements(e.requirements),
+      notes: e.notes ?? null,
+      venue_bookings: bookings,
+    });
+    setSingleDay(!e.event_end_date);
+    setHydrated(true);
+  }, [isEdit, existing, hydrated]);
+
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
   const save = useMutation<string | undefined, Error, void>({
@@ -62,7 +182,7 @@ export function EventEditPage() {
       let orgId = form.organisation_id;
       if (orgId.startsWith("new:")) {
         const name = orgId.slice(4).trim();
-        const created = await apiPost<{ id: string }>("/organisations", { name });
+        const created = await apiPost<{ id: string }>("/organisations", { name, org_type: newOrganisationType || null });
         orgId = created.id;
       }
       const payload = { ...form, organisation_id: orgId, event_end_date: singleDay ? null : form.event_end_date };
@@ -81,9 +201,17 @@ export function EventEditPage() {
 
   const venues = lookups?.lookups.venue ?? [];
   const programOfficers = lookups?.lookups.program_officer ?? [];
-  const owners = lookups?.lookups.handled_by ?? [];
   const sources = lookups?.lookups.enquiry_source ?? [];
   const isVfh = form.event_type === "VFH";
+
+  // Phase 8b: the Event Owner dropdown is sourced from real accounts. Choosing
+  // one sets both the display label (event_owner) and the identity FK
+  // (event_owner_id), so tasks auto-route and "My events" works.
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; is_active: number }> }>({
+    queryKey: ["users"],
+    queryFn: () => apiGet("/users"),
+  });
+  const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
 
   // ---- Venue booking helpers ----
   const addVenue = () => {
@@ -135,35 +263,64 @@ export function EventEditPage() {
 
   const canSave = form.title.trim().length > 0 && !!form.organisation_id && !!form.venue_bookings[0]?.venue.trim();
 
+  // In edit mode, wait for the existing event before rendering the form so the
+  // user never sees an empty form for an event that already has data.
+  if (isEdit && (existingLoading || !hydrated)) {
+    return <div className="text-sm text-ink-muted">Loading…</div>;
+  }
+
   return (
     <div>
       <PageHeader title={isEdit ? "Edit Event" : "New Event"} subtitle={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`} />
 
       {/* Step indicator */}
-      <div className="mb-6 flex gap-1">
+      <div className="mb-6 flex gap-1.5">
         {STEPS.map((label, i) => (
           <button
             key={label}
             type="button"
             onClick={() => setStep(i)}
-            className={"flex-1 rounded-full px-3 py-1.5 text-xs font-medium etched " + (i === step ? "bg-sage-btn text-sage-text carved-btn-sage" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
+            aria-current={i === step ? "step" : undefined}
+            className={"flex min-h-10 flex-1 items-center justify-center rounded-full px-2 py-1.5 text-center text-xs font-medium leading-tight etched md:px-3 " + (i === step ? "bg-sage-btn text-sage-text carved-btn-sage" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
           >
-            {i + 1}. {label}
+            <span className="hidden lg:inline">{i + 1}. {label}</span>
+            <span className="lg:hidden">{i + 1}. {STEP_SHORT_LABELS[i]}</span>
           </button>
         ))}
       </div>
 
       {error && <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">{error}</div>}
 
+      <FormNavigation
+        step={step}
+        setStep={setStep}
+        canSave={canSave}
+        isEdit={isEdit}
+        isSaving={save.isPending}
+        onSave={() => save.mutate()}
+      />
+
       {/* Step 1: Event & Client — Organisation first (record anchor), then Event Name */}
       {step === 0 && (
         <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
-          <Field label="Organisation Name *">
-            <OrganisationCombobox
-              value={form.organisation_id}
-              onChange={(v) => update({ organisation_id: v })}
-            />
-          </Field>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+            <Field label="Organisation Name *">
+              <OrganisationCombobox
+                value={form.organisation_id}
+                onChange={(v) => update({ organisation_id: v })}
+                onSelectOrganisation={(org) => setNewOrganisationType(org.org_type ?? "")}
+              />
+            </Field>
+            <Field label="Organisation Type">
+              <select value={newOrganisationType} onChange={(e) => setNewOrganisationType(e.target.value)} className="carved input">
+                <option value="">Select…</option>
+                {ORG_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+              {!form.organisation_id.startsWith("new:") && form.organisation_id && (
+                <p className="mt-1 text-[11px] text-ink-muted etched">Existing organisation type shown for reference.</p>
+              )}
+            </Field>
+          </div>
           <Field label="Event Name *">
             <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" placeholder="e.g. Symphony Concert Series" />
           </Field>
@@ -193,11 +350,21 @@ export function EventEditPage() {
                 {programOfficers.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
               </select>
             </Field>
-            <Field label="Event Owner (Handled By)">
-              <select value={form.event_owner ?? ""} onChange={(e) => update({ event_owner: e.target.value || null })} className="carved input">
+            <Field label="Event Owner">
+              <select
+                value={form.event_owner_id ?? ""}
+                onChange={(e) => {
+                  const u = activeOwners.find((o) => o.id === e.target.value);
+                  update({ event_owner_id: e.target.value || null, event_owner: u?.name ?? null });
+                }}
+                className="carved input"
+              >
                 <option value="">Select…</option>
-                {owners.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                {activeOwners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
+              {form.event_owner && !form.event_owner_id && (
+                <p className="mt-1 text-[11px] text-ink-muted etched">Legacy owner “{form.event_owner}” has no linked account — pick an owner above to link one.</p>
+              )}
             </Field>
           </div>
 
@@ -357,6 +524,16 @@ export function EventEditPage() {
                   <input type="time" value={(reqs.loaders_call_time as string) ?? ""} onChange={(e) => setReq("loaders_call_time", e.target.value || null)} className="carved input" />
                 </Field>
               )}
+              <Field label="House Seats Release">
+                <YesNoSelect value={(reqs.house_seats_release as string) ?? ""} onChange={(v) => setReq("house_seats_release", v || null)} yesValue="Yes" noValue="No" />
+              </Field>
+              <Field label="House Tickets">
+                <select value={(reqs.house_tickets as string) ?? ""} onChange={(e) => setReq("house_tickets", e.target.value || null)} className="carved input">
+                  <option value="">Select…</option>
+                  <option value="Client pass">Client pass</option>
+                  <option value="NCPA pass">NCPA pass</option>
+                </select>
+              </Field>
             </div>
           </section>
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
@@ -464,6 +641,7 @@ export function EventEditPage() {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Review</h3>
           <dl className="grid gap-3 text-sm md:grid-cols-2">
             <ReviewItem label="Organisation" value={form.organisation_id.startsWith("new:") ? `${form.organisation_id.slice(4)} (new)` : form.organisation_id} />
+            <ReviewItem label="Organisation Type" value={newOrganisationType} />
             <ReviewItem label="Event Name" value={form.title} />
             <ReviewItem label="Type" value={form.event_type} />
             <ReviewItem label="Program Officer" value={form.program_officer} />
@@ -479,43 +657,29 @@ export function EventEditPage() {
         </div>
       )}
 
-      {/* Navigation */}
-      <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
-          disabled={step === 0}
-          className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-40"
-        >
-          ← Back
-        </button>
-        {step < STEPS.length - 1 ? (
-          <button
-            type="button"
-            onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
-            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
-          >
-            Next →
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending || !canSave}
-            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
-          >
-            {save.isPending ? "Saving…" : isEdit ? "Save changes" : "Create event"}
-          </button>
-        )}
-      </div>
-
-      <style>{`.carved.input { width:100%; border-radius:12px; background:rgba(244,244,242,0.4); padding:8px 14px; font-size:14px; color:#5C5850; outline:none; }`}</style>
+      <FormNavigation
+        step={step}
+        setStep={setStep}
+        canSave={canSave}
+        isEdit={isEdit}
+        isSaving={save.isPending}
+        onSave={() => save.mutate()}
+        className="mt-6"
+      />
     </div>
   );
 }
 
 /** Organisation combobox — searches existing orgs by prefix; offers "Create new" when no match. */
-function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function OrganisationCombobox({
+  value,
+  onChange,
+  onSelectOrganisation,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelectOrganisation: (org: OrgListItem) => void;
+}) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -523,7 +687,7 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
   const displayName = useMemo(() => {
     if (!value) return "";
     if (value.startsWith("new:")) return value.slice(4);
-    return value; // existing id — we'll resolve to name below
+    return value; // existing id — resolved to a name below
   }, [value]);
 
   const { data } = useQuery<{ organisations: OrgListItem[] }>({
@@ -533,14 +697,26 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
     staleTime: 10_000,
   });
 
-  const { data: resolved } = useQuery<{ organisations: OrgListItem[] }>({
-    queryKey: ["org-search", "selected", value],
-    queryFn: () => apiGet(`/organisations?q=${encodeURIComponent(displayName)}`),
-    enabled: open && !!value && !value.startsWith("new:"),
+  // Resolve an existing org id → { name, org_type } so the field shows the
+  // organisation's name (not its raw id) immediately on edit, before the user
+  // interacts with the combobox. Fires on mount whenever a real id is present.
+  const isExistingId = !!value && !value.startsWith("new:");
+  const { data: resolvedOrg } = useQuery<{ organisation: OrgListItem }>({
+    queryKey: ["organisation", value],
+    queryFn: () => apiGet(`/organisations/${value}`),
+    enabled: isExistingId,
   });
 
+  // Once we know the org's type, push it up so the form's "Organisation Type"
+  // field reflects the saved value (mirrors selecting from the dropdown).
+  // Deliberately only keyed on resolvedOrg — this is a one-shot hydration that
+  // must not refire on every parent re-render.
+  useEffect(() => {
+    if (resolvedOrg?.organisation) onSelectOrganisation(resolvedOrg.organisation);
+  }, [resolvedOrg, onSelectOrganisation]);
+
   const results = data?.organisations ?? [];
-  const inputText = query || (resolved?.organisations?.[0]?.name ?? displayName);
+  const inputText = query || resolvedOrg?.organisation?.name || displayName;
 
   return (
     <div className="relative">
@@ -560,7 +736,7 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
               <button
                 key={o.id}
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); setQuery(""); setOpen(false); }}
+                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); onSelectOrganisation(o); setQuery(o.name); setOpen(false); }}
                 className="block w-full px-4 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40"
               >
                 {o.name}
@@ -570,7 +746,7 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
             query.trim().length > 0 && (
               <button
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(""); setOpen(false); }}
+                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(query.trim()); setOpen(false); }}
                 className="block w-full px-4 py-2 text-left text-sm text-sage-text hover:bg-marble-shadow/40"
               >
                 + Create new: “{query.trim()}”
@@ -581,6 +757,55 @@ function OrganisationCombobox({ value, onChange }: { value: string; onChange: (v
             <div className="px-4 py-2 text-xs text-ink-muted etched">Type to search existing organisations.</div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function FormNavigation({
+  step,
+  setStep,
+  canSave,
+  isEdit,
+  isSaving,
+  onSave,
+  className = "mb-5",
+}: {
+  step: number;
+  setStep: React.Dispatch<React.SetStateAction<number>>;
+  canSave: boolean;
+  isEdit: boolean;
+  isSaving: boolean;
+  onSave: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={"flex justify-between " + className}>
+      <button
+        type="button"
+        onClick={() => setStep((s) => Math.max(0, s - 1))}
+        disabled={step === 0}
+        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-40"
+      >
+        Back
+      </button>
+      {step < STEPS.length - 1 ? (
+        <button
+          type="button"
+          onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving || !canSave}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : isEdit ? "Save changes" : "Create event"}
+        </button>
       )}
     </div>
   );

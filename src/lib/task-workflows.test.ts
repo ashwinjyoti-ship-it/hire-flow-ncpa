@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEventCommandCards,
+  getEventOperationsLink,
   groupTasksByTiming,
   groupTasksByWorkflowLane,
   getTaskUrgencyLabels,
   getTaskIntentLabel,
+  getTaskWorkLink,
   getWorkflowFamily,
   type TaskLike,
 } from "./task-workflows";
@@ -24,6 +26,10 @@ function task(overrides: Partial<TaskLike> & Pick<TaskLike, "id" | "title">): Ta
     event_venues: overrides.event_venues ?? "JBT",
     event_owner: overrides.event_owner ?? "Aditi Rao",
     task_type: overrides.task_type ?? "automatic",
+    source_checklist_item_id: overrides.source_checklist_item_id ?? null,
+    source_module: overrides.source_module ?? null,
+    source_field_key: overrides.source_field_key ?? null,
+    source_label: overrides.source_label ?? null,
     source_rule: overrides.source_rule ?? null,
     assignee_name: overrides.assignee_name === undefined ? "Ops" : overrides.assignee_name,
     due_date: overrides.due_date ?? null,
@@ -85,6 +91,24 @@ describe("task workflow helpers", () => {
 
   it("keeps task urgency separate from event status surfaces", () => {
     expect(getTaskUrgencyLabels(task({ id: "a", title: "Late", due_date: "2026-07-05", assignee_name: null }), today)).toEqual(["Overdue", "Unassigned"]);
-    expect(getTaskUrgencyLabels(task({ id: "b", title: "Today", due_date: today, priority: "high" }), today)).toEqual(["Due today", "High priority"]);
+    expect(getTaskUrgencyLabels(task({ id: "b", title: "Today", due_date: today, priority: "high" }), today)).toEqual(["Target today", "High priority"]);
+  });
+
+  it("builds links to the event work tab and exact checklist field", () => {
+    expect(getEventOperationsLink("ev_123")).toBe("/events/ev_123?tab=operations");
+    expect(getTaskWorkLink(task({
+      id: "approval",
+      title: "Approval follow up",
+      event_id: "ev_123",
+      source_module: "operations",
+      source_field_key: "approval_received_on",
+    }))).toBe("/events/ev_123?tab=operations&field=approval_received_on");
+    expect(getTaskWorkLink(task({
+      id: "accounts",
+      title: "Accounts file status",
+      event_id: "ev_123",
+      source_module: null,
+      source_field_key: null,
+    }))).toBe("/events/ev_123?tab=accounts&field=final_file_received");
   });
 });

@@ -18,18 +18,21 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const type = c.req.query("type");
   const owner = c.req.query("owner");
   const q = c.req.query("q");
+  const mine = c.req.query("mine");
+  const user = c.get("user");
 
-  if (!from || !to) {
-    return c.json({ error: "from and to query params required (yyyy-mm-dd)" }, 400);
-  }
+  const where = ["is_archived = 0"];
+  const binds: unknown[] = [];
 
-  const where = ["milestone_date >= ?", "milestone_date <= ?", "is_archived = 0"];
-  const binds: unknown[] = [from, to];
+  if (from) { where.push("milestone_date >= ?"); binds.push(from); }
+  if (to) { where.push("milestone_date <= ?"); binds.push(to); }
 
   if (status) { where.push("status = ?"); binds.push(status); }
   if (venue) { where.push("venues LIKE ?"); binds.push(`%${venue}%`); }
   if (type) { where.push("event_type = ?"); binds.push(type); }
   if (owner) { where.push("event_owner = ?"); binds.push(owner); }
+  // Phase 8b: "My events" — restrict to events owned by the signed-in user.
+  if (mine === "1" && user) { where.push("event_owner_id = ?"); binds.push(user.id); }
   if (q) {
     where.push("(LOWER(title) LIKE ? OR LOWER(COALESCE(organisation_name, '')) LIKE ? OR LOWER(COALESCE(event_code, '')) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;
@@ -51,6 +54,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         e.event_type,
         o.name AS organisation_name,
         e.event_owner,
+        e.event_owner_id,
         (SELECT GROUP_CONCAT(vb.venue, ' · ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS venues,
         NULL AS task_id,
         NULL AS task_title,
@@ -100,6 +104,8 @@ calendarRoutes.get("/", requireUser, async (c) => {
   const type = c.req.query("type");
   const owner = c.req.query("owner");
   const q = c.req.query("q");
+  const mine = c.req.query("mine");
+  const user = c.get("user");
 
   if (!from || !to) {
     return c.json({ error: "from and to query params required (yyyy-mm-dd)" }, 400);
@@ -112,10 +118,17 @@ calendarRoutes.get("/", requireUser, async (c) => {
   ];
   const binds: unknown[] = [from, to];
 
-  if (status) { where.push("e.status = ?"); binds.push(status); }
+  // The Show Calendar represents what's committed at the venue. By default it
+  // surfaces only confirmed events — enquiries and tentative holds don't earn a
+  // card here (they live on the Lifecycle Calendar). An explicit status choice
+  // from the filter still overrides, so a user can deliberately inspect any
+  // single status.
+  where.push("e.status = ?"); binds.push(status ?? "confirmed");
   if (venue) { where.push("vb.venue = ?"); binds.push(venue); }
   if (type) { where.push("e.event_type = ?"); binds.push(type); }
   if (owner) { where.push("e.event_owner = ?"); binds.push(owner); }
+  // Phase 8b: "My events" — restrict to events owned by the signed-in user.
+  if (mine === "1" && user) { where.push("e.event_owner_id = ?"); binds.push(user.id); }
   if (q) {
     where.push("(LOWER(e.title) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(e.event_code, '')) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;

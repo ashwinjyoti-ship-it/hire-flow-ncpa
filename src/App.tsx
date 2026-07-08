@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { RequireAuth } from "./components/auth/RequireAuth";
 import { DashboardPage } from "./pages/DashboardPage";
 import { CalendarPage } from "./pages/CalendarPage";
@@ -8,6 +10,7 @@ import { EventDetailPage } from "./pages/EventDetailPage";
 import { EventEditPage } from "./pages/EventEditPage";
 import { OrganisationsPage } from "./pages/OrganisationsPage";
 import { TasksPage } from "./pages/TasksPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -16,6 +19,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         element={
           <RequireAuth>
@@ -33,6 +38,7 @@ export default function App() {
         <Route path="/events/:id/edit" element={<EventEditPage />} />
         <Route path="/organisations" element={<OrganisationsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin/users" element={<UserManagementPage />} />
         <Route path="/profile" element={<ProfilePage />} />
