@@ -16,6 +16,7 @@ import {
   getTaskWorkLink,
   getTimingGroup,
   getWorkflowFamily,
+  isStaleConfirmedLifecycleTask,
   WORKFLOW_LABELS,
   type TaskLike,
   type WorkflowFamily,
@@ -54,8 +55,9 @@ export function TasksPage() {
 
   const tasks = useMemo(() => {
     const rows = data?.tasks ?? [];
-    if (status === "active") return rows.filter((task) => task.status === "open" || task.status === "in_progress");
-    return rows;
+    const visibleRows = rows.filter((task) => !isStaleConfirmedLifecycleTask(task));
+    if (status === "active") return visibleRows.filter((task) => task.status === "open" || task.status === "in_progress");
+    return visibleRows;
   }, [data?.tasks, status]);
 
   function selectView(next: TaskView) {
@@ -303,7 +305,7 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
         {getTaskUrgencyLabels(task, today).map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
-        <span>{task.task_type === "automatic" ? "Automatic" : "Manual"}</span>
+        <span>{task.task_type === "automatic" ? "System-generated" : "Manual"}</span>
         <span>{getTaskIntentLabel(task)}</span>
         {task.due_date && <span>Target {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}

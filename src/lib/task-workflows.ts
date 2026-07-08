@@ -60,6 +60,7 @@ export const WORKFLOW_LABELS: Record<WorkflowFamily, string> = {
 
 const CARD_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
 const LANE_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
+const STALE_CONFIRMED_LIFECYCLE_RULES = new Set(["approval_followup", "confirmation_letter"]);
 
 const TIMING_LABELS: Record<TimingGroupKey, string> = {
   overdue: "Overdue",
@@ -85,6 +86,10 @@ export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
 
 export function getTaskIntentLabel(task: TaskLike): string {
   return WORKFLOW_LABELS[getWorkflowFamily(task)];
+}
+
+export function isStaleConfirmedLifecycleTask(task: Pick<TaskLike, "event_status" | "source_rule">): boolean {
+  return task.event_status === "confirmed" && Boolean(task.source_rule && STALE_CONFIRMED_LIFECYCLE_RULES.has(task.source_rule));
 }
 
 export function getEventOperationsLink(eventId: string | null | undefined): string {

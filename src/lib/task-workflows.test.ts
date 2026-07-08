@@ -6,6 +6,7 @@ import {
   groupTasksByWorkflowLane,
   getTaskUrgencyLabels,
   getTaskIntentLabel,
+  isStaleConfirmedLifecycleTask,
   getTaskWorkLink,
   getWorkflowFamily,
   type TaskLike,
@@ -87,6 +88,27 @@ describe("task workflow helpers", () => {
     expect(getTaskIntentLabel(task({ id: "b", title: "Reconcile proforma invoice", source_rule: "proforma_invoice" }))).toBe("Payment follow-up");
     expect(getTaskIntentLabel(task({ id: "c", title: "Technical Meeting", source_rule: "technical_meeting" }))).toBe("Operational follow-up");
     expect(getTaskIntentLabel(task({ id: "d", title: "Manual client follow-up", task_type: "manual" }))).toBe("Manual follow-up");
+  });
+
+  it("recognizes stale pre-confirmation tasks on already confirmed events", () => {
+    expect(isStaleConfirmedLifecycleTask(task({
+      id: "approval",
+      title: "Lifecycle readiness checkpoint",
+      event_status: "confirmed",
+      source_rule: "approval_followup",
+    }))).toBe(true);
+    expect(isStaleConfirmedLifecycleTask(task({
+      id: "confirmation",
+      title: "Follow up on Confirmation Letter",
+      event_status: "confirmed",
+      source_rule: "confirmation_letter",
+    }))).toBe(true);
+    expect(isStaleConfirmedLifecycleTask(task({
+      id: "payment",
+      title: "Reconcile proforma invoice",
+      event_status: "confirmed",
+      source_rule: "proforma_invoice",
+    }))).toBe(false);
   });
 
   it("keeps task urgency separate from event status surfaces", () => {
