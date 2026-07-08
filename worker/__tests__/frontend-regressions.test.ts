@@ -117,11 +117,27 @@ describe("frontend regression guards", () => {
     expect(source).toContain("STALE_CONFIRMED_TASK_RULES");
   });
 
-  it("keeps work lanes visible as the default task view", () => {
+  it("keeps by event visible as the default task view", () => {
     const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
 
-    expect(source).toContain('lanes: "Work lanes"');
-    expect(source).toContain('return "lanes";');
+    expect(source).toContain('cards: "By event"');
+    expect(source).toContain('return "cards";');
+  });
+
+  it("lets By event select the card view explicitly", () => {
+    const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(source).toContain('params.set("view", next)');
+    expect(source).not.toContain('if (next === "cards") params.delete("view")');
+  });
+
+  it("does not show task status filter tabs", () => {
+    const source = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(source).not.toContain("TASK_STATUS_FILTERS");
+    expect(source).not.toContain("setStatus");
+    expect(source).not.toContain('{ value: "active", label: "To do" }');
+    expect(source).not.toContain('{ value: "in_progress", label: "In progress" }');
   });
 
   it("keeps task queues as links to event work instead of completion controls", () => {

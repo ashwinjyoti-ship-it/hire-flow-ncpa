@@ -32,38 +32,25 @@ const VIEW_LABELS: Record<TaskView, string> = {
   queue: "Target date",
 };
 
-const TASK_STATUS_FILTERS = [
-  { value: "active", label: "To do" },
-  { value: "open", label: "Open" },
-  { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Done" },
-  { value: "all", label: "All" },
-] as const;
-
 export function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseView(searchParams.get("view"));
-  const [status, setStatus] = useState("active");
   const [mine, setMine] = useState(false);
   const today = useMemo(() => isoTodayInIndia(), []);
 
-  const apiStatus = status === "active" ? "all" : status;
   const { data, isLoading, error } = useQuery({
-    queryKey: ["tasks", apiStatus, mine],
-    queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=${apiStatus}&mine=${mine ? "1" : "0"}`),
+    queryKey: ["tasks", "active", mine],
+    queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=all&mine=${mine ? "1" : "0"}`),
   });
 
   const tasks = useMemo(() => {
     const rows = data?.tasks ?? [];
-    const visibleRows = rows.filter((task) => !isStaleConfirmedLifecycleTask(task));
-    if (status === "active") return visibleRows.filter((task) => task.status === "open" || task.status === "in_progress");
-    return visibleRows;
-  }, [data?.tasks, status]);
+    return rows.filter((task) => !isStaleConfirmedLifecycleTask(task) && (task.status === "open" || task.status === "in_progress"));
+  }, [data?.tasks]);
 
   function selectView(next: TaskView) {
     const params = new URLSearchParams(searchParams);
-    if (next === "cards") params.delete("view");
-    else params.set("view", next);
+    params.set("view", next);
     setSearchParams(params, { replace: true });
   }
 
@@ -89,19 +76,6 @@ export function TasksPage() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-            {TASK_STATUS_FILTERS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setStatus(option.value)}
-                className={
-                  "rounded-full px-3 py-1.5 text-xs font-medium etched " +
-                  (status === option.value ? "carved-btn-sage bg-sage-btn text-sage-text" : "carved-btn bg-neutral-btn text-ink-secondary")
-                }
-              >
-                {option.label}
-              </button>
-            ))}
             <label className="inline-flex items-center gap-2 px-2 text-xs font-medium text-ink-secondary etched">
               <input type="checkbox" checked={mine} onChange={(ev) => setMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
               My tasks
@@ -329,8 +303,8 @@ function OpenWorkLink({ task, compact = false }: { task: TaskRow; compact?: bool
 }
 
 function parseView(value: string | null): TaskView {
-  if (value === "queue" || value === "lanes") return value;
-  return "lanes";
+  if (value === "cards" || value === "queue" || value === "lanes") return value;
+  return "cards";
 }
 
 function workflowLabel(family: WorkflowFamily): string {
