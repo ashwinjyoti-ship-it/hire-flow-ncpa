@@ -272,7 +272,7 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {cells.map(({ date: d, key }) => {
-          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/10 sm:min-h-[132px] lg:min-h-[144px]" aria-hidden="true" />;
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/20 p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
           return (
@@ -345,7 +345,7 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
       </div>
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {cells.map(({ date: d, key }) => {
-          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/10 sm:min-h-[118px] lg:min-h-[128px]" aria-hidden="true" />;
+          if (!d) return <article key={key} className="min-w-0 rounded-xl bg-marble-shadow/20 p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3" aria-hidden="true" />;
           const entries = byDate[key] ?? [];
           const isToday = key === today;
           // Group entries by organisation, pick the "worst" (lowest-rank) status as the chip colour.
