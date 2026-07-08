@@ -92,6 +92,7 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("Open full record");
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
+    expect(calendar).toContain("formatShowDetailValue");
     expect(calendar).not.toContain("Open full record →");
   });
 
