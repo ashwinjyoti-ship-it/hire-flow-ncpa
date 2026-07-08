@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
@@ -12,6 +12,63 @@ const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
 
 type OrgListItem = { id: string; name: string; org_type: string | null };
+
+/** Shape returned by GET /events/:id. Only the fields we need to hydrate the form. */
+type EventDetailResponse = {
+  event: Record<string, unknown> & {
+    id: string;
+    title: string;
+    description: string | null;
+    organisation_id: string;
+    primary_contact_id: string | null;
+    event_type: EventInputT["event_type"];
+    program_officer: string | null;
+    event_owner: string | null;
+    event_start_date: string | null;
+    event_end_date: string | null;
+    enquiry_source: string | null;
+    priority: EventInputT["priority"];
+    requirements: Record<string, unknown> | string | null;
+    notes: string | null;
+  };
+  venue_bookings: Array<{
+    id: string;
+    venue: string;
+    booking_status: VenueBookingInputT["booking_status"];
+    number_of_shows: number;
+    requirements: Record<string, unknown> | string | null;
+    notes: string | null;
+    schedule_entries: Array<{
+      id: string;
+      activity_type: ScheduleEntryInputT["activity_type"];
+      activity_date: string;
+      start_time: string | null;
+      end_time: string | null;
+      with_ac_start: string | null;
+      with_ac_end: string | null;
+      with_ac_minutes: number | null;
+      without_ac_start: string | null;
+      without_ac_end: string | null;
+      without_ac_minutes: number | null;
+      notes: string | null;
+    }>;
+  }>;
+};
+
+/** Parse a requirements value that may arrive as a JSON string or already-decoded object. */
+function parseRequirements(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") return value as Record<string, unknown>;
+  return null;
+}
 
 /** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
 function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
@@ -56,6 +113,63 @@ export function EventEditPage() {
   // Single-day toggle: when checked, end date is hidden and submitted as null.
   // Defaults ON (most events are single-day). Synced from existing form data on edit.
   const [singleDay, setSingleDay] = useState(true);
+
+  // In edit mode, hydrate the form from the existing event. Without this the
+  // edit page renders an empty form regardless of which event was opened —
+  // affecting both the lifecycle and show calendars, which both route here via
+  // the detail page's Edit button.
+  const [hydrated, setHydrated] = useState(false);
+  const { data: existing, isLoading: existingLoading } = useQuery({
+    queryKey: ["event", id, "edit"],
+    queryFn: () => apiGet<EventDetailResponse>(`/events/${id}`),
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (!isEdit || !existing || hydrated) return;
+    const e = existing.event;
+    const bookings: VenueBookingInputT[] = existing.venue_bookings?.length
+      ? existing.venue_bookings.map((vb) => ({
+          venue: vb.venue ?? "",
+          booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
+          number_of_shows: vb.number_of_shows ?? 1,
+          requirements: parseRequirements(vb.requirements),
+          notes: vb.notes ?? null,
+          schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
+            activity_type: se.activity_type,
+            activity_date: se.activity_date,
+            start_time: se.start_time,
+            end_time: se.end_time,
+            with_ac_start: se.with_ac_start,
+            with_ac_end: se.with_ac_end,
+            with_ac_minutes: se.with_ac_minutes,
+            without_ac_start: se.without_ac_start,
+            without_ac_end: se.without_ac_end,
+            without_ac_minutes: se.without_ac_minutes,
+            notes: se.notes,
+          })),
+        }))
+      : [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }];
+
+    setForm({
+      title: e.title ?? "",
+      description: e.description ?? null,
+      organisation_id: e.organisation_id ?? "",
+      primary_contact_id: e.primary_contact_id ?? null,
+      event_type: e.event_type ?? null,
+      program_officer: e.program_officer ?? null,
+      event_owner: e.event_owner ?? null,
+      event_start_date: e.event_start_date ?? null,
+      event_end_date: e.event_end_date ?? null,
+      enquiry_source: e.enquiry_source ?? null,
+      priority: e.priority ?? "medium",
+      requirements: parseRequirements(e.requirements),
+      notes: e.notes ?? null,
+      venue_bookings: bookings,
+    });
+    setSingleDay(!e.event_end_date);
+    setHydrated(true);
+  }, [isEdit, existing, hydrated]);
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -137,6 +251,12 @@ export function EventEditPage() {
   const liquorLicence = isYes(reqs.liquor_licence);
 
   const canSave = form.title.trim().length > 0 && !!form.organisation_id && !!form.venue_bookings[0]?.venue.trim();
+
+  // In edit mode, wait for the existing event before rendering the form so the
+  // user never sees an empty form for an event that already has data.
+  if (isEdit && (existingLoading || !hydrated)) {
+    return <div className="text-sm text-ink-muted">Loading…</div>;
+  }
 
   return (
     <div>
@@ -546,7 +666,7 @@ function OrganisationCombobox({
   const displayName = useMemo(() => {
     if (!value) return "";
     if (value.startsWith("new:")) return value.slice(4);
-    return value; // existing id — we'll resolve to name below
+    return value; // existing id — resolved to a name below
   }, [value]);
 
   const { data } = useQuery<{ organisations: OrgListItem[] }>({
@@ -556,14 +676,26 @@ function OrganisationCombobox({
     staleTime: 10_000,
   });
 
-  const { data: resolved } = useQuery<{ organisations: OrgListItem[] }>({
-    queryKey: ["org-search", "selected", value],
-    queryFn: () => apiGet(`/organisations?q=${encodeURIComponent(displayName)}`),
-    enabled: open && !!value && !value.startsWith("new:"),
+  // Resolve an existing org id → { name, org_type } so the field shows the
+  // organisation's name (not its raw id) immediately on edit, before the user
+  // interacts with the combobox. Fires on mount whenever a real id is present.
+  const isExistingId = !!value && !value.startsWith("new:");
+  const { data: resolvedOrg } = useQuery<{ organisation: OrgListItem }>({
+    queryKey: ["organisation", value],
+    queryFn: () => apiGet(`/organisations/${value}`),
+    enabled: isExistingId,
   });
 
+  // Once we know the org's type, push it up so the form's "Organisation Type"
+  // field reflects the saved value (mirrors selecting from the dropdown).
+  // Deliberately only keyed on resolvedOrg — this is a one-shot hydration that
+  // must not refire on every parent re-render.
+  useEffect(() => {
+    if (resolvedOrg?.organisation) onSelectOrganisation(resolvedOrg.organisation);
+  }, [resolvedOrg, onSelectOrganisation]);
+
   const results = data?.organisations ?? [];
-  const inputText = query || (resolved?.organisations?.[0]?.name ?? displayName);
+  const inputText = query || resolvedOrg?.organisation?.name || displayName;
 
   return (
     <div className="relative">

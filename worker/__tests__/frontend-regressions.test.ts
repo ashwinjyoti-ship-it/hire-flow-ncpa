@@ -12,6 +12,19 @@ describe("frontend regression guards", () => {
     expect(source).toContain("onSuccess: (createdId)");
   });
 
+  it("hydrates the edit form from the existing event (not an empty form)", () => {
+    // Regression: clicking Edit from the event detail page (reachable from both
+    // the lifecycle and show calendars) used to open a blank form because the
+    // component never fetched the event being edited.
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(source).toContain('queryKey: ["event", id, "edit"]');
+    expect(source).toContain("apiGet<EventDetailResponse>(`/events/${id}`)");
+    expect(source).toContain("enabled: isEdit");
+    // The hydrated guard prevents the empty form flashing before data lands.
+    expect(source).toContain("if (isEdit && (existingLoading || !hydrated))");
+  });
+
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
     const source = readFileSync(resolve(root, "src/pages/ProfilePage.tsx"), "utf8");
 
