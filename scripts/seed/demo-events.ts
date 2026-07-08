@@ -1,13 +1,16 @@
 /**
- * Local demo data seed for Phase 6 testing.
+ * Local demo data seed.
  *
- * Creates 50 lifecycle-realistic events:
- *   - June enquiries mostly show in September
- *   - July enquiries show in September/October
- *   - August enquiries show in November
- *   - September enquiries show in December
- * with varied lifecycle states, event types, single/multi-venue bookings,
- * checklists, tasks, and notifications.
+ * Creates a small, coherent starter dataset of enquiry-stage events you can
+ * manually drive through the lifecycle:
+ *   - 6 events, ALL on `enquiry` status (no pre-advanced states)
+ *   - Enquiry dates in June (lifecycle starts in the past month, from "today")
+ *   - Show dates from September onward, each ≥ ~1 month after its enquiry date
+ *   - Varied event types, single/multi-venue bookings, checklists, tasks,
+ *     notifications, and an inquiry document per event
+ *
+ * The seed clears all transactional data first, so the Calendar and Event
+ * Detail pages start from a clean slate.
  *
  * Usage:
  *   PATH="$PWD/node_modules/.bin:$PATH" tsx scripts/seed/demo-events.ts --env=local
@@ -59,11 +62,10 @@ const FALLBACK_ORGS = [
   "Tara Hospitality Group",
 ];
 
-const EVENT_TYPES: EventType[] = ["VFH", "EE", "FR", "Free Event"];
 const OWNERS = ["Aditi Rao", "Dev Mehta", "Farah Contractor", "Kabir Shah", "Leena Iyer"];
 const OFFICERS = ["Mira Kapoor", "Nikhil D'Souza", "Rhea Menon", "Samar Khan", "Tara Desai"];
 const SOURCES = ["Referral", "Website", "Repeat Client", "Phone Call", "Email"];
-const DEMO_TODAY = "2026-07-06";
+const DEMO_TODAY = "2026-07-08";
 const DEMO_PASSWORD_HASH = `scrypt:${"00".repeat(16)}:${"00".repeat(32)}`;
 const DEMO_USERS = [
   { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations" },
@@ -94,14 +96,6 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function date(year: number, month: number, day: number): string {
-  return `${year}-${pad(month)}-${pad(day)}`;
-}
-
-function clampDay(day: number): number {
-  return Math.max(1, Math.min(28, day));
-}
-
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -127,25 +121,8 @@ function statusForValue(fieldType: string, value: string | null, computed: numbe
   return "completed";
 }
 
-function venuePlan(index: number): string[] {
-  const pattern = index % 10;
-  if (pattern === 0) return ["JBT", "TATA", "TET", "LT", "GDT"];
-  if (pattern === 3 || pattern === 8) return ["JBT", "TATA", "TET"];
-  if (pattern === 2 || pattern === 5 || pattern === 7) return ["TATA", "LT"];
-  return [MAIN_VENUES[index % MAIN_VENUES.length]!];
-}
-
-function durationDays(index: number, venues: string[]): number {
-  if (venues.length >= 5) return 4;
-  if (venues.length >= 3) return 3;
-  if (venues.length === 2) return index % 2 === 0 ? 2 : 1;
-  return index % 4 === 0 ? 2 : 1;
-}
-
 function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | null {
   const showDate = event.startDate;
-  const confirmed = event.status === "confirmed";
-  const approved = event.status === "approved" || confirmed;
   const active = !["regret", "cancelled"].includes(event.status);
 
   switch (def.field_key) {
@@ -162,10 +139,10 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "pan_no": return `AA${slug(event.orgName).slice(0, 3).toUpperCase()}${1000 + event.index}P`;
     case "signing_authority_address": return `${event.orgName}, Nariman Point, Mumbai`;
     case "courier_address": return `${event.orgName}, Fort, Mumbai 400001`;
-    case "vendor_registration_form": return active ? "Received" : "Pending";
+    case "vendor_registration_form": return "Pending";
     case "approval_required": return event.eventType === "VFH" ? "Required" : "Not Required";
-    case "approval_sent_on": return event.eventType === "VFH" && active ? addDays(event.enquiryDate, 2) : null;
-    case "approval_received_on": return event.eventType === "VFH" && approved ? addDays(event.enquiryDate, 6) : null;
+    case "approval_sent_on": return null;
+    case "approval_received_on": return null;
     case "genre_head": return event.eventType === "VFH" ? "Programming Head" : null;
     case "setup_date": return addDays(showDate, -1);
     case "rehearsal_date": return event.duration > 1 ? showDate : null;
@@ -175,17 +152,17 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "ac_hours": return "4h";
     case "timings_without_ac": return "10:00-18:00";
     case "non_ac_hours": return "8h";
-    case "costing_email": return confirmed ? "Approved" : active ? "Sent" : "Pending";
-    case "proforma_invoice": return confirmed ? "Approved" : active ? "Sent" : "Pending";
+    case "costing_email": return active ? "Sent" : "Pending";
+    case "proforma_invoice": return active ? "Sent" : "Pending";
     case "installment_1_expected_date": return addDays(event.enquiryDate, 7);
-    case "installment_2_expected_date": return confirmed ? addDays(event.startDate, -14) : null;
-    case "installment_3_expected_date": return confirmed && event.duration > 2 ? addDays(event.startDate, -7) : null;
+    case "installment_2_expected_date": return null;
+    case "installment_3_expected_date": return null;
     case "installment_4_expected_date": return null;
     case "installment_5_expected_date": return null;
-    case "full_payment_received": return confirmed && event.index % 3 !== 0 ? "Yes" : "No";
-    case "confirmation_made": return confirmed || approved ? "Yes" : "No";
-    case "confirmation_couriered": return confirmed ? addDays(event.enquiryDate, 9) : null;
-    case "confirmation_signed_received": return confirmed ? "Yes" : "No";
+    case "full_payment_received": return "No";
+    case "confirmation_made": return "No";
+    case "confirmation_couriered": return null;
+    case "confirmation_signed_received": return "No";
     case "req_sound": return event.index % 2 === 0 ? "Required" : "Not Required";
     case "req_piano": return event.nature.includes("Music") ? "Required" : "Not Required";
     case "req_liquor_license": return event.eventType === "EE" ? "Required" : "Not Required";
@@ -195,15 +172,15 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "req_bike_display": return "Not Required";
     case "req_stalls": return event.index % 5 === 0 ? "Required" : "Not Required";
     case "req_telecasting_media": return event.eventType === "EE" ? "Required" : "Not Required";
-    case "noc_sent_on": return confirmed ? addDays(event.startDate, -10) : null;
-    case "noc_status": return confirmed ? "Sent" : "Not Sent";
+    case "noc_sent_on": return null;
+    case "noc_status": return "Not Sent";
     case "onstage_asked_client": return active ? addDays(event.startDate, -12) : null;
-    case "onstage_received_from_client": return confirmed ? addDays(event.startDate, -8) : null;
-    case "onstage_sent_to_team": return confirmed ? addDays(event.startDate, -7) : null;
-    case "onstage_verified": return confirmed ? addDays(event.startDate, -5) : null;
-    case "onstage_complete": return confirmed ? addDays(event.startDate, -3) : null;
+    case "onstage_received_from_client": return null;
+    case "onstage_sent_to_team": return null;
+    case "onstage_verified": return null;
+    case "onstage_complete": return null;
     case "technical_meeting_date": return addDays(event.startDate, -5);
-    case "minutes_of_meeting": return confirmed ? "Yes" : "No";
+    case "minutes_of_meeting": return "No";
     case "no_of_crew_cards": return String(8 + (event.index % 18));
     case "house_seats": return String(4 + (event.index % 10));
     case "licenses": return event.index % 3 === 0 ? "PPL, IPRS" : "Standard venue permissions";
@@ -213,31 +190,31 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "caterer_tier": return ["A", "B", "C"][event.index % 3]!;
     case "type_of_catering": return ["Veg", "Non-Veg", "Veg & Non-Veg", "Tea/Coffee"][event.index % 4]!;
     case "no_of_pax": return String(120 + event.index * 12);
-    case "feedback_sent": return event.startDate < "2026-07-05" && confirmed ? addDays(event.endDate, 1) : null;
-    case "feedback_received": return event.startDate < "2026-07-01" && confirmed ? addDays(event.endDate, 4) : null;
-    case "event_report": return event.startDate < "2026-07-01" && confirmed ? "Ready" : "Not Ready";
-    case "box_office_statement": return confirmed ? "Received" : "Awaiting";
+    case "feedback_sent": return null;
+    case "feedback_received": return null;
+    case "event_report": return "Not Ready";
+    case "box_office_statement": return "Awaiting";
     case "event_status": return event.status;
-    case "file_sent_to_accounts": return confirmed ? addDays(event.endDate, 1) : null;
+    case "file_sent_to_accounts": return null;
     case "notify_after_3_days": return "Yes";
-    case "file_received_back_edit_1": return event.startDate < "2026-07-01" && confirmed ? "Received" : "Pending";
-    case "file_received_back_edit_2": return event.startDate < "2026-07-01" && confirmed ? "Received" : "Pending";
-    case "final_file_received": return event.startDate < "2026-07-01" && confirmed ? "Yes" : "No";
+    case "file_received_back_edit_1": return "Pending";
+    case "file_received_back_edit_2": return "Pending";
+    case "final_file_received": return "No";
     case "security_deposit_refund": return event.eventType === "VFH" ? "Applicable" : "N/A";
     case "box_office_collection_refund": return event.eventType === "FR" ? "Applicable" : "N/A";
-    case "payment_advice": return confirmed ? "Received" : "Awaiting";
-    case "tds_certificate_sent_to_client": return confirmed ? "Yes" : "No";
-    case "tds_certificate_refund_and_payment_advice": return confirmed ? "Received" : "Awaiting";
-    case "payment_ledger": return confirmed ? "Received" : "Requested";
-    case "tax_invoice_sent": return confirmed ? "Sent" : "Not Sent";
-    case "box_office_statement_sent": return confirmed ? "Sent" : "Not Sent";
-    case "payment_advice_received_from_client": return confirmed ? "Yes" : "No";
-    case "tds_certificate_from_client": return event.eventType === "VFH" && confirmed ? "Received" : "N.A.";
-    case "tds_payment_and_advice_sent": return confirmed ? "Sent" : "Awaiting";
-    case "payment_ledger_sent": return confirmed ? "Sent" : "Requested";
-    case "accounts_file_status": return confirmed ? "Closed" : "Open";
-    case "outstanding_to_client": return confirmed ? "None" : "Pending";
-    case "notifications_triggered": return event.status === "enquiry" || event.status === "tentative" ? "2" : "1";
+    case "payment_advice": return "Awaiting";
+    case "tds_certificate_sent_to_client": return "No";
+    case "tds_certificate_refund_and_payment_advice": return "Awaiting";
+    case "payment_ledger": return "Requested";
+    case "tax_invoice_sent": return "Not Sent";
+    case "box_office_statement_sent": return "Not Sent";
+    case "payment_advice_received_from_client": return "No";
+    case "tds_certificate_from_client": return "N.A.";
+    case "tds_payment_and_advice_sent": return "Awaiting";
+    case "payment_ledger_sent": return "Requested";
+    case "accounts_file_status": return "Open";
+    case "outstanding_to_client": return "Pending";
+    case "notifications_triggered": return "2";
     default: return def.default_value;
   }
 }
@@ -263,106 +240,63 @@ type DemoEvent = {
   phone: string;
 };
 
-type LifecycleCohort = {
-  enquiryMonth: 6 | 7 | 8 | 9;
-  showMonths: number[];
-  count: number;
-  statuses: EventStatus[];
-};
-
-const LIFECYCLE_COHORTS: LifecycleCohort[] = [
-  {
-    enquiryMonth: 6,
-    showMonths: [9],
-    count: 14,
-    statuses: ["confirmed", "approved", "tentative", "confirmed", "confirmed", "regret", "cancelled", "approved", "tentative", "confirmed", "confirmed", "approved", "tentative", "confirmed"],
-  },
-  {
-    enquiryMonth: 7,
-    showMonths: [9, 10],
-    count: 14,
-    statuses: ["enquiry", "tentative", "approved", "tentative", "confirmed", "enquiry", "approved", "tentative", "cancelled", "tentative", "confirmed", "enquiry", "approved", "tentative"],
-  },
-  {
-    enquiryMonth: 8,
-    showMonths: [11],
-    count: 12,
-    statuses: ["enquiry", "enquiry", "tentative", "tentative", "approved", "enquiry", "tentative", "enquiry", "tentative", "approved", "enquiry", "tentative"],
-  },
-  {
-    enquiryMonth: 9,
-    showMonths: [12],
-    count: 10,
-    statuses: ["enquiry", "enquiry", "tentative", "enquiry", "tentative", "enquiry", "enquiry", "tentative", "enquiry", "enquiry"],
-  },
+/**
+ * Six enquiry-stage events. Every event starts at `enquiry` so the lifecycle
+ * can be driven manually from the UI. Enquiry dates fall in June (the lifecycle
+ * starts ~1 month before "today"); show dates begin in September and stay ≥ 1
+ * month ahead of the enquiry date.
+ *
+ *   #  enquiry     show         type        venues
+ *   1  2026-06-08  2026-09-10   VFH         JBT, TATA
+ *   2  2026-06-12  2026-09-18   EE          TATA, LT
+ *   3  2026-06-17  2026-09-25   FR          TET
+ *   4  2026-06-20  2026-10-02   Free Event  JBT, TATA, TET
+ *   5  2026-06-24  2026-10-09   VFH         GDT
+ *   6  2026-06-28  2026-10-16   EE          LT
+ */
+const DEMO_EVENTS: Array<Pick<DemoEvent, "enquiryDate" | "startDate" | "eventType" | "nature" | "venues">> = [
+  { enquiryDate: "2026-06-08", startDate: "2026-09-10", eventType: "VFH", nature: "Classical Recital", venues: ["JBT", "TATA"] },
+  { enquiryDate: "2026-06-12", startDate: "2026-09-18", eventType: "EE", nature: "Corporate Leadership Summit", venues: ["TATA", "LT"] },
+  { enquiryDate: "2026-06-17", startDate: "2026-09-25", eventType: "FR", nature: "Fundraiser Gala", venues: ["TET"] },
+  { enquiryDate: "2026-06-20", startDate: "2026-10-02", eventType: "Free Event", nature: "Dance Performance", venues: ["JBT", "TATA", "TET"] },
+  { enquiryDate: "2026-06-24", startDate: "2026-10-09", eventType: "VFH", nature: "Music Concert", venues: ["GDT"] },
+  { enquiryDate: "2026-06-28", startDate: "2026-10-16", eventType: "EE", nature: "Awards Evening", venues: ["LT"] },
 ];
 
-function lifecycleDate(enquiryMonth: number, slot: number): string {
-  return date(2026, enquiryMonth, clampDay(3 + slot * 2));
-}
-
-function showDateForCohort(cohort: LifecycleCohort, slot: number): string {
-  const showMonth = cohort.showMonths[slot % cohort.showMonths.length]!;
-  const day = clampDay(6 + ((slot * 3) % 21));
-  return date(2026, showMonth, day);
-}
-
-function confirmationDateForStatus(enquiryDate: string, status: EventStatus, slot: number): string | null {
-  if (status === "confirmed") return addDays(enquiryDate, 12 + (slot % 7));
-  if (status === "approved") return addDays(enquiryDate, 8 + (slot % 4));
-  return null;
+function durationDays(venues: string[]): number {
+  if (venues.length >= 3) return 3;
+  if (venues.length === 2) return 2;
+  return 1;
 }
 
 function buildEvents(orgNames: string[]): DemoEvent[] {
-  const natures = [
-    "Music Concert",
-    "Corporate Leadership Summit",
-    "Fundraiser Gala",
-    "School Annual Day",
-    "Dance Performance",
-    "Book Launch",
-    "Classical Recital",
-    "Technology Showcase",
-    "Theatre Festival",
-    "Awards Evening",
-  ];
   const events: DemoEvent[] = [];
-  for (const cohort of LIFECYCLE_COHORTS) {
-    for (let slot = 0; slot < cohort.count; slot++) {
-      const index = events.length;
-      const orgName = orgNames[index % orgNames.length]!;
-      const eventType = EVENT_TYPES[index % EVENT_TYPES.length]!;
-      let status = cohort.statuses[slot]!;
-      if (status === "approved" && eventType !== "VFH") status = "tentative";
-      const venues = venuePlan(index);
-      const duration = durationDays(index, venues);
-      const enquiryDate = lifecycleDate(cohort.enquiryMonth, slot);
-      const startDate = showDateForCohort(cohort, slot);
-      const endDate = addDays(startDate, duration - 1);
-      const code = `DEMO-2026-${pad(cohort.enquiryMonth)}-${pad(slot + 1)}`;
-      const nature = natures[index % natures.length]!;
-      events.push({
-        index,
-        id: `demo_ev_${pad(index + 1)}`,
-        code,
-        title: `${orgName} - ${nature}`,
-        orgId: `demo_org_${pad(index % orgNames.length)}`,
-        orgName,
-        contactId: `demo_ct_${pad(index % orgNames.length)}`,
-        eventType,
-        status,
-        nature,
-        venues,
-        duration,
-        startDate,
-        endDate,
-        enquiryDate,
-        confirmationDate: confirmationDateForStatus(enquiryDate, status, slot),
-        email: `events+${slug(orgName)}@example.com`,
-        phone: `+91 98${String(70000000 + index * 137).slice(0, 8)}`,
-      });
-    }
-  }
+  DEMO_EVENTS.forEach((spec, index) => {
+    const orgName = orgNames[index % orgNames.length]!;
+    const duration = durationDays(spec.venues);
+    const endDate = addDays(spec.startDate, duration - 1);
+    const code = `DEMO-2026-${pad(6)}-${pad(index + 1)}`;
+    events.push({
+      index,
+      id: `demo_ev_${pad(index + 1)}`,
+      code,
+      title: `${orgName} - ${spec.nature}`,
+      orgId: `demo_org_${pad(index % orgNames.length)}`,
+      orgName,
+      contactId: `demo_ct_${pad(index % orgNames.length)}`,
+      eventType: spec.eventType,
+      status: "enquiry",
+      nature: spec.nature,
+      venues: spec.venues,
+      duration,
+      startDate: spec.startDate,
+      endDate,
+      enquiryDate: spec.enquiryDate,
+      confirmationDate: null,
+      email: `events+${slug(orgName)}@example.com`,
+      phone: `+91 98${String(70000000 + index * 137).slice(0, 8)}`,
+    });
+  });
   return events;
 }
 
@@ -420,7 +354,7 @@ function seedOrganisations(batch: SqlBatch, orgNames: string[], timestamp: strin
        VALUES (${sqlStr(orgId)}, ${sqlStr(orgName)}, ${sqlStr(i % 3 === 0 ? "foundation" : i % 3 === 1 ? "corporate" : "education")}, ${sqlStr(`${12 + i}, Marine Lines, Mumbai`)},
        ${sqlStr(`27DEMO${pad(i)}Z1`)}, ${sqlStr(`DEMO${pad(i)}PAN`)}, ${sqlStr(`MUMD${pad(i)}TAN`)},
        ${sqlStr(JSON.stringify({ bank: "HDFC Bank", account_name: orgName, account_no: `000${i}123456`, ifsc: "HDFC0000001", branch: "Mumbai" }))},
-       ${sqlStr("Demo organisation for Phase 6 testing.")}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
+       ${sqlStr("Demo organisation for testing.")}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
     );
     batch.add(
       `INSERT INTO contacts (id, organisation_id, name, role, email, phone, is_primary, signing_authority, courier_address, created_at, updated_at)
@@ -432,19 +366,17 @@ function seedOrganisations(batch: SqlBatch, orgNames: string[], timestamp: strin
 
 function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: ChecklistDefinition[], timestamp: string): void {
   for (const event of events) {
-    const approvalStatus = event.eventType === "VFH"
-      ? event.status === "approved" || event.status === "confirmed" ? "received" : event.status === "cancelled" || event.status === "regret" ? "pending" : "sent"
-      : "not_required";
-    const confirmationStatus = event.status === "confirmed" ? "signed_received" : event.status === "approved" ? "made" : "none";
+    // Enquiry-stage defaults: no approval/confirmation yet.
+    const approvalStatus = event.eventType === "VFH" ? "pending" : "not_required";
+    const confirmationStatus = "none";
     const requirements = {
       sound: event.index % 2 === 0,
       lighting: true,
       stage: event.venues.length > 1 ? "multi-venue coordination" : "standard",
       greenRooms: 1 + (event.index % 3),
       security: event.venues.length >= 3,
-      notes: `Demo ${event.venues.length}-venue event for Phase 6 testing.`,
+      notes: `Demo ${event.venues.length}-venue enquiry.`,
     };
-    const lifecycleUpdatedAt = event.confirmationDate ?? addDays(event.enquiryDate, event.status === "enquiry" ? 0 : 5);
     batch.add(
       `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
        event_type, program_officer, event_owner, event_start_date, event_end_date, status, form_status,
@@ -457,18 +389,12 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
        ${sqlStr(event.enquiryDate)}, ${sqlStr(SOURCES[event.index % SOURCES.length])}, ${event.index % 4 === 0 ? 1 : 0},
        ${sqlStr(event.index % 7 === 0 ? "high" : event.index % 5 === 0 ? "low" : "medium")},
        ${sqlStr(JSON.stringify(requirements))}, ${sqlStr(`Demo seed: ${event.venues.join(", ")} / ${event.status}.`)},
-       ${sqlStr(event.enquiryDate + "T10:00:00.000Z")}, ${sqlStr(lifecycleUpdatedAt + "T10:00:00.000Z")});`
+       ${sqlStr(event.enquiryDate + "T10:00:00.000Z")}, ${sqlStr(event.enquiryDate + "T10:00:00.000Z")});`
     );
     batch.add(
       `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
        VALUES (${sqlStr(`demo_sh_${event.id}_created`)}, ${sqlStr(event.id)}, NULL, 'enquiry', NULL, ${sqlStr(event.enquiryDate + "T10:00:00.000Z")}, 'Demo event created');`
     );
-    if (event.status !== "enquiry") {
-      batch.add(
-        `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
-         VALUES (${sqlStr(`demo_sh_${event.id}_current`)}, ${sqlStr(event.id)}, 'enquiry', ${sqlStr(event.status)}, NULL, ${sqlStr(lifecycleUpdatedAt + "T10:00:00.000Z")}, 'Demo lifecycle state');`
-      );
-    }
     batch.add(
       `INSERT INTO event_activity (id, event_id, activity_type, detail, actor_id, created_at)
        VALUES (${sqlStr(`demo_act_${event.id}`)}, ${sqlStr(event.id)}, 'created', ${sqlStr(JSON.stringify({ title: event.title }))}, NULL, ${sqlStr(timestamp)});`
@@ -480,7 +406,7 @@ function seedEvents(batch: SqlBatch, events: DemoEvent[], definitions: Checklist
       const vbId = `demo_vb_${event.id}_${slug(venue)}`;
       batch.add(
         `INSERT INTO venue_bookings (id, event_id, venue, booking_status, number_of_shows, requirements, notes, sort_order, created_at, updated_at)
-         VALUES (${sqlStr(vbId)}, ${sqlStr(event.id)}, ${sqlStr(venue)}, ${sqlStr(event.status === "confirmed" ? "confirmed" : "tentative")},
+         VALUES (${sqlStr(vbId)}, ${sqlStr(event.id)}, ${sqlStr(venue)}, 'tentative',
          ${event.duration}, ${sqlStr(JSON.stringify({ venue, seating: "standard", staffing: venueIndex + 2 }))},
          ${sqlStr(`Demo booking for ${venue}.`)}, ${venueIndex + 1}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
       );
@@ -532,101 +458,53 @@ function demoTaskSpecs(event: DemoEvent): DemoTaskSpec[] {
   const ownerUser = DEMO_USERS[(event.index % (DEMO_USERS.length - 1)) + 1]!;
   const specs: DemoTaskSpec[] = [];
   const approvalDue = addDays(event.enquiryDate, event.eventType === "VFH" ? 5 : 3);
-  const confirmationDue = event.confirmationDate ? addDays(event.confirmationDate, 2) : addDays(event.enquiryDate, 14);
   const firstPaymentDue = maxIsoDate(addDays(event.enquiryDate, 10), addDays(event.startDate, -70));
-  const secondPaymentDue = addDays(event.startDate, -45);
   const operationsDue = addDays(event.startDate, -28);
 
-  if (event.status === "enquiry" || event.status === "tentative" || event.status === "approved") {
-    specs.push({
-      slug: "approval",
-      title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Internal approval checkpoint",
-      description: "Confirm whether the event can move to the next lifecycle stage.",
-      sourceRule: "approval_followup",
-      assigneeId: "demo_user_aditi",
-      dueDate: approvalDue,
-      priority: approvalDue <= DEMO_TODAY ? "high" : "medium",
-      status: approvalDue < DEMO_TODAY && event.index % 3 === 0 ? "in_progress" : "open",
-    });
-  }
+  // Enquiry-stage: only the "what to do next" tasks are open.
+  specs.push({
+    slug: "approval",
+    title: event.eventType === "VFH" ? "Approval follow-up with programming head" : "Internal approval checkpoint",
+    description: "Confirm whether the event can move to the next lifecycle stage.",
+    sourceRule: "approval_followup",
+    assigneeId: "demo_user_aditi",
+    dueDate: approvalDue,
+    priority: approvalDue <= DEMO_TODAY ? "high" : "medium",
+    status: approvalDue < DEMO_TODAY ? "in_progress" : "open",
+  });
 
-  if (event.status === "approved" || event.status === "confirmed") {
-    specs.push({
-      slug: "confirmation",
-      title: "Prepare confirmation letter",
-      description: "Generate, courier, and track signed confirmation paperwork.",
-      sourceRule: "confirmation_letter",
-      assigneeId: ownerUser.id,
-      dueDate: confirmationDue,
-      priority: event.status === "approved" ? "high" : "medium",
-      status: event.status === "confirmed" && confirmationDue < DEMO_TODAY && event.index % 4 === 0 ? "completed" : "open",
-    });
-  }
+  specs.push({
+    slug: "payment",
+    title: "Reconcile proforma invoice",
+    description: "Track expected payment milestone and update accounts checklist.",
+    sourceRule: "proforma_invoice",
+    assigneeId: "demo_user_farah",
+    dueDate: firstPaymentDue,
+    priority: firstPaymentDue <= DEMO_TODAY ? "high" : "medium",
+    status: firstPaymentDue < DEMO_TODAY ? "in_progress" : "open",
+  });
 
-  if (event.status === "tentative" || event.status === "approved" || event.status === "confirmed") {
-    specs.push({
-      slug: "payment",
-      title: event.index % 2 === 0 ? "Collect installment payment" : "Reconcile proforma invoice",
-      description: "Track expected payment milestone and update accounts checklist.",
-      sourceRule: event.index % 2 === 0 ? "installment_due" : "proforma_invoice",
-      assigneeId: "demo_user_farah",
-      dueDate: event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue,
-      priority: (event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue) <= DEMO_TODAY ? "high" : "medium",
-      status: (event.index % 2 === 0 ? firstPaymentDue : secondPaymentDue) < DEMO_TODAY && event.index % 4 === 0 ? "in_progress" : "open",
-    });
-  }
+  specs.push({
+    slug: "operations",
+    title: event.index % 2 === 0 ? "OnStage technical sheet review" : "Schedule technical meeting",
+    description: "Coordinate production, venue, and client technical requirements.",
+    sourceRule: event.index % 2 === 0 ? "onstage_followup" : "technical_meeting",
+    assigneeId: "demo_user_kabir",
+    dueDate: operationsDue,
+    priority: operationsDue <= addDays(DEMO_TODAY, 14) ? "high" : "medium",
+    status: "open",
+  });
 
-  if (!["regret", "cancelled"].includes(event.status)) {
-    specs.push({
-      slug: "operations",
-      title: event.index % 2 === 0 ? "OnStage technical sheet review" : "Schedule technical meeting",
-      description: "Coordinate production, venue, and client technical requirements.",
-      sourceRule: event.index % 2 === 0 ? "onstage_followup" : "technical_meeting",
-      assigneeId: "demo_user_kabir",
-      dueDate: operationsDue,
-      priority: operationsDue <= addDays(DEMO_TODAY, 14) ? "high" : "medium",
-      status: operationsDue < DEMO_TODAY && event.index % 7 === 0 ? "in_progress" : "open",
-    });
-  }
-
-  if (event.status === "confirmed") {
-    specs.push({
-      slug: "accounts",
-      title: "Send final file to accounts",
-      description: "Close the venue hire file and hand over the account pack.",
-      sourceRule: "accounts_file_status",
-      assigneeId: "demo_user_farah",
-      dueDate: addDays(event.endDate, 1),
-      priority: event.startDate < DEMO_TODAY ? "high" : "medium",
-      status: event.startDate < addDays(DEMO_TODAY, -10) ? "completed" : "open",
-    });
-  }
-
-  if (event.startDate < DEMO_TODAY && event.status === "confirmed") {
-    specs.push({
-      slug: "post_event",
-      title: "Send feedback form and event report",
-      description: "Collect client feedback and complete the post-event report.",
-      sourceRule: "feedback_followup",
-      assigneeId: ownerUser.id,
-      dueDate: event.index % 3 === 0 ? addDays(DEMO_TODAY, -3) : addDays(DEMO_TODAY, 4),
-      priority: event.index % 3 === 0 ? "high" : "medium",
-      status: event.index % 4 === 0 ? "in_progress" : "open",
-    });
-  }
-
-  if (event.index % 6 === 0 || event.status === "cancelled" || event.status === "regret") {
-    specs.push({
-      slug: "manual",
-      title: event.status === "cancelled" ? "Call client about cancelled booking" : "Manual client follow-up",
-      description: "General coordination note for the operations team.",
-      sourceRule: null,
-      assigneeId: event.index % 12 === 0 ? null : ownerUser.id,
-      dueDate: event.index % 12 === 0 ? null : addDays(event.enquiryDate, 7 + (event.index % 9)),
-      priority: event.index % 12 === 0 ? "low" : "medium",
-      status: event.status === "cancelled" ? "cancelled" : "open",
-    });
-  }
+  specs.push({
+    slug: "manual",
+    title: "Manual client follow-up",
+    description: "General coordination note for the operations team.",
+    sourceRule: null,
+    assigneeId: ownerUser.id,
+    dueDate: addDays(event.enquiryDate, 7 + (event.index % 9)),
+    priority: "medium",
+    status: "open",
+  });
 
   return specs;
 }
@@ -651,23 +529,14 @@ function seedTasksForEvent(batch: SqlBatch, event: DemoEvent, timestamp: string)
 }
 
 function seedDocumentsForEvent(batch: SqlBatch, event: DemoEvent, timestamp: string): void {
-  const categories = event.status === "confirmed"
-    ? ["confirmation_letter", "technical_rider", "accounts"]
-    : event.status === "approved"
-      ? ["approval", "confirmation_letter"]
-      : event.status === "tentative"
-        ? ["costing"]
-        : ["inquiry"];
-
-  categories.slice(0, event.index % 4 === 0 ? 3 : 1).forEach((category, i) => {
-    batch.add(
-      `INSERT INTO documents (id, event_id, venue_booking_id, checklist_item_id, file_name, r2_key, mime_type, file_size, category, uploaded_by, uploaded_at, notes)
-       VALUES (${sqlStr(`demo_doc_${event.id}_${category}`)}, ${sqlStr(event.id)}, NULL, NULL,
-       ${sqlStr(`${event.code}-${category.replace(/_/g, "-")}.pdf`)}, ${sqlStr(`demo/${event.id}/${category}.pdf`)},
-       'application/pdf', ${112000 + event.index * 137 + i * 221}, ${sqlStr(category)}, 'demo_user_admin', ${sqlStr(timestamp)},
-       ${sqlStr("Demo document metadata; no R2 object is required for UI testing.")});`
-    );
-  });
+  // Enquiry-stage: only the inbound inquiry document exists.
+  batch.add(
+    `INSERT INTO documents (id, event_id, venue_booking_id, checklist_item_id, file_name, r2_key, mime_type, file_size, category, uploaded_by, uploaded_at, notes)
+     VALUES (${sqlStr(`demo_doc_${event.id}_inquiry`)}, ${sqlStr(event.id)}, NULL, NULL,
+     ${sqlStr(`${event.code}-inquiry.pdf`)}, ${sqlStr(`demo/${event.id}/inquiry.pdf`)},
+     'application/pdf', ${112000 + event.index * 137}, 'inquiry', 'demo_user_admin', ${sqlStr(timestamp)},
+     ${sqlStr("Demo document metadata; no R2 object is required for UI testing.")});`
+  );
 }
 
 function pickOrganisationNames(env: SeedEnv): string[] {
