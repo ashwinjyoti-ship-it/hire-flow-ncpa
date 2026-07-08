@@ -89,10 +89,13 @@ describe("frontend regression guards", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("ShowCalendarDetailPanel");
-    expect(calendar).toContain("Open full record");
+    expect(calendar).toContain("Open Record");
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
-    expect(calendar).toContain("formatShowDetailValue");
+    expect(calendar).toContain("to={`/events/${entry.event_id}`}");
+    expect(calendar).not.toContain("Show notes");
+    expect(calendar).not.toContain("formatShowDetailValue");
+    expect(calendar).not.toContain("tab=venues");
     expect(calendar).not.toContain("Open full record →");
   });
 

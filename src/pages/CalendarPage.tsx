@@ -261,18 +261,8 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           </dl>
         </section>
 
-        <section className="rounded-xl bg-marble-shadow/30 p-4">
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Show notes</h4>
-          <dl className="space-y-2 text-sm">
-            <DetailLine label="Requirements" value={formatShowDetailValue(entry.requirements)} />
-            <DetailLine label="Venue notes" value={formatShowDetailValue(entry.venue_notes)} />
-            <DetailLine label="Schedule notes" value={formatShowDetailValue(entry.schedule_notes)} />
-            <DetailLine label="Event notes" value={formatShowDetailValue(entry.event_notes ?? entry.description)} />
-          </dl>
-        </section>
-
-        <Link to={`/events/${entry.event_id}?tab=venues`} className="carved-btn mt-6 inline-block rounded-full bg-neutral-btn px-5 py-2 text-sm font-semibold text-ink-secondary etched">
-          Open full record
+        <Link to={`/events/${entry.event_id}`} className="carved-btn-sage mt-2 inline-block rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
+          Open Record
         </Link>
       </aside>
     </div>
@@ -307,41 +297,6 @@ function formatTimedDuration(start: string | null, end: string | null, minutes: 
   const range = formatRange(start, end);
   if (range === "-" && minutes == null) return "-";
   return minutes == null ? range : `${range} (${formatDuration(minutes)})`;
-}
-
-function formatShowDetailValue(value: string | null): string {
-  const trimmed = value?.trim();
-  if (!trimmed) return "-";
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed;
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (Array.isArray(parsed)) {
-      const parts = parsed.map((item) => formatJsonValue(item)).filter(Boolean);
-      return parts.length > 0 ? parts.join(" · ") : trimmed;
-    }
-    if (parsed && typeof parsed === "object") {
-      const parts = Object.entries(parsed).map(([key, item]) => `${formatJsonKey(key)}: ${formatJsonValue(item)}`).filter(Boolean);
-      return parts.length > 0 ? parts.join(" · ") : trimmed;
-    }
-  } catch {
-    return trimmed;
-  }
-
-  return trimmed;
-}
-
-function formatJsonKey(key: string): string {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatJsonValue(value: unknown): string {
-  if (value == null) return "";
-  if (Array.isArray(value)) return value.map((item) => formatJsonValue(item)).filter(Boolean).join(", ");
-  if (typeof value === "object") {
-    return Object.entries(value).map(([key, item]) => `${formatJsonKey(key)}: ${formatJsonValue(item)}`).filter(Boolean).join(", ");
-  }
-  return String(value);
 }
 
 // ---- Month grid (one chip per organisation per day) ----
