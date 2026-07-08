@@ -118,13 +118,20 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain("apiPatch(`/tasks/");
   });
 
-  it("exposes event owners as a settings-managed master list", () => {
+  it("manages event owners as real accounts (not a free-text master list)", () => {
+    // Phase 8a: event owners are now logins. handled_by is no longer a free-text
+    // master list in Settings — it's managed via the EventOwnersSection, which
+    // creates a users row + dropdown option together. Caterer/decorator remain
+    // free-text master lists.
     const settings = readFileSync(resolve(root, "src/pages/SettingsPage.tsx"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
+    // The event form still sources its dropdown from handled_by lookups.
     expect(eventForm).toContain("lookups?.lookups.handled_by");
-    expect(settings).toContain('listKeys={["handled_by", "caterer", "decorator"]}');
-    expect(settings).toContain("Event Owners");
+    // Settings must NOT present handled_by as a free-text master list anymore.
+    expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
+    expect(settings).toContain('listKeys={["caterer", "decorator"]}');
+    expect(settings).toContain("EventOwnersSection");
   });
 
   it("keeps event form navigation at both top and bottom", () => {

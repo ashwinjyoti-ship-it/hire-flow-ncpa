@@ -240,7 +240,9 @@ export function SettingsPage() {
             )}
           </section>
 
-          {isAdmin && <MasterListsSection listKeys={["handled_by", "caterer", "decorator"]} />}
+          {isAdmin && <EventOwnersSection />}
+
+          {isAdmin && <MasterListsSection listKeys={["caterer", "decorator"]} />}
 
           {isAdmin && (
             <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
@@ -441,5 +443,183 @@ function ListEditor({
         <button type="button" disabled={add.isPending || !newValue.trim()} onClick={() => add.mutate(newValue.trim())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched disabled:opacity-60">Add</button>
       </div>
     </div>
+  );
+}
+
+// ---- Event Owners (accounts) ----
+// Phase 8a: each event owner is a real login. Adding an owner here creates both
+// a users row (with a one-time temporary password) and a handled_by dropdown
+// option, so the owner appears in the Event Owner dropdown AND can sign in.
+type OwnerUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  organisation: string | null;
+  is_active: number;
+  must_change_password: number;
+  mfa_enrolled: number;
+  created_at: string;
+};
+
+function EventOwnersSection() {
+  const qc = useQueryClient();
+  const { user: me } = useAuth();
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState("venue_manager");
+  const [err, setErr] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ name: string; email: string; temporaryPassword: string } | null>(null);
+  const [editing, setEditing] = useState<Record<string, { name: string; email: string; role: string }>>({});
+
+  const { data, isLoading } = useQuery<{ users: OwnerUser[] }>({
+    queryKey: ["users"],
+    queryFn: () => apiGet("/users"),
+  });
+
+  const create = useMutation({
+    mutationFn: async (input: { name: string; email: string; role: string }) =>
+      apiPost<{ id: string; email: string; name: string; temporaryPassword: string }>("/users", input),
+    onSuccess: (res) => {
+      setCreated({ name: res.name, email: res.email, temporaryPassword: res.temporaryPassword });
+      setNewName(""); setNewEmail(""); setNewRole("venue_manager");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: { name?: string; email?: string; role?: string } }) =>
+      apiPut(`/users/${id}`, patch),
+    onSuccess: () => {
+      setEditing({});
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const reset = useMutation({
+    mutationFn: async (id: string) =>
+      apiPost<{ email: string; name: string; temporaryPassword: string }>(`/users/${id}/reset`),
+    onSuccess: (res) => setCreated({ name: res.name, email: res.email, temporaryPassword: res.temporaryPassword }),
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const toggle = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
+      apiPost(`/users/${id}/${active ? "activate" : "deactivate"}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const users = data?.users ?? [];
+
+  return (
+    <section id="event-owners" className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+      <div className="mb-5 border-b border-ink-muted/10 pb-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Event Owners (Accounts)</h2>
+        <p className="mt-1 text-xs text-ink-muted etched">
+          Each event owner is a login. Adding one generates a one-time temporary password — share it with the owner
+          securely. They will be prompted to choose their own password on first sign-in. Existing owners imported from
+          the dropdown have a placeholder password (<code>ChangeMe!Handoff2026</code>) that you must reset before handover.
+        </p>
+      </div>
+
+      {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">{err}</div>}
+
+      {created && (
+        <div className="mb-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3">
+          <p className="text-xs font-medium text-status-awaitingApproval etched">
+            ⚠ Temporary password for <strong>{created.name}</strong> ({created.email}) — shown once:
+          </p>
+          <code className="mt-1 block rounded-lg bg-marble-shadow/40 px-3 py-2 font-mono text-sm text-ink-primary">
+            {created.temporaryPassword}
+          </code>
+          <button type="button" onClick={() => setCreated(null)} className="carved-btn mt-2 rounded-full bg-neutral-btn px-4 py-1 text-xs font-medium text-ink-secondary etched">
+            Done
+          </button>
+        </div>
+      )}
+
+      {/* Add owner */}
+      <div className="mb-5 grid gap-2 rounded-xl bg-marble-shadow/30 p-3 sm:grid-cols-[1fr_1fr_auto_auto]">
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Owner name" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+        <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="owner@example.com" type="email" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+        <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none">
+          <option value="venue_manager">Venue Manager</option>
+          <option value="coordinator">Coordinator</option>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button
+          type="button"
+          disabled={create.isPending || !newName.trim() || !newEmail.trim()}
+          onClick={() => create.mutate({ name: newName.trim(), email: newEmail.trim().toLowerCase(), role: newRole })}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-xs font-semibold text-sage-text etched disabled:opacity-60"
+        >
+          {create.isPending ? "Creating…" : "+ Add owner"}
+        </button>
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <p className="text-sm text-ink-muted etched">Loading…</p>
+      ) : users.length === 0 ? (
+        <p className="text-sm text-ink-muted etched">No accounts yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {users.map((u) => {
+            const ed = editing[u.id];
+            const isSelf = u.id === me?.id;
+            return (
+              <li key={u.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-marble-shadow/30 px-4 py-3">
+                {ed ? (
+                  <>
+                    <input value={ed.name} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, name: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
+                    <input value={ed.email} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, email: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
+                    <select value={ed.role} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, role: e.target.value } }))} className="carved rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none">
+                      <option value="venue_manager">Venue Manager</option>
+                      <option value="coordinator">Coordinator</option>
+                      <option value="viewer">Viewer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <button type="button" disabled={update.isPending} onClick={() => update.mutate({ id: u.id, patch: ed })} className="text-xs font-semibold text-sage-text hover:underline">Save</button>
+                    <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[u.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={"text-sm font-medium " + (u.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{u.name}</span>
+                        {isSelf && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">you</span>}
+                        {u.role === "admin" && <span className="rounded-full bg-status-awaitingApproval/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval">admin</span>}
+                        {Boolean(u.must_change_password) && <span className="rounded-full bg-status-cancelled/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled">must reset</span>}
+                        {Boolean(u.mfa_enrolled) && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">MFA</span>}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-ink-muted etched">{u.email} · {u.role.replace("_", " ")}</div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
+                      <button type="button" onClick={() => setEditing((s) => ({ ...s, [u.id]: { name: u.name, email: u.email, role: u.role } }))} className="text-xs text-sage-text hover:underline">Edit</button>
+                      <button type="button" disabled={reset.isPending} onClick={() => { if (window.confirm(`Reset ${u.name}'s password? This signs them out everywhere.`)) reset.mutate(u.id); }} className="text-xs text-ink-secondary hover:underline">Reset password</button>
+                      {u.is_active ? (
+                        <button type="button" disabled={toggle.isPending || isSelf} onClick={() => toggle.mutate({ id: u.id, active: false })} className="text-xs text-ink-secondary hover:underline disabled:opacity-40">Deactivate</button>
+                      ) : (
+                        <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: u.id, active: true })} className="text-xs text-sage-text hover:underline">Activate</button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
