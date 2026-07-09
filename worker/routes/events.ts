@@ -23,6 +23,7 @@ import {
   ensureChecklistForEvent,
   getChecklistItems,
   getEventLifecycle,
+  syncEventReferenceChecklist,
   taskRulesCompletedByLifecycleTransition,
   updateChecklistItem,
 } from "../lib/operations";
@@ -218,6 +219,9 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
 
   await audit({ db, actor: actorFrom(user), action: "event.updated", targetType: "event", targetId: id });
   await eventActivity(db, id, "updated", actorFrom(user).id);
+  // Keep the Operations checklist's "Event Reference" rows in step with edits to
+  // the event (title/type/description) so the Operations tab never lags behind.
+  await syncEventReferenceChecklist(db, id);
   return c.json({ ok: true });
 });
 

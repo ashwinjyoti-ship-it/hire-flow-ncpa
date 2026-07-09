@@ -111,31 +111,61 @@ calendarRoutes.get("/", requireUser, async (c) => {
     return c.json({ error: "from and to query params required (yyyy-mm-dd)" }, 400);
   }
 
-  const where = [
-    "se.activity_date >= ?",
-    "se.activity_date <= ?",
-    "e.is_archived = 0",
-  ];
-  const binds: unknown[] = [from, to];
-
   // The Show Calendar represents what's committed at the venue. By default it
   // surfaces only confirmed events — enquiries and tentative holds don't earn a
   // card here (they live on the Lifecycle Calendar). An explicit status choice
   // from the filter still overrides, so a user can deliberately inspect any
   // single status.
-  where.push("e.status = ?"); binds.push(status ?? "confirmed");
-  if (venue) { where.push("vb.venue = ?"); binds.push(venue); }
-  if (type) { where.push("e.event_type = ?"); binds.push(type); }
-  if (owner) { where.push("e.event_owner = ?"); binds.push(owner); }
+  const statusFilter = status ?? "confirmed";
+
+  // The calendar must not require schedule entries (setup/rehearsal/show rows
+  // with AC timings) before a confirmed event earns a card. Those details are
+  // normally filled in *after* confirmation; an event created with just the
+  // required fields (org, name, venue, type, operating-window date) and
+  // advanced to Confirmed must still appear. We therefore surface two row sets:
+  //   (1) enriched rows driven by schedule_entries (when present), and
+  //   (2) date-anchored rows for confirmed events that have NO schedule entries
+  //       — keyed on the event's operating window, one card per in-range day.
+  // The two sets are UNIONed and share the same column shape.
+
+  // Common filters that apply to both sets.
+  const commonWhere = ["e.is_archived = 0", "e.status = ?"];
+  const commonBinds: unknown[] = [statusFilter];
+  if (type) { commonWhere.push("e.event_type = ?"); commonBinds.push(type); }
+  if (owner) { commonWhere.push("e.event_owner = ?"); commonBinds.push(owner); }
   // Phase 8b: "My events" — restrict to events owned by the signed-in user.
-  if (mine === "1" && user) { where.push("e.event_owner_id = ?"); binds.push(user.id); }
+  if (mine === "1" && user) { commonWhere.push("e.event_owner_id = ?"); commonBinds.push(user.id); }
   if (q) {
-    where.push("(LOWER(e.title) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(e.event_code, '')) LIKE ?)");
+    commonWhere.push("(LOWER(e.title) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(e.event_code, '')) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;
-    binds.push(like, like, like);
+    commonBinds.push(like, like, like);
   }
 
-  const sql = `SELECT se.id, se.activity_type, se.activity_date, se.start_time, se.end_time,
+  // ---- Set 1: schedule-entry-driven (enriched) rows ----
+  const seWhere = [
+    "se.activity_date >= ?",
+    "se.activity_date <= ?",
+    ...commonWhere,
+  ];
+  const seBinds: unknown[] = [from, to, ...commonBinds];
+  if (venue) { seWhere.push("vb.venue = ?"); seBinds.push(venue); }
+
+  // ---- Set 2: date-anchored rows for events with no schedule entries ----
+  // An event's operating window [event_start_date, event_end_date] must overlap
+  // the viewed [from, to] range. COALESCE the end date to the start so a
+  // single-day event (event_end_date IS NULL) still counts for its one day.
+  const evWhere = [
+    "COALESCE(e.event_end_date, e.event_start_date) >= ?",
+    "e.event_start_date <= ?",
+    ...commonWhere,
+    // Only events that have NO schedule entries at all belong in this set —
+    // otherwise they'd be double-counted with set 1.
+    "NOT EXISTS (SELECT 1 FROM schedule_entries se2 WHERE se2.event_id = e.id)",
+  ];
+  const evBinds: unknown[] = [from, to, ...commonBinds];
+  if (venue) { evWhere.push("vb.venue = ?"); evBinds.push(venue); }
+
+  const columnList = `se.id, se.activity_type, se.activity_date, se.start_time, se.end_time,
       se.with_ac_start, se.with_ac_end, se.with_ac_minutes,
       se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
       se.notes AS schedule_notes,
@@ -143,17 +173,43 @@ calendarRoutes.get("/", requireUser, async (c) => {
       u.email AS event_owner_email,
       e.description, e.requirements AS event_requirements, e.notes AS event_notes,
       o.name AS organisation_name,
+      vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes`;
+
+  // Set 2: one card per (event × venue_booking) for confirmed events with no
+  // schedule entries. activity_date is the event's start date clamped into the
+  // viewed range (single-day events anchor on event_start_date). This avoids a
+  // recursive date spine — simpler and robust on D1 — while still surfacing the
+  // event under its show month. `from` is a validated yyyy-mm-dd string, so it
+  // is inlined as a quoted literal (single statement bind order stays simple).
+  const fromLit = `'${from}'`;
+  const sql = `SELECT NULL AS id, 'show' AS activity_type,
+      MAX(${fromLit}, e.event_start_date) AS activity_date,
+      NULL AS start_time, NULL AS end_time,
+      NULL AS with_ac_start, NULL AS with_ac_end, NULL AS with_ac_minutes,
+      NULL AS without_ac_start, NULL AS without_ac_end, NULL AS without_ac_minutes,
+      NULL AS schedule_notes,
+      e.id AS event_id, e.event_code, e.title, e.status, e.event_type, e.event_owner,
+      u.email AS event_owner_email,
+      e.description, e.requirements AS event_requirements, e.notes AS event_notes,
+      o.name AS organisation_name,
       vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
+    FROM events e
+    JOIN venue_bookings vb ON vb.event_id = e.id
+    LEFT JOIN organisations o ON o.id = e.organisation_id
+    LEFT JOIN users u ON u.id = e.event_owner_id
+    WHERE ${evWhere.join(" AND ")}
+  UNION ALL
+  SELECT ${columnList}
     FROM schedule_entries se
     JOIN events e ON e.id = se.event_id
     JOIN venue_bookings vb ON vb.id = se.venue_booking_id
     LEFT JOIN organisations o ON o.id = e.organisation_id
     LEFT JOIN users u ON u.id = e.event_owner_id
-    WHERE ${where.join(" AND ")}
-    ORDER BY se.activity_date, vb.venue, se.start_time, se.sort_order
-    LIMIT 1000`;
+    WHERE ${seWhere.join(" AND ")}
+  ORDER BY activity_date, venue, start_time
+  LIMIT 1000`;
 
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  const { results } = await c.env.DB.prepare(sql).bind(...evBinds, ...seBinds).all();
 
   // Group by date for convenient calendar rendering.
   const byDate: Record<string, typeof results> = {};

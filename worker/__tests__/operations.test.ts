@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, runOperationalJobs, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, runOperationalJobs, syncEventReferenceChecklist, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -212,5 +212,91 @@ describe("operational lifecycle readiness", () => {
     expect(inserts[0]?.binds).toContain("ev_after_show");
     expect(inserts[0]?.binds).toContain("cli_file_sent");
     expect(inserts[0]?.binds).toContain("2026-07-07");
+  });
+});
+
+describe("event reference checklist sync", () => {
+  // Regression ("Ankh"): the Operations tab reads event_name/event_type/
+  // nature_of_event/venue from checklist_items.value, which was seeded NULL at
+  // create time. The event form's own data must be mirrored into those rows.
+
+  type Upd = { sql: string; binds: unknown[] };
+
+  function buildDb(opts: { title: string; eventType: string | null; description: string | null; venues: string[]; manualFieldKey?: string; manualValue?: string }) {
+    const updates: Upd[] = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT id, title, event_type, description FROM events")) {
+              return { id: "ev_ankh", title: opts.title, event_type: opts.eventType, description: opts.description };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("SELECT venue FROM venue_bookings")) {
+              return { results: opts.venues.map((v) => ({ venue: v })) };
+            }
+            // recalculateEventCompletion reads checklist_items — return empty so
+            // completion stays at 0 and the UPDATE is a no-op we can ignore.
+            if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            if (sql.startsWith("UPDATE checklist_items")) {
+              updates.push({ sql, binds: [...this.binds] });
+              return { success: true };
+            }
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    return { db, updates };
+  }
+
+  it("mirrors title/type/description/venue into the empty reference checklist rows", async () => {
+    const { db, updates } = buildDb({
+      title: "Ankh",
+      eventType: "EE",
+      description: "Hindi play, ticketed event",
+      venues: ["JBT", "TATA"],
+    });
+
+    await syncEventReferenceChecklist(db, "ev_ankh");
+
+    const fieldUpdates = updates.map((u) => u.binds[u.binds.length - 1]);
+    expect(fieldUpdates).toContain("event_name");
+    expect(fieldUpdates).toContain("event_type");
+    expect(fieldUpdates).toContain("nature_of_event");
+    expect(fieldUpdates).toContain("venue");
+    const venueUpd = updates.find((u) => u.binds[u.binds.length - 1] === "venue");
+    expect(venueUpd?.binds[0]).toBe("JBT, TATA");
+    const nameUpd = updates.find((u) => u.binds[u.binds.length - 1] === "event_name");
+    expect(nameUpd?.binds[0]).toBe("Ankh");
+    const natureUpd = updates.find((u) => u.binds[u.binds.length - 1] === "nature_of_event");
+    expect(natureUpd?.binds[0]).toBe("Hindi play, ticketed event");
+    // Only empty rows are written.
+    for (const u of updates) {
+      expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
+    }
+  });
+
+  it("does not write for fields whose source is empty (no description => no nature_of_event update)", async () => {
+    const { db, updates } = buildDb({
+      title: "Untitled",
+      eventType: null,
+      description: null,
+      venues: [],
+    });
+
+    await syncEventReferenceChecklist(db, "ev_ankh");
+
+    const fieldUpdates = updates.map((u) => u.binds[u.binds.length - 1]);
+    // Only title survives (type/description/venue sources are empty).
+    expect(fieldUpdates).toEqual(["event_name"]);
   });
 });
