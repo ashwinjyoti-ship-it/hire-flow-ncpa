@@ -16,10 +16,18 @@ describe("financials checklist definitions", () => {
     expect(fieldKeys).not.toContain("full_payment_received");
   });
 
-  it("simplifies payment_status to Awaiting / Received", () => {
-    const ps = financials.find((d) => d.field_key === "payment_status");
-    expect(ps?.options).toEqual(["Awaiting", "Received"]);
-    expect(ps?.default_value).toBe("Awaiting");
+  it("uses the agreed Financials dropdown vocabularies", () => {
+    const costing = financials.find((d) => d.field_key === "costing_email");
+    expect(costing?.options).toEqual(["No", "Yes"]);
+    expect(costing?.default_value).toBe("No");
+
+    const proforma = financials.find((d) => d.field_key === "proforma_invoice");
+    expect(proforma?.options).toEqual(["Not Sent", "Sent", "Not Applicable"]);
+    expect(proforma?.default_value).toBe("Not Sent");
+
+    const payment = financials.find((d) => d.field_key === "payment_status");
+    expect(payment?.options).toEqual(["Incomplete", "Completed"]);
+    expect(payment?.default_value).toBe("Incomplete");
   });
 
   it("keeps costing_email, proforma_invoice, instalment, and installment date fields", () => {

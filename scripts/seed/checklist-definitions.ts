@@ -75,20 +75,20 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
 
   // 6. FINANCIALS
   // The Costing Email is the first post-inquiry financial step and a hard gate
-  // to confirmation. Each field defaults to "not done"; a positive entry (Sent /
-  // Yes / Received) marks progress. Payment Status = Received is the only other
-  // finance blocker to confirmation. Instalment is NOT a blocker — it only
-  // drives reminder tasks; the team decides by updating Payment Status.
-  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["Pending", "Sent", "Approved"], default_value: "Pending" },
+  // to confirmation. Each field defaults to "not done"; a positive entry (Yes /
+  // Sent / Completed) marks progress. Payment Status = Completed is the only
+  // other finance blocker to confirmation. Instalment is NOT a blocker — it
+  // only drives reminder tasks; the team decides by updating Payment Status.
+  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   // "Not Applicable" — a client may not need a proforma invoice.
-  { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Not Applicable", "Pending", "Sent", "Approved"], default_value: "Pending" },
+  { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Not Sent", "Sent", "Not Applicable"], default_value: "Not Sent" },
   { module: "operations", section: "Financials", field_key: "instalment", label: "Instalment", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "operations", section: "Financials", field_key: "installment_1_expected_date", label: "Installment 1 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 1", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_2_expected_date", label: "Installment 2 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 2", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_3_expected_date", label: "Installment 3 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 3", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_4_expected_date", label: "Installment 4 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 4", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "installment_5_expected_date", label: "Installment 5 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 5", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
+  { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Incomplete", "Completed"], default_value: "Incomplete" },
 
   // 7. CONFIRMATION LETTER
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_made", label: "Made", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },

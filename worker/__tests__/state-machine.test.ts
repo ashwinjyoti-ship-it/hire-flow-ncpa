@@ -76,30 +76,28 @@ describe("Event state machine", () => {
       expect(requiresApproval(null)).toBe(false);
     });
 
-    it("non-VFH events can confirm with costing sent + payment received + signed confirmation", () => {
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "sent", paymentStatus: "received" })).toBe(true);
-      // "Approved" costing also satisfies the gate.
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "approved", paymentStatus: "received" })).toBe(true);
+    it("non-VFH events can confirm with costing = Yes + payment = Completed + signed confirmation", () => {
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "Yes", paymentStatus: "Completed" })).toBe(true);
     });
 
     it("VFH events need costing + payment + signed confirmation AND approval received", () => {
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "sent", paymentStatus: "received" })).toBe(false);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "received", costingEmail: "sent", paymentStatus: "received" })).toBe(true);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "approved", costingEmail: "sent", paymentStatus: "received" })).toBe(true);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "none", approvalStatus: "received", costingEmail: "sent", paymentStatus: "received" })).toBe(false);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "Yes", paymentStatus: "Completed" })).toBe(false);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "received", costingEmail: "Yes", paymentStatus: "Completed" })).toBe(true);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "approved", costingEmail: "Yes", paymentStatus: "Completed" })).toBe(true);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "none", approvalStatus: "received", costingEmail: "Yes", paymentStatus: "Completed" })).toBe(false);
     });
 
     it("VFH events with approval Not Required confirm without an approval date", () => {
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "not_required", costingEmail: "sent", paymentStatus: "received" })).toBe(true);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "not_required", costingEmail: "Yes", paymentStatus: "Completed" })).toBe(true);
     });
 
-    it("blocks confirmation when costing email is not sent or payment not received", () => {
-      // Costing still pending.
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "pending", paymentStatus: "received" })).toBe(false);
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: null, paymentStatus: "received" })).toBe(false);
-      // Payment still awaiting.
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "sent", paymentStatus: "awaiting" })).toBe(false);
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "sent", paymentStatus: null })).toBe(false);
+    it("blocks confirmation when costing email is No or payment not completed", () => {
+      // Costing = No.
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "No", paymentStatus: "Completed" })).toBe(false);
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: null, paymentStatus: "Completed" })).toBe(false);
+      // Payment still incomplete.
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "Yes", paymentStatus: "Incomplete" })).toBe(false);
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: "Yes", paymentStatus: null })).toBe(false);
       expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, costingEmail: undefined, paymentStatus: undefined })).toBe(false);
     });
   });

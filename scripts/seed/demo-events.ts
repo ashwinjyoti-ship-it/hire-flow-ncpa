@@ -152,14 +152,14 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "ac_hours": return "4h";
     case "timings_without_ac": return "10:00-18:00";
     case "non_ac_hours": return "8h";
-    case "costing_email": return active ? "Sent" : "Pending";
-    case "proforma_invoice": return active ? "Sent" : "Pending";
+    case "costing_email": return active ? "Yes" : "No";
+    case "proforma_invoice": return active ? "Sent" : "Not Sent";
     case "installment_1_expected_date": return addDays(event.enquiryDate, 7);
     case "installment_2_expected_date": return null;
     case "installment_3_expected_date": return null;
     case "installment_4_expected_date": return null;
     case "installment_5_expected_date": return null;
-    case "payment_status": return active ? "Received" : "Awaiting";
+    case "payment_status": return active ? "Completed" : "Incomplete";
     case "confirmation_made": return "No";
     case "confirmation_couriered": return null;
     case "confirmation_signed_received": return "No";

@@ -56,8 +56,8 @@ export function requiresApproval(eventType: string | null): boolean {
 
 /**
  * Whether "Save as Confirmed" is enabled. Requires:
- *  - Costing email to have been sent/approved (first post-inquiry financial step).
- *  - Payment to have been received (the only payment-side gate).
+ *  - Costing email = Yes (first post-inquiry financial step).
+ *  - Payment Status = Completed (the only payment-side gate).
  *  - Signed confirmation.
  *  - VFH approval received/approved — UNLESS approval is marked Not Required,
  *    in which case the approval checklist must not impede confirmation.
@@ -69,11 +69,11 @@ export function canConfirm(args: {
   costingEmail?: string | null;
   paymentStatus?: string | null;
 }): boolean {
-  // Financials gate — costing email sent and payment received.
-  if (!args.costingEmail || !["sent", "approved"].includes(args.costingEmail.toLowerCase())) {
+  // Financials gate — costing email = Yes and payment = Completed.
+  if (!args.costingEmail || args.costingEmail.toLowerCase() !== "yes") {
     return false;
   }
-  if (!args.paymentStatus || args.paymentStatus.toLowerCase() !== "received") {
+  if (!args.paymentStatus || args.paymentStatus.toLowerCase() !== "completed") {
     return false;
   }
   const signed = args.confirmationStatus === "signed_received";
