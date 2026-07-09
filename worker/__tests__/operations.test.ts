@@ -138,8 +138,14 @@ describe("operational lifecycle readiness", () => {
     expect(confirm?.blockers).toEqual(["Confirmation letter must be made."]);
   });
 
-  it("does not recalculate completion when an event already has its checklist", async () => {
+  it("still syncs event-reference rows for an event whose checklist is already seeded", async () => {
+    // Regression (Ankh): an existing event already has all its checklist rows, so
+    // the definitions INSERT finds nothing to add. The reference-field sync must
+    // still run — otherwise the Operations tab stays blank for every event
+    // created before the sync landed. Here `results` from checklist_definitions
+    // is empty (already seeded), but the reference UPDATE must still fire.
     const calls: string[] = [];
+    const runs: string[] = [];
     const db = {
       prepare(sql: string) {
         calls.push(sql);
@@ -149,14 +155,26 @@ describe("operational lifecycle readiness", () => {
           },
           async first() {
             if (sql.includes("FROM events WHERE id = ?")) return { id: "ev_test", event_type: "EE" };
+            // syncEventReferenceChecklist reads the event row.
+            if (sql.includes("SELECT id, title, event_type, description FROM events")) {
+              return { id: "ev_test", title: "Ankh", event_type: "EE", description: "Hindi play" };
+            }
             return null;
           },
           async all() {
             if (sql.includes("FROM checklist_definitions cd")) return { results: [] };
+            if (sql.includes("SELECT venue FROM venue_bookings")) return { results: [{ venue: "JBT" }] };
             return { results: [] };
           },
           async run() {
-            throw new Error("Existing checklist reads should not write to the database");
+            const sql = calls[calls.length - 1] ?? "";
+            runs.push(sql);
+            // No new checklist definition rows should be inserted for an
+            // already-seeded event.
+            if (sql.includes("INSERT OR IGNORE INTO checklist_items")) {
+              throw new Error("should not re-insert seeded checklist rows");
+            }
+            return { success: true };
           },
         };
       },
@@ -164,7 +182,9 @@ describe("operational lifecycle readiness", () => {
 
     await ensureChecklistForEvent(db, "ev_test");
 
-    expect(calls.some((sql) => sql.includes("UPDATE events SET ops_completion"))).toBe(false);
+    // The reference sync UPDATEs must have fired even though no new rows were
+    // inserted.
+    expect(runs.some((sql) => sql.startsWith("UPDATE checklist_items") && sql.includes("field_key = ?"))).toBe(true);
   });
 
   it("creates a post-show accounts reminder when the file has not been sent", async () => {
