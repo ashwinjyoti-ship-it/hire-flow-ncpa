@@ -22,7 +22,7 @@ const TaskInput = z.object({
 taskRoutes.get("/", requireUser, async (c) => {
   const user = c.get("user")!;
   const { status = "open", mine, event } = c.req.query();
-  const where: string[] = [];
+  const where: string[] = ["(t.event_id IS NULL OR COALESCE(e.is_archived, 0) = 0)"];
   const binds: unknown[] = [];
 
   if (status && status !== "all") {

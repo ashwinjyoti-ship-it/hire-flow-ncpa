@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
@@ -134,6 +134,7 @@ type EventDocument = {
 
 export function EventDetailPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -141,6 +142,8 @@ export function EventDetailPage() {
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
 
   const { data, isLoading } = useQuery({
@@ -241,6 +244,18 @@ export function EventDetailPage() {
     },
   });
 
+  const archiveEvent = useMutation({
+    mutationFn: () => apiDelete(`/events/${id}`, { keep_org_details: keepOrgDetails }),
+    onSuccess: () => {
+      setDeleteModal(false);
+      qc.invalidateQueries({ queryKey: ["events"], exact: false });
+      qc.invalidateQueries({ queryKey: ["calendar"], exact: false });
+      qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
+      qc.invalidateQueries({ queryKey: ["tasks"], exact: false });
+      navigate("/calendar");
+    },
+  });
+
   if (isLoading) return <div className="text-sm text-ink-muted">Loading...</div>;
   const e = data?.event;
   if (!e) return <div className="text-sm text-ink-muted">Event not found.</div>;
@@ -277,6 +292,18 @@ export function EventDetailPage() {
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
               </Link>
+            )}
+            {can(user?.role ?? "viewer", "event.archive") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setKeepOrgDetails(true);
+                  setDeleteModal(true);
+                }}
+                className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-medium text-status-cancelled etched"
+              >
+                Delete Record
+              </button>
             )}
           </>
         }
@@ -410,6 +437,52 @@ export function EventDetailPage() {
       {tab === "venues" && <VenuesView bookings={data?.venue_bookings ?? []} />}
       {tab === "conflicts" && <ConflictsView conflicts={conflictsData?.conflicts ?? []} />}
       {tab === "activity" && <ActivityView activity={data?.activity ?? []} />}
+
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setDeleteModal(false)}>
+          <div className="carved-card w-full max-w-lg rounded-2xl bg-marble-highlight p-6" onClick={(ev) => ev.stopPropagation()}>
+            <h3 className="mb-2 text-lg font-semibold text-ink-primary etched-deep">Delete Record</h3>
+            <p className="text-sm text-ink-secondary etched">
+              This will remove the event from calendars, task views, dashboard counts, and active records. The event is archived rather than permanently erased.
+            </p>
+            <label className="mt-4 flex items-start gap-3 rounded-xl bg-marble-shadow/30 p-3 text-sm text-ink-secondary etched">
+              <input
+                type="checkbox"
+                checked={keepOrgDetails}
+                onChange={(ev) => setKeepOrgDetails(ev.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-sage"
+              />
+              <span>
+                <span className="block font-semibold text-ink-primary etched-deep">Keep organisation and POC details</span>
+                <span className="block text-xs text-ink-muted">The client organisation, primary contact, and contact history remain available for future enquiries.</span>
+              </span>
+            </label>
+            {!keepOrgDetails && (
+              <p className="mt-2 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled etched">
+                Organisation and POC details must be kept when deleting an event record.
+              </p>
+            )}
+            {archiveEvent.error && <p role="alert" className="mt-3 text-sm text-status-cancelled etched">{(archiveEvent.error as Error).message}</p>}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModal(false)}
+                className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!keepOrgDetails || archiveEvent.isPending}
+                onClick={() => archiveEvent.mutate()}
+                className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-semibold text-status-cancelled etched disabled:opacity-60"
+              >
+                {archiveEvent.isPending ? "Deleting..." : "Delete Record"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {statusModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setStatusModal(null)}>

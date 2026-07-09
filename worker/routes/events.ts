@@ -71,7 +71,7 @@ eventRoutes.get("/:id", requireUser, async (c) => {
      FROM events e
      LEFT JOIN organisations o ON o.id = e.organisation_id
      LEFT JOIN contacts c ON c.id = e.primary_contact_id
-     WHERE e.id = ?`
+     WHERE e.id = ? AND e.is_archived = 0`
   ).bind(id).first();
   if (!event) return c.json({ error: "Not found" }, 404);
 
@@ -315,6 +315,57 @@ const ChecklistUpdateInput = z.object({
   value: z.string().nullish(),
   status: z.enum(["not_started", "in_progress", "completed", "not_applicable", "blocked"]).optional(),
   correction_reason: z.string().nullish(),
+});
+
+const EventArchiveInput = z.object({
+  keep_org_details: z.boolean().default(true),
+});
+
+// DELETE /:id — archive an event record. Organisations and POC/contact details
+// are kept intact; event deletion is a record-level action, not client cleanup.
+eventRoutes.delete("/:id", requirePermission("event.archive"), async (c) => {
+  const parsed = EventArchiveInput.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
+  if (!parsed.data.keep_org_details) {
+    return c.json({ error: "Organisation and POC details must be kept when deleting an event record." }, 422);
+  }
+
+  const db = c.env.DB;
+  const user = c.get("user")!;
+  const id = c.req.param("id");
+  const event = await db.prepare(
+    "SELECT id, title, organisation_id, primary_contact_id, is_archived FROM events WHERE id = ?"
+  ).bind(id).first<{
+    id: string;
+    title: string;
+    organisation_id: string | null;
+    primary_contact_id: string | null;
+    is_archived: number;
+  }>();
+  if (!event || event.is_archived) return c.json({ error: "Not found" }, 404);
+
+  const now = new Date().toISOString();
+  await db.prepare("UPDATE events SET is_archived = 1, updated_at = ? WHERE id = ?").bind(now, id).run();
+  await db.prepare(
+    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE event_id = ? AND status IN ('open', 'in_progress')"
+  ).bind(now, id).run();
+
+  await audit({
+    db,
+    actor: actorFrom(user),
+    action: "event.archived",
+    targetType: "event",
+    targetId: id,
+    detail: {
+      title: event.title,
+      keepOrganisationAndPoc: true,
+      organisationId: event.organisation_id,
+      primaryContactId: event.primary_contact_id,
+    },
+    ipHint: ipHint(c.req.raw),
+  });
+  await eventActivity(db, id, "event_archived", user.id, { keepOrganisationAndPoc: true });
+  return c.json({ ok: true, archived: true, keptOrganisationAndPoc: true });
 });
 
 // PATCH /:id/checklist/:itemId — update a checklist field.

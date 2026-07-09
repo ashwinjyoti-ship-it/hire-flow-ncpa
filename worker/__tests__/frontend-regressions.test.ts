@@ -46,6 +46,16 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Open Operations to change lifecycle status");
   });
 
+  it("offers event record deletion while preserving organisation and POC details", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("Delete Record");
+    expect(source).toContain("Keep organisation and POC details");
+    expect(source).toContain("keep_org_details: keepOrgDetails");
+    expect(source).toContain("event.archive");
+    expect(source).toContain("useNavigate");
+  });
+
   it("keeps lifecycle decision notes visible in activity", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
