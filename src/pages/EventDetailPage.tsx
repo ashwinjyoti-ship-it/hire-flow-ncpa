@@ -753,9 +753,13 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
     >
       <span className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-ink-secondary etched">{item.label}</span>
-        <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(item.status)}>
-          {item.status.replace(/_/g, " ")}
-        </span>
+        {/* Instalment = No means there are no installments to track, so there is
+            nothing to progress — hide the status badge in that case. */}
+        {item.field_key === "instalment" && (item.value ?? "").trim().toLowerCase() === "no" ? null : (
+          <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(item.status)}>
+            {item.status.replace(/_/g, " ")}
+          </span>
+        )}
       </span>
       {item.field_type === "dropdown" || item.field_type === "status" ? (
         <select
