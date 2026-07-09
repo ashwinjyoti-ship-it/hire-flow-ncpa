@@ -46,6 +46,7 @@ type ChecklistItem = {
   field_type: string;
   options: string[] | null;
   is_computed: number;
+  visibility_rule?: string | null;
 };
 
 type LifecycleAction = {
@@ -93,6 +94,11 @@ const ACTIVITY_LABELS: Record<string, string> = {
 };
 
 const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey: string; label: string }> = {
+  "Amount received must be entered.": {
+    tab: "operations",
+    fieldKey: "amount_received",
+    label: "Amount Received",
+  },
   "Confirmation letter must be made.": {
     tab: "operations",
     fieldKey: "confirmation_made",
@@ -680,20 +686,51 @@ function ChecklistModuleView({
   if (!entries.length) {
     return <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5 text-sm text-ink-muted etched">No checklist items yet.</div>;
   }
+  // Build a lookup of every field's current value across all sections, so a
+  // field's visibility_rule can resolve against a controller that lives in a
+  // different section (e.g. instalment dates are controlled by the Instalment
+  // toggle in the same Financials section).
+  const valueByKey = new Map<string, string | null>();
+  for (const items of Object.values(sections)) {
+    for (const item of items) valueByKey.set(item.field_key, item.value);
+  }
   return (
     <div className="space-y-4">
-      {entries.map(([section, items]) => (
-        <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
-          <div className="grid gap-3 md:grid-cols-2">
-            {items.map((item) => (
-              <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {entries.map(([section, items]) => {
+        const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));
+        if (!visibleItems.length) return null;
+        return (
+          <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              {visibleItems.map((item) => (
+                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
+}
+
+/**
+ * Resolves a field's conditional visibility. Rules use the grammar
+ * `onlyWhen(<fieldKey> == <value>)`; a field with no visibility_rule is always
+ * visible. A controller field that isn't present yet (new events) is treated as
+ * its default, but since defaults are persisted on checklist instantiation the
+ * map will already hold the default value. When in doubt, show the field.
+ */
+function isFieldVisible(item: ChecklistItem, valueByKey: Map<string, string | null>): boolean {
+  const rule = item.visibility_rule?.trim();
+  if (!rule) return true;
+  const match = rule.match(/^onlyWhen\(\s*([a-zA-Z0-9_]+)\s*==\s*(.+?)\s*\)$/i);
+  if (!match || match.length < 3) return true;
+  const controllerKey = match[1]!;
+  const expected = (match[2] ?? "").trim();
+  const actual = (valueByKey.get(controllerKey) ?? "").trim();
+  // Case-insensitive comparison — checklist values are free-text inputs.
+  return actual.toLowerCase() === expected.toLowerCase();
 }
 
 function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {

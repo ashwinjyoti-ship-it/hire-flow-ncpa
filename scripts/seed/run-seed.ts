@@ -15,8 +15,18 @@ import { SqlBatch, queryAll, sqlStr, type SeedEnv } from "./d1-client";
 import { seedEventsFromExcel } from "./import-events";
 
 function parseEnv(): SeedEnv {
-  const arg = process.argv.find((a) => a.startsWith("--env="));
-  const env = arg ? arg.replace("--env=", "") : "local";
+  // Accept both `--env preview` (space) and `--env=preview` (equals). The npm
+  // scripts use the space form, so both must be supported.
+  let env = "local";
+  const eqIdx = process.argv.findIndex((a) => a.startsWith("--env="));
+  if (eqIdx !== -1) {
+    env = process.argv[eqIdx]!.replace("--env=", "");
+  } else {
+    const spaceIdx = process.argv.indexOf("--env");
+    if (spaceIdx !== -1 && spaceIdx + 1 < process.argv.length) {
+      env = process.argv[spaceIdx + 1]!;
+    }
+  }
   if (env !== "local" && env !== "preview" && env !== "remote") {
     throw new Error(`Unknown --env: ${env}. Use local|preview|remote.`);
   }
@@ -50,13 +60,14 @@ function seedChecklistDefinitions(env: SeedEnv): number {
     order++;
     const id = `cd_${d.module}_${d.field_key}`.toLowerCase();
     batch.add(
-      `INSERT INTO checklist_definitions (id, module, section, field_key, label, field_type, options, default_value, vfh_only, is_computed, triggers_task, sort_order, created_at)
-       VALUES (${sqlStr(id)}, ${sqlStr(d.module)}, ${sqlStr(d.section)}, ${sqlStr(d.field_key)}, ${sqlStr(d.label)}, ${sqlStr(d.field_type)}, ${sqlStr(d.options ? JSON.stringify(d.options) : null)}, ${sqlStr(d.default_value ?? null)}, ${d.vfh_only ? 1 : 0}, ${d.is_computed ? 1 : 0}, ${sqlStr(d.triggers_task ? JSON.stringify(d.triggers_task) : null)}, ${order}, ${sqlStr(now())})
+      `INSERT INTO checklist_definitions (id, module, section, field_key, label, field_type, options, default_value, vfh_only, is_computed, triggers_task, visibility_rule, sort_order, created_at)
+       VALUES (${sqlStr(id)}, ${sqlStr(d.module)}, ${sqlStr(d.section)}, ${sqlStr(d.field_key)}, ${sqlStr(d.label)}, ${sqlStr(d.field_type)}, ${sqlStr(d.options ? JSON.stringify(d.options) : null)}, ${sqlStr(d.default_value ?? null)}, ${d.vfh_only ? 1 : 0}, ${d.is_computed ? 1 : 0}, ${sqlStr(d.triggers_task ? JSON.stringify(d.triggers_task) : null)}, ${sqlStr(d.visibility_rule ?? null)}, ${order}, ${sqlStr(now())})
        ON CONFLICT(module, field_key) DO UPDATE SET
          section=excluded.section, label=excluded.label, field_type=excluded.field_type,
          options=excluded.options, default_value=excluded.default_value,
          vfh_only=excluded.vfh_only, is_computed=excluded.is_computed,
-         triggers_task=excluded.triggers_task, sort_order=excluded.sort_order;`
+         triggers_task=excluded.triggers_task, visibility_rule=excluded.visibility_rule,
+         sort_order=excluded.sort_order;`
     );
   }
   batch.flush(env);

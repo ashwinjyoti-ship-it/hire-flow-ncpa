@@ -323,6 +323,10 @@ describe("API regressions", () => {
           }),
         };
       }
+      if (sql.includes("field_key = 'amount_received'")) {
+        // Financials gate: amount received has been crossed.
+        return { first: () => ({ value: "5000" }) };
+      }
       if (sql.startsWith("UPDATE events SET status")) {
         return {
           run: () => {

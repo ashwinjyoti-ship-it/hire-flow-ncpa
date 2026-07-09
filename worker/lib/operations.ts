@@ -24,6 +24,7 @@ export type ChecklistItemRow = {
   options: string | null;
   is_computed: number;
   triggers_task: string | null;
+  visibility_rule: string | null;
   sort_order: number;
 };
 
@@ -34,6 +35,12 @@ export type EventLifecycleRow = {
   event_type: string | null;
   approval_status: string | null;
   confirmation_status: string | null;
+  /**
+   * Amount received value (from the `amount_received` checklist field). Surfaced
+   * here so the confirmation gate can require it without adding an events
+   * column; crossed in as part of lifecycle readiness.
+   */
+  amount_received?: string | null;
   ops_completion: number | null;
   accounts_completion: number | null;
   overall_completion: number | null;
@@ -142,7 +149,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
 export async function getChecklistItems(db: D1Database, eventId: string): Promise<ChecklistItemRow[]> {
   await ensureChecklistForEvent(db, eventId);
   const { results } = await db.prepare(
-    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.sort_order
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.event_id = ? AND ci.field_key != 'event_status'
@@ -196,7 +203,7 @@ export async function updateChecklistItem(args: {
 }): Promise<ChecklistItemRow> {
   const { db, itemId, user } = args;
   const current = await db.prepare(
-    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.sort_order
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.id = ?`
@@ -242,7 +249,7 @@ export async function updateChecklistItem(args: {
   });
 
   const updated = await db.prepare(
-    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.sort_order
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.id = ?`
@@ -254,6 +261,20 @@ export async function updateChecklistItem(args: {
 async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined): Promise<void> {
   const v = normalise(value);
   const now = new Date().toISOString();
+  if (fieldKey === "approval_required") {
+    // The approval checklist must not impede confirmation when approval is
+    // marked Not Required. Drive events.approval_status from this dropdown so
+    // the gate (which reads approval_status) honours the user's choice.
+    if (v === "not required") {
+      await db.prepare("UPDATE events SET approval_status = 'not_required', updated_at = ? WHERE id = ?")
+        .bind(now, eventId).run();
+    } else if (v === "required") {
+      // Reset to pending unless approval has already been received/approved —
+      // so choosing "Required" (re)opens the approval thread.
+      await db.prepare("UPDATE events SET approval_status = 'pending', updated_at = ? WHERE id = ? AND approval_status NOT IN ('received','approved')")
+        .bind(now, eventId).run();
+    }
+  }
   if (fieldKey === "approval_sent_on" && v) {
     await db.prepare("UPDATE events SET approval_status = 'sent', updated_at = ? WHERE id = ? AND approval_status NOT IN ('received','approved')")
       .bind(now, eventId).run();
@@ -424,6 +445,14 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
      FROM events WHERE id = ?`
   ).bind(eventId).first<EventLifecycleRow>();
   if (!event) throw new Error("Event not found");
+  // Amount received lives in the checklist (Financials section), not on the
+  // events row. Pull it through so the confirmation gate can require it.
+  const amountRow = await db.prepare(
+    `SELECT ci.value
+     FROM checklist_items ci
+     WHERE ci.event_id = ? AND ci.field_key = 'amount_received'`
+  ).bind(eventId).first<{ value: string | null }>();
+  event.amount_received = amountRow?.value ?? null;
   return { event, readiness: buildLifecycleReadiness(event) };
 }
 
@@ -452,6 +481,7 @@ export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleRead
       eventType: event.event_type,
       confirmationStatus: event.confirmation_status,
       approvalStatus: event.approval_status,
+      amountReceived: event.amount_received ?? null,
     }),
     blockers: confirmBlockers,
     nextAction,
@@ -464,11 +494,15 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
   if (to === "approved") {
     if (event.event_type !== "VFH") {
       blockers.push("Approved is only used for VFH events.");
-    } else if (!["received", "approved"].includes(event.approval_status ?? "")) {
+    } else if (event.approval_status !== "not_required" && !["received", "approved"].includes(event.approval_status ?? "")) {
       blockers.push("VFH approval must be received before marking the event approved.");
     }
   }
   if (to === "confirmed") {
+    // Financials gate first — crossing the financials is the opening step.
+    if (event.amount_received === null || event.amount_received === undefined || event.amount_received === "") {
+      blockers.push("Amount received must be entered.");
+    }
     if (!event.confirmation_status || event.confirmation_status === "none") {
       blockers.push("Confirmation letter must be made.");
     } else if (event.confirmation_status === "made") {
@@ -476,7 +510,9 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     } else if (event.confirmation_status !== "signed_received") {
       blockers.push("Signed confirmation must be received.");
     }
-    if (event.event_type === "VFH" && !["received", "approved"].includes(event.approval_status ?? "")) {
+    // The approval checklist must not impede confirmation when approval is
+    // marked Not Required.
+    if (event.event_type === "VFH" && event.approval_status !== "not_required" && !["received", "approved"].includes(event.approval_status ?? "")) {
       blockers.push("VFH approval must be received or approved.");
     }
   }
@@ -522,7 +558,7 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
   const now = new Date().toISOString();
 
   const { results: items } = await db.prepare(
-    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.sort_order
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`

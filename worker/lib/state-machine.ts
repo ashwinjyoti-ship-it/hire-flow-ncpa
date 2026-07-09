@@ -54,15 +54,29 @@ export function requiresApproval(eventType: string | null): boolean {
   return eventType === "VFH";
 }
 
-/** Whether "Save as Confirmed" is enabled: signed confirmation (+ approval if VFH). */
+/**
+ * Whether "Save as Confirmed" is enabled. Requires:
+ *  - Amount received to have been entered (crossing the financials is the first
+ *    step of confirmation). "0" is allowed — a free / no-charge event records 0.
+ *  - Signed confirmation.
+ *  - VFH approval received/approved — UNLESS approval is marked Not Required,
+ *    in which case the approval checklist must not impede confirmation.
+ */
 export function canConfirm(args: {
   eventType: string | null;
   confirmationStatus: string | null;
   approvalStatus: string | null;
+  amountReceived?: string | null;
 }): boolean {
+  // Financials gate — amount must be present (0 is fine; empty/missing is not).
+  if (args.amountReceived === null || args.amountReceived === undefined || args.amountReceived === "") {
+    return false;
+  }
   const signed = args.confirmationStatus === "signed_received";
   if (!signed) return false;
   if (requiresApproval(args.eventType)) {
+    // Approval marked Not Required: the approval checklist does not gate.
+    if (args.approvalStatus === "not_required") return true;
     return args.approvalStatus === "received" || args.approvalStatus === "approved";
   }
   return true;

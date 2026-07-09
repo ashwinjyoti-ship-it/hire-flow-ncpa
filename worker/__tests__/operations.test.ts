@@ -9,6 +9,10 @@ function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
     event_type: "VFH",
     approval_status: "sent",
     confirmation_status: "none",
+    // Default: amount received present so it does not introduce the financials
+    // blocker into tests that are about other parts of the gate. Tests that
+    // care about the financials gate override this.
+    amount_received: "5000",
     ops_completion: 0,
     accounts_completion: 0,
     overall_completion: 0,
@@ -57,6 +61,33 @@ describe("operational lifecycle readiness", () => {
     expect(blockersForTransition(event({ confirmation_status: "none" }), "confirmed")).toContain("Confirmation letter must be made.");
     expect(blockersForTransition(event({ confirmation_status: "made" }), "confirmed")).toContain("Confirmation letter must be couriered.");
     expect(blockersForTransition(event({ confirmation_status: "couriered" }), "confirmed")).toContain("Signed confirmation must be received.");
+  });
+
+  it("requires amount received before confirming (0 allowed)", () => {
+    // Missing amount → financials blocker first.
+    expect(blockersForTransition(event({ amount_received: null, confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
+      .toContain("Amount received must be entered.");
+    // 0 satisfies the financials gate; a free / no-charge event records 0.
+    expect(blockersForTransition(event({ amount_received: "0", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
+      .not.toContain("Amount received must be entered.");
+  });
+
+  it("does not block VFH confirmation when approval is Not Required", () => {
+    // VFH event, approval marked Not Required, financials + signed confirmation
+    // done → no approval blocker, confirmation is allowed.
+    const blockers = blockersForTransition(event({
+      approval_status: "not_required",
+      confirmation_status: "signed_received",
+    }), "confirmed");
+    expect(blockers).not.toContain("VFH approval must be received or approved.");
+  });
+
+  it("still requires VFH approval when approval is marked Required", () => {
+    const blockers = blockersForTransition(event({
+      approval_status: "pending",
+      confirmation_status: "signed_received",
+    }), "confirmed");
+    expect(blockers).toContain("VFH approval must be received or approved.");
   });
 
   it("allows confirmation once approval and signed confirmation are present", () => {

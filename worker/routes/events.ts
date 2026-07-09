@@ -130,8 +130,11 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
     d.event_type ?? null,
     d.program_officer ?? null, d.event_owner ?? null, d.event_owner_id ?? null,
     d.event_start_date ?? null, d.event_end_date ?? null,
-    // Approval status default: pending if VFH else not_required
-    d.event_type === "VFH" ? "pending" : "not_required",
+    // Approval status default: not_required for all types. VFH events seed the
+    // `approval_required` dropdown as "Not Required" by default, and that
+    // drives approval_status via syncEventFieldsFromChecklist — so start
+    // aligned. Choosing "Required" on the VFH approval checklist reopens it.
+    "not_required",
     d.enquiry_source ?? null, d.priority,
     d.requirements ? JSON.stringify(d.requirements) : null,
     d.notes ?? null, user.id, now, now
@@ -235,19 +238,27 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   }>();
   if (!event) return c.json({ error: "Not found" }, 404);
 
+  // Amount received lives in the checklist; pull it for the confirmation gate.
+  const amountRow = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'amount_received'"
+  ).bind(id).first<{ value: string | null }>();
+  const amountReceived = amountRow?.value ?? null;
+
   const from = event.status;
   if (!canTransition(from, to)) {
     return c.json({ error: `Invalid transition: ${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}` }, 422);
   }
-  // Confirmation gate: signed confirmation (+ approval if VFH).
+  // Confirmation gate: amount received (cross the financials), signed
+  // confirmation, and VFH approval — unless approval is marked Not Required.
   if (to === "confirmed" && !canConfirm({
     eventType: event.event_type,
     confirmationStatus: event.confirmation_status,
     approvalStatus: event.approval_status,
+    amountReceived,
   })) {
-    return c.json({ error: "Confirmation requires signed confirmation, and VFH events require approval received or approved." }, 422);
+    return c.json({ error: "Confirmation requires amount received, signed confirmation, and VFH events require approval received or approved (unless approval is marked Not Required)." }, 422);
   }
-  const lifecycleBlockers = blockersForTransition({ id, title: "", ...event, ops_completion: null, accounts_completion: null, overall_completion: null }, to);
+  const lifecycleBlockers = blockersForTransition({ id, title: "", ...event, amount_received: amountReceived, ops_completion: null, accounts_completion: null, overall_completion: null }, to);
   if (lifecycleBlockers.length > 0) {
     return c.json({ error: lifecycleBlockers.join(" ") }, 422);
   }

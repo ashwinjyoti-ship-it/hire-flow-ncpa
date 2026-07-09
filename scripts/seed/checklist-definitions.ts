@@ -25,6 +25,13 @@ export interface ChecklistDefSeed {
     due_after_days: number;
     complete_when?: string;
   };
+  /**
+   * Conditional-visibility descriptor. Rendered (UI) only; the field stays
+   * persisted server-side regardless. Grammar: `onlyWhen(<fieldKey> == <value>)`.
+   * Example: `onlyWhen(instalment == Yes)` shows the field only when the
+   * `instalment` checklist field equals "Yes".
+   */
+  visibility_rule?: string;
 }
 
 export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
@@ -67,15 +74,19 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Timings", field_key: "non_ac_hours", label: "Non-AC Hours (auto)", field_type: "computed", is_computed: true, default_value: "—" },
 
   // 6. FINANCIALS
-  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["Pending", "Sent", "Approved"], default_value: "Pending" },
-  { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Pending", "Sent", "Approved"], default_value: "Pending" },
-  { module: "operations", section: "Financials", field_key: "installment_1_expected_date", label: "Installment 1 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 1", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "installment_2_expected_date", label: "Installment 2 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 2", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "installment_3_expected_date", label: "Installment 3 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 3", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "installment_4_expected_date", label: "Installment 4 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 4", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "installment_5_expected_date", label: "Installment 5 — Expected Date", field_type: "date", triggers_task: { rule: "instalment", title: "Follow up: Installment 5", due_after_days: 0, complete_when: "payment is received" } },
-  { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Awaiting", "Part received", "Full received"], default_value: "Awaiting" },
+  // Amount Received leads the section: crossing the financials (amount in) is
+  // the first step of the confirmation workflow, enforced as a hard gate.
   { module: "operations", section: "Financials", field_key: "amount_received", label: "Amount Received", field_type: "number" },
+  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["Pending", "Sent", "Approved"], default_value: "Pending" },
+  // "Not Applicable" — a client may not need a proforma invoice.
+  { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Not Applicable", "Pending", "Sent", "Approved"], default_value: "Pending" },
+  { module: "operations", section: "Financials", field_key: "instalment", label: "Instalment", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
+  { module: "operations", section: "Financials", field_key: "installment_1_expected_date", label: "Installment 1 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 1", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "installment_2_expected_date", label: "Installment 2 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 2", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "installment_3_expected_date", label: "Installment 3 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 3", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "installment_4_expected_date", label: "Installment 4 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 4", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "installment_5_expected_date", label: "Installment 5 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 5", due_after_days: 0, complete_when: "payment is received" } },
+  { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Awaiting", "Part received", "Full received"], default_value: "Awaiting" },
   { module: "operations", section: "Financials", field_key: "full_payment_received", label: "Full Payment Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
   // 7. CONFIRMATION LETTER

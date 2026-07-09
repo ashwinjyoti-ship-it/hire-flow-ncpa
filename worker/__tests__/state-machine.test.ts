@@ -76,15 +76,27 @@ describe("Event state machine", () => {
       expect(requiresApproval(null)).toBe(false);
     });
 
-    it("non-VFH events can confirm with signed confirmation alone", () => {
-      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null })).toBe(true);
+    it("non-VFH events can confirm with amount + signed confirmation alone", () => {
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: "5000" })).toBe(true);
     });
 
-    it("VFH events need both signed confirmation AND approval received", () => {
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: null })).toBe(false);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "received" })).toBe(true);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "approved" })).toBe(true);
-      expect(canConfirm({ eventType: "VFH", confirmationStatus: "none", approvalStatus: "received" })).toBe(false);
+    it("VFH events need amount + signed confirmation AND approval received", () => {
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: "5000" })).toBe(false);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "received", amountReceived: "5000" })).toBe(true);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "approved", amountReceived: "5000" })).toBe(true);
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "none", approvalStatus: "received", amountReceived: "5000" })).toBe(false);
+    });
+
+    it("VFH events with approval Not Required confirm without an approval date", () => {
+      expect(canConfirm({ eventType: "VFH", confirmationStatus: "signed_received", approvalStatus: "not_required", amountReceived: "5000" })).toBe(true);
+    });
+
+    it("blocks confirmation when amount received is missing (0 is allowed)", () => {
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: null })).toBe(false);
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: "" })).toBe(false);
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: undefined })).toBe(false);
+      // A free / no-charge event records 0 — that satisfies the gate.
+      expect(canConfirm({ eventType: "EE", confirmationStatus: "signed_received", approvalStatus: null, amountReceived: "0" })).toBe(true);
     });
   });
 });
