@@ -57,8 +57,13 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   return data;
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`, { method: "DELETE", credentials: "include" });
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "DELETE",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data;

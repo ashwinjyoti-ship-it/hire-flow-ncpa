@@ -430,6 +430,50 @@ describe("API regressions", () => {
     expect(capturedBinds).toContain("demo_user_aditi");
   });
 
+  it("archives an event record while keeping organisation and POC details", async () => {
+    const touchedSql: string[] = [];
+    const db = fakeDb((sql) => {
+      touchedSql.push(sql);
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("SELECT id, title, organisation_id, primary_contact_id, is_archived FROM events")) {
+        return {
+          first: () => ({
+            id: "ev_archive",
+            title: "Archive Me",
+            organisation_id: "org_keep",
+            primary_contact_id: "contact_keep",
+            is_archived: 0,
+          }),
+        };
+      }
+      if (sql.startsWith("UPDATE events SET is_archived = 1")) return { run: () => ({ success: true }) };
+      if (sql.startsWith("UPDATE tasks SET status = 'cancelled'")) return { run: () => ({ success: true }) };
+      if (sql.includes("INSERT INTO audit_logs")) return { run: () => ({ success: true }) };
+      if (sql.includes("INSERT INTO event_activity")) return { run: () => ({ success: true }) };
+      if (sql.includes("UPDATE organisations") || sql.includes("DELETE FROM organisations")) throw new Error("organisation should be kept");
+      if (sql.includes("UPDATE contacts") || sql.includes("DELETE FROM contacts")) throw new Error("POC should be kept");
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/ev_archive",
+      {
+        method: "DELETE",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({ keep_org_details: true }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      archived: true,
+      keptOrganisationAndPoc: true,
+    });
+    expect(touchedSql.some((sql) => sql.startsWith("UPDATE events SET is_archived = 1"))).toBe(true);
+  });
+
   it("filters the event list to the signed-in owner when mine=1", async () => {
     let capturedBinds: unknown[] = [];
     const db = bindCapturingDb([
