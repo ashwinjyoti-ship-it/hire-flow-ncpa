@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
@@ -31,6 +32,7 @@ type CalEntry = {
   event_owner: string | null;
   event_owner_email: string | null;
   description: string | null;
+  event_requirements: Record<string, unknown> | string | null;
   event_notes: string | null;
   organisation_name: string | null;
   venue: string;
@@ -248,19 +250,24 @@ export function CalendarPage() {
 }
 
 function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose: () => void }) {
-  const surface = getEventStatusSurface(entry.status);
+  const reqs = parseRequirements(entry.event_requirements);
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/20 backdrop-blur-sm" onClick={onClose}>
-      <aside className={"carved-card h-full w-full max-w-xl overflow-y-auto scroll-slim rounded-l-2xl border-l-4 bg-marble-highlight p-6 " + surface.card + " " + surface.border} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
+      <aside className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider text-sage etched">View show details</div>
-            <h3 className="text-xl font-semibold text-ink-primary etched-deep">{entry.title}</h3>
-            <p className="mt-1 text-xs text-ink-muted etched">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View show details</div>
+            <h3 className="text-xl font-semibold text-neutral-950">{entry.title}</h3>
+            <p className="mt-1 text-xs text-neutral-600">
               {entry.organisation_name ?? "No organisation"}{entry.event_code ? ` · ${entry.event_code}` : ""}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-ink-muted hover:text-ink-secondary" aria-label="Close">x</button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
+              Edit
+            </Link>
+            <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+          </div>
         </div>
 
         <section className="mb-4 grid grid-cols-2 gap-3 text-xs">
@@ -275,17 +282,34 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           <SummaryPill label="Type" value={entry.event_type ?? "-"} />
         </section>
 
-        <section className="mb-4 rounded-xl bg-marble-shadow/30 p-4">
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">AC timings</h4>
+        <section className="mb-4 rounded-xl border border-white/65 bg-white/46 p-4">
+          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Timings</h4>
           <dl className="space-y-2 text-sm">
             <DetailLine label="With AC" value={formatTimedDuration(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes)} />
             <DetailLine label="Without AC" value={formatTimedDuration(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes)} />
+            <DetailLine label="Sound Call Time" value={formatRequirement(reqs.sound_call_time)} />
+            <DetailLine label="Light Call Time" value={formatRequirement(reqs.light_call_time)} />
           </dl>
         </section>
 
-        <Link to={`/events/${entry.event_id}`} className="carved-btn-sage mt-2 inline-block rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
-          Open Record
-        </Link>
+        <section className="space-y-4">
+          <DetailGroup title="Requirements">
+            <DetailLine label="Sound" value={formatRequirement(reqs.sound)} />
+            <DetailLine label="Light" value={formatRequirement(reqs.light)} />
+            <DetailLine label="Green Rooms" value={formatGreenRoomRequirements(reqs)} />
+            <DetailLine label="Security" value={formatRequirement(reqs.security)} />
+            <DetailLine label="House Seats" value={formatHouseSeatDecisions(reqs)} />
+            <DetailLine label="Parking" value={formatRequirement(reqs.parking)} />
+            <DetailLine label="Housekeeping" value={formatRequirement(reqs.housekeeping)} />
+          </DetailGroup>
+
+          <DetailGroup title="Additional Detail">
+            <DetailLine label="Description" value={entry.description ?? "-"} />
+            <DetailLine label="Event Notes" value={entry.event_notes ?? "-"} />
+            <DetailLine label="Schedule Notes" value={entry.schedule_notes ?? "-"} />
+            <DetailLine label="Venue Notes" value={entry.venue_notes ?? "-"} />
+          </DetailGroup>
+        </section>
       </aside>
     </div>
   );
@@ -293,9 +317,9 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
 
 function SummaryPill({ label, value, preserveCase = false }: { label: string; value: string; preserveCase?: boolean }) {
   return (
-    <div className="rounded-xl bg-marble-shadow/30 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
-      <div className={"mt-1 font-semibold text-ink-primary etched-deep " + (preserveCase ? "break-words" : "capitalize")}>{value}</div>
+    <div className="rounded-xl border border-white/65 bg-white/46 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+      <div className={"mt-1 font-semibold text-neutral-950 " + (preserveCase ? "break-words" : "capitalize")}>{value}</div>
     </div>
   );
 }
@@ -303,10 +327,56 @@ function SummaryPill({ label, value, preserveCase = false }: { label: string; va
 function DetailLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[8rem_1fr]">
-      <dt className="text-ink-muted etched">{label}</dt>
-      <dd className="font-medium text-ink-primary etched-deep">{value}</dd>
+      <dt className="text-neutral-500">{label}</dt>
+      <dd className="whitespace-pre-wrap break-words font-medium text-neutral-950">{value}</dd>
     </div>
   );
+}
+
+function DetailGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-white/65 bg-white/46 p-4">
+      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{title}</h4>
+      <dl className="space-y-2 text-sm">{children}</dl>
+    </section>
+  );
+}
+
+function parseRequirements(value: CalEntry["event_requirements"]): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function formatRequirement(value: unknown): string {
+  if (value == null || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ") || "-";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function formatGreenRoomRequirements(reqs: Record<string, unknown>): string {
+  const parts = [
+    formatRequirement(reqs.green_rooms_required),
+    formatRequirement(reqs.green_room_amenities),
+  ].filter((part) => part !== "-");
+  return parts.length ? parts.join(" · ") : "-";
+}
+
+function formatHouseSeatDecisions(reqs: Record<string, unknown>): string {
+  const parts = [
+    reqs.house_seats_release ? `Release: ${formatRequirement(reqs.house_seats_release)}` : "",
+    reqs.house_tickets ? `Tickets: ${formatRequirement(reqs.house_tickets)}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "-";
 }
 
 function formatRange(start: string | null, end: string | null): string {

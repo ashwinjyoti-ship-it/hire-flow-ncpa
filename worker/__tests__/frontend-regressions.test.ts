@@ -109,14 +109,30 @@ describe("frontend regression guards", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("ShowCalendarDetailPanel");
-    expect(calendar).toContain("Open Record");
+    expect(calendar).toContain("View show details");
+    expect(calendar).toContain("Sound Call Time");
+    expect(calendar).toContain("Light Call Time");
+    expect(calendar).toContain("House Seats");
+    expect(calendar).toContain("event_requirements");
+    expect(calendar).toContain("to={`/events/${entry.event_id}/edit`}");
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
-    expect(calendar).toContain("to={`/events/${entry.event_id}`}");
+    expect(calendar).not.toContain("Open Record");
     expect(calendar).not.toContain("Show notes");
     expect(calendar).not.toContain("formatShowDetailValue");
     expect(calendar).not.toContain("tab=venues");
     expect(calendar).not.toContain("Open full record →");
+  });
+
+  it("keeps missing call-time fields on the new event form", () => {
+    const edit = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(edit).toContain('Field label="Sound Call Time"');
+    expect(edit).toContain('setReq("sound_call_time"');
+    expect(edit).toContain('Field label="Light Requirements"');
+    expect(edit).toContain('setReq("light"');
+    expect(edit).toContain('Field label="Light Call Time"');
+    expect(edit).toContain('setReq("light_call_time"');
   });
 
   it("shows owner contact in the show calendar detail drawer", () => {
