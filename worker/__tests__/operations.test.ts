@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, runOperationalJobs, syncEventReferenceChecklist, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncEventReferenceChecklist, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -324,5 +324,37 @@ describe("event reference checklist sync", () => {
     const fieldUpdates = updates.map((u) => u.binds[u.binds.length - 1]);
     // Only title survives (type/description/venue sources are empty).
     expect(fieldUpdates).toEqual(["event_name"]);
+  });
+});
+
+describe("checklist item status from value", () => {
+  // A checklist field is "not done" at its negative default; it only counts as
+  // done once the user marks a positive value. Regression: negative defaults
+  // used to show as "In progress".
+  it("treats negative/placeholder dropdown defaults as not_started", () => {
+    // "Not Required" is intentionally excluded — it means the item does not
+    // apply, so it resolves to not_applicable (excluded from completion).
+    for (const v of ["No", "Not Sent", "Incomplete", "Pending", "Awaiting", "Requested", "Open", "Not Ready"]) {
+      expect(itemStatusForValue({ field_type: "dropdown", value: v })).toBe("not_started");
+    }
+    expect(itemStatusForValue({ field_type: "status", value: "no" })).toBe("not_started");
+  });
+
+  it("treats positive/done dropdown values as completed", () => {
+    for (const v of ["Yes", "Sent", "Completed", "Received", "Approved", "Ready", "Applicable"]) {
+      expect(itemStatusForValue({ field_type: "dropdown", value: v })).toBe("completed");
+    }
+  });
+
+  it("treats empty and not-applicable values correctly", () => {
+    expect(itemStatusForValue({ field_type: "dropdown", value: null })).toBe("not_started");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "" })).toBe("not_started");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Not Applicable" })).toBe("not_applicable");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "N/A" })).toBe("not_applicable");
+  });
+
+  it("a non-default, non-done dropdown value stays in_progress", () => {
+    // e.g. a custom intermediate choice that is neither a known default nor done.
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Partially done" })).toBe("in_progress");
   });
 });

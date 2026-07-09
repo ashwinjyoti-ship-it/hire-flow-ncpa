@@ -114,9 +114,15 @@ function statusForValue(fieldType: string, value: string | null, computed: numbe
   if (computed) return "not_applicable";
   const v = (value ?? "").toLowerCase();
   if (!v) return "not_started";
-  if (["not required", "n/a", "n.a."].includes(v)) return "not_applicable";
+  if (["not required", "n/a", "n.a.", "not applicable"].includes(v)) return "not_applicable";
   if (fieldType === "dropdown" || fieldType === "status") {
-    return ["yes", "sent", "approved", "received", "ready", "applicable"].includes(v) ? "completed" : "in_progress";
+    const doneValues = ["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received"];
+    if (doneValues.includes(v)) return "completed";
+    // A negative default is "not started"; only a non-default, non-done value
+    // is "in progress". Must mirror worker/lib/operations.ts itemStatusForValue.
+    const notDoneValues = ["no", "not sent", "incomplete", "not required", "pending", "awaiting", "requested", "open", "not ready", "not recorded"];
+    if (notDoneValues.includes(v)) return "not_started";
+    return "in_progress";
   }
   return "completed";
 }

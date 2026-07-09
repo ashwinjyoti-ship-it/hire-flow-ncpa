@@ -65,6 +65,13 @@ export type LifecycleReadiness = {
 
 const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received"]);
 const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable"]);
+// Negative / placeholder defaults. A checklist field sitting at one of these is
+// "not done" (not_started), not "in progress" — it only counts as done once the
+// user marks a positive value. Covers every dropdown default in the seed.
+const NOT_DONE_VALUES = new Set([
+  "no", "not sent", "incomplete", "not required", "pending", "awaiting",
+  "requested", "open", "not ready", "not recorded",
+]);
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -80,13 +87,17 @@ function normalise(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-function itemStatusForValue(item: { field_type: string; value: string | null; is_computed?: number }): string {
+export function itemStatusForValue(item: { field_type: string; value: string | null; is_computed?: number }): string {
   if (item.is_computed) return "not_applicable";
   const value = normalise(item.value);
   if (!value) return "not_started";
   if (NOT_APPLICABLE_VALUES.has(value)) return "not_applicable";
   if (item.field_type === "dropdown" || item.field_type === "status") {
-    return DONE_VALUES.has(value) ? "completed" : "in_progress";
+    if (DONE_VALUES.has(value)) return "completed";
+    // A negative default is "not started"; only a non-default, non-done value
+    // (e.g. an intermediate free-text choice) is "in progress".
+    if (NOT_DONE_VALUES.has(value)) return "not_started";
+    return "in_progress";
   }
   return "completed";
 }
