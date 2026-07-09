@@ -95,6 +95,16 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("Jump to today");
   });
 
+  it("draws complete Sunday-to-Saturday month rows without loading adjacent-month entries", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("function calendarCellsForMonth");
+    expect(calendar).toContain("type MonthCell = { date: Date; key: string; inCurrentMonth: boolean }");
+    expect(calendar).toContain("const entries = inCurrentMonth ? byDate[key] ?? [] : []");
+    expect(calendar).toContain("text-ink-overflow");
+    expect(calendar).not.toContain("date: Date | null");
+  });
+
   it("keeps show calendar details separate from lifecycle record navigation", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
