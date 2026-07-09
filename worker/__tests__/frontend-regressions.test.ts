@@ -109,6 +109,13 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("Open full record →");
   });
 
+  it("shows owner contact in the show calendar detail drawer", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("event_owner_email");
+    expect(calendar).toContain('label="Owner contact"');
+  });
+
   it("keeps dashboard task rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 

@@ -397,6 +397,8 @@ describe("API regressions", () => {
         expect(sql).toContain("vb.notes AS venue_notes");
         expect(sql).toContain("e.event_code");
         expect(sql).toContain("e.event_owner");
+        expect(sql).toContain("u.email AS event_owner_email");
+        expect(sql).toContain("LEFT JOIN users u ON u.id = e.event_owner_id");
         return {
           all: () => ({
             results: [
@@ -418,6 +420,7 @@ describe("API regressions", () => {
                 event_type: "VFH",
                 organisation_name: "ACE Production",
                 event_owner: "Aditi Rao",
+                event_owner_email: "aditi@example.com",
                 venue: "JBT",
                 booking_status: "confirmed",
                 number_of_shows: 2,
@@ -443,6 +446,7 @@ describe("API regressions", () => {
     expect(body.entries[0]).toMatchObject({
       event_code: "NCPA-001",
       event_owner: "Aditi Rao",
+      event_owner_email: "aditi@example.com",
       with_ac_start: "18:00",
       without_ac_start: "14:00",
       number_of_shows: 2,

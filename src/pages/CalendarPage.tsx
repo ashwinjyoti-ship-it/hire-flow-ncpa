@@ -29,6 +29,7 @@ type CalEntry = {
   status: EventStatus;
   event_type: string | null;
   event_owner: string | null;
+  event_owner_email: string | null;
   description: string | null;
   event_notes: string | null;
   organisation_name: string | null;
@@ -250,6 +251,7 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           <SummaryPill label="Shows" value={String(entry.number_of_shows ?? 1)} />
           <SummaryPill label="Booking" value={entry.booking_status ?? "-"} />
           <SummaryPill label="Owner" value={entry.event_owner ?? "-"} />
+          <SummaryPill label="Owner contact" value={entry.event_owner_email ?? "-"} preserveCase />
           <SummaryPill label="Type" value={entry.event_type ?? "-"} />
         </section>
 
@@ -269,11 +271,11 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
   );
 }
 
-function SummaryPill({ label, value }: { label: string; value: string }) {
+function SummaryPill({ label, value, preserveCase = false }: { label: string; value: string; preserveCase?: boolean }) {
   return (
     <div className="rounded-xl bg-marble-shadow/30 px-3 py-2">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
-      <div className="mt-1 font-semibold capitalize text-ink-primary etched-deep">{value}</div>
+      <div className={"mt-1 font-semibold text-ink-primary etched-deep " + (preserveCase ? "break-words" : "capitalize")}>{value}</div>
     </div>
   );
 }
