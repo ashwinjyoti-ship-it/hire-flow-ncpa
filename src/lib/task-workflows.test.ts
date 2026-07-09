@@ -111,9 +111,19 @@ describe("task workflow helpers", () => {
     }))).toBe(false);
   });
 
-  it("keeps task urgency separate from event status surfaces", () => {
-    expect(getTaskUrgencyLabels(task({ id: "a", title: "Late", due_date: "2026-07-05", assignee_name: null }), today)).toEqual(["Overdue", "Unassigned"]);
-    expect(getTaskUrgencyLabels(task({ id: "b", title: "Today", due_date: today, priority: "high" }), today)).toEqual(["Target today", "High priority"]);
+  it("shows one timing chip by precedence and keeps Unassigned as an independent axis", () => {
+    // Overdue beats high priority — no stacking.
+    expect(getTaskUrgencyLabels(task({ id: "a", title: "Late and important", due_date: "2026-07-05", priority: "high" }), today)).toEqual(["Overdue"]);
+    // Overdue + no owner keeps both axes (timing + ownership).
+    expect(getTaskUrgencyLabels(task({ id: "b", title: "Late and unowned", due_date: "2026-07-05", assignee_name: null }), today)).toEqual(["Overdue", "Unassigned"]);
+    // Today beats high priority — no stacking.
+    expect(getTaskUrgencyLabels(task({ id: "c", title: "Due today and important", due_date: today, priority: "high" }), today)).toEqual(["Target today"]);
+    // High priority surfaces only when there is no active timing pressure.
+    expect(getTaskUrgencyLabels(task({ id: "d", title: "Important later", due_date: "2026-07-20", priority: "high" }), today)).toEqual(["High priority"]);
+    // A calm, owned task shows no chip.
+    expect(getTaskUrgencyLabels(task({ id: "e", title: "Normal work", due_date: "2026-07-20", priority: "medium" }), today)).toEqual([]);
+    // A calm task nobody owns still flags ownership.
+    expect(getTaskUrgencyLabels(task({ id: "f", title: "Unowned work", due_date: "2026-07-20", assignee_name: null }), today)).toEqual(["Unassigned"]);
   });
 
   it("builds links to the event work tab and exact checklist field", () => {

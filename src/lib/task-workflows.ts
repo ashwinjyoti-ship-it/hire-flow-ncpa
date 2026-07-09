@@ -148,11 +148,18 @@ export function groupTasksByWorkflowLane(tasks: TaskLike[], todayIso = isoToday(
 }
 
 export function getTaskUrgencyLabels(task: TaskLike, todayIso = isoToday()): string[] {
+  // One chip per independent axis, chosen by precedence.
+  // Timing axis: show at most ONE — the strongest active signal. When a task is
+  // overdue or due today, the time pressure subsumes priority, so "High priority"
+  // is only surfaced when there is no active timing pressure (it then earns its
+  // place as the "care even though it's not urgent yet" signal).
+  // Ownership axis: "Unassigned" is orthogonal to timing/priority, so it can
+  // appear alongside whichever timing chip (if any) is shown.
   const labels: string[] = [];
   const timing = getTimingGroup(task, todayIso);
   if (timing === "overdue") labels.push("Overdue");
-  if (timing === "today") labels.push("Target today");
-  if (task.priority === "high") labels.push("High priority");
+  else if (timing === "today") labels.push("Target today");
+  else if (task.priority === "high") labels.push("High priority");
   if (!task.assignee_name) labels.push("Unassigned");
   return labels;
 }
