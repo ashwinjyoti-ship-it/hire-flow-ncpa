@@ -140,6 +140,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
       se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
       se.notes AS schedule_notes,
       e.id AS event_id, e.event_code, e.title, e.status, e.event_type, e.event_owner,
+      u.email AS event_owner_email,
       e.description, e.notes AS event_notes,
       o.name AS organisation_name,
       vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
@@ -147,6 +148,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
     JOIN events e ON e.id = se.event_id
     JOIN venue_bookings vb ON vb.id = se.venue_booking_id
     LEFT JOIN organisations o ON o.id = e.organisation_id
+    LEFT JOIN users u ON u.id = e.event_owner_id
     WHERE ${where.join(" AND ")}
     ORDER BY se.activity_date, vb.venue, se.start_time, se.sort_order
     LIMIT 1000`;
