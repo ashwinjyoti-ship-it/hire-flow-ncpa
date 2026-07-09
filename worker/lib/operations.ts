@@ -117,6 +117,13 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     sort_order: number;
   }>();
 
+  // Backfill the "Event Reference" rows (event_name/type/nature/venue) from the
+  // event form's own data. This MUST run before the early-return below: existing
+  // events already have all their checklist rows seeded, so `results` is empty
+  // and the function would otherwise return without ever syncing — leaving the
+  // Operations tab blank for every event created before this fix landed.
+  await syncEventReferenceChecklist(db, eventId);
+
   if (!results.length) return;
 
   const now = new Date().toISOString();
@@ -143,10 +150,6 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
       now
     ).run();
   }
-  // Backfill the "Event Reference" rows (event_name/type/nature/venue) from the
-  // event form's own data, so the Operations tab is never blank on a freshly
-  // created event.
-  await syncEventReferenceChecklist(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
