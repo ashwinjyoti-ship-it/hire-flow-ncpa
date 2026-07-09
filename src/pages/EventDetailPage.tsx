@@ -10,6 +10,7 @@ import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
+import { selectBlockedForwardAction } from "../lib/lifecycle-milestone";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -548,7 +549,12 @@ function LifecyclePanel({
     return [...actions].sort((a, b) => preferred.indexOf(a.status) - preferred.indexOf(b.status));
   }, [actions]);
   const closeOutActions = visibleActions.filter((action) => action.status === "regret" || action.status === "cancelled");
-  const blockedForwardAction = nextAction ? null : visibleActions.find((action) => forwardStatuses.includes(action.status) && action.blockers.length > 0) ?? null;
+  // Surface the milestone the user is actively progressing: once the
+  // confirmation-letter thread is underway (Made/Couriered), highlight
+  // `confirmed`'s next sub-step rather than defaulting back to approval.
+  const blockedForwardAction = nextAction
+    ? null
+    : selectBlockedForwardAction(visibleActions, event.confirmation_status, forwardStatuses);
   const visibleBlockers = blockedForwardAction?.blockers ?? blockers;
 
   return (
