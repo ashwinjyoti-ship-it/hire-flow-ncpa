@@ -393,6 +393,7 @@ describe("API regressions", () => {
         expect(sql).toContain("se.without_ac_end");
         expect(sql).toContain("se.notes AS schedule_notes");
         expect(sql).toContain("vb.number_of_shows");
+        expect(sql).toContain("e.requirements AS event_requirements");
         expect(sql).toContain("vb.requirements");
         expect(sql).toContain("vb.notes AS venue_notes");
         expect(sql).toContain("e.event_code");
@@ -421,6 +422,15 @@ describe("API regressions", () => {
                 organisation_name: "ACE Production",
                 event_owner: "Aditi Rao",
                 event_owner_email: "aditi@example.com",
+                event_requirements: JSON.stringify({
+                  sound: "Console and monitors",
+                  sound_call_time: "15:00",
+                  light: "Warm stage wash",
+                  light_call_time: "16:00",
+                  green_rooms_required: "Yes",
+                  security: "Artist entry support",
+                  house_seats_release: "No",
+                }),
                 venue: "JBT",
                 booking_status: "confirmed",
                 number_of_shows: 2,
@@ -447,6 +457,7 @@ describe("API regressions", () => {
       event_code: "NCPA-001",
       event_owner: "Aditi Rao",
       event_owner_email: "aditi@example.com",
+      event_requirements: expect.stringContaining("sound_call_time"),
       with_ac_start: "18:00",
       without_ac_start: "14:00",
       number_of_shows: 2,

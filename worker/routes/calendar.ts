@@ -141,7 +141,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
       se.notes AS schedule_notes,
       e.id AS event_id, e.event_code, e.title, e.status, e.event_type, e.event_owner,
       u.email AS event_owner_email,
-      e.description, e.notes AS event_notes,
+      e.description, e.requirements AS event_requirements, e.notes AS event_notes,
       o.name AS organisation_name,
       vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
     FROM schedule_entries se

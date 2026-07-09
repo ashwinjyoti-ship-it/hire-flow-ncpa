@@ -497,9 +497,25 @@ export function EventEditPage() {
         <div className="space-y-4">
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Sound</h3>
-            <Field label="Sound Requirements">
-              <textarea value={(reqs.sound as string) ?? ""} onChange={(e) => setReq("sound", e.target.value || null)} className="carved input" rows={2} />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+              <Field label="Sound Requirements">
+                <textarea value={(reqs.sound as string) ?? ""} onChange={(e) => setReq("sound", e.target.value || null)} className="carved input" rows={2} />
+              </Field>
+              <Field label="Sound Call Time">
+                <input type="time" value={(reqs.sound_call_time as string) ?? ""} onChange={(e) => setReq("sound_call_time", e.target.value || null)} className="carved input" />
+              </Field>
+            </div>
+          </section>
+          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Light</h3>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
+              <Field label="Light Requirements">
+                <textarea value={(reqs.light as string) ?? ""} onChange={(e) => setReq("light", e.target.value || null)} className="carved input" rows={2} />
+              </Field>
+              <Field label="Light Call Time">
+                <input type="time" value={(reqs.light_call_time as string) ?? ""} onChange={(e) => setReq("light_call_time", e.target.value || null)} className="carved input" />
+              </Field>
+            </div>
           </section>
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Staffing & Facilities</h3>
