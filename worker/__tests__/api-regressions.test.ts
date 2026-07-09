@@ -323,9 +323,16 @@ describe("API regressions", () => {
           }),
         };
       }
-      if (sql.includes("field_key = 'amount_received'")) {
-        // Financials gate: amount received has been crossed.
-        return { first: () => ({ value: "5000" }) };
+      if (sql.includes("field_key IN ('costing_email', 'payment_status')")) {
+        // Financials gate: costing email sent + payment received.
+        return {
+          all: () => ({
+            results: [
+              { field_key: "costing_email", value: "sent" },
+              { field_key: "payment_status", value: "received" },
+            ],
+          }),
+        };
       }
       if (sql.startsWith("UPDATE events SET status")) {
         return {

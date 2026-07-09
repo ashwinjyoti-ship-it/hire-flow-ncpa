@@ -94,10 +94,15 @@ const ACTIVITY_LABELS: Record<string, string> = {
 };
 
 const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey: string; label: string }> = {
-  "Amount received must be entered.": {
+  "Costing email must be sent.": {
     tab: "operations",
-    fieldKey: "amount_received",
-    label: "Amount Received",
+    fieldKey: "costing_email",
+    label: "Costing Email",
+  },
+  "Payment must be received.": {
+    tab: "operations",
+    fieldKey: "payment_status",
+    label: "Payment Status",
   },
   "Confirmation letter must be made.": {
     tab: "operations",

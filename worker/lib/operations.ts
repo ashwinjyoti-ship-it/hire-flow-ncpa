@@ -36,11 +36,12 @@ export type EventLifecycleRow = {
   approval_status: string | null;
   confirmation_status: string | null;
   /**
-   * Amount received value (from the `amount_received` checklist field). Surfaced
-   * here so the confirmation gate can require it without adding an events
-   * column; crossed in as part of lifecycle readiness.
+   * Financials gate values pulled from checklist fields (costing_email,
+   * payment_status). Surfaced here so the confirmation gate can require them
+   * without adding events columns; crossed in as part of lifecycle readiness.
    */
-  amount_received?: string | null;
+  costing_email?: string | null;
+  payment_status?: string | null;
   ops_completion: number | null;
   accounts_completion: number | null;
   overall_completion: number | null;
@@ -417,8 +418,9 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
   if (fieldKey === "feedback_received" && v) rules.push("feedback");
   if (fieldKey === "file_sent_to_accounts" && v) rules.push("send_file_to_accounts");
   if (fieldKey === "final_file_received" && v === "yes") rules.push("accounts_file");
-  if (fieldKey === "full_payment_received" && v === "yes") rules.push("instalment");
-  if (fieldKey === "payment_status" && v === "full received") rules.push("instalment");
+  // Instalment follow-up tasks close out once payment is received (the team
+  // records this via the Payment Status field). Instalment itself never blocks.
+  if (fieldKey === "payment_status" && v === "received") rules.push("instalment");
   if (!rules.length) return;
 
   await completeTasksForSourceRules(db, eventId, rules, userId, "Completed automatically from checklist update.");
@@ -505,14 +507,18 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
      FROM events WHERE id = ?`
   ).bind(eventId).first<EventLifecycleRow>();
   if (!event) throw new Error("Event not found");
-  // Amount received lives in the checklist (Financials section), not on the
-  // events row. Pull it through so the confirmation gate can require it.
-  const amountRow = await db.prepare(
-    `SELECT ci.value
+  // The financials gate fields (costing_email, payment_status) live in the
+  // checklist, not on the events row. Pull them through so the confirmation
+  // gate can require them.
+  const { results: finRows } = await db.prepare(
+    `SELECT ci.field_key, ci.value
      FROM checklist_items ci
-     WHERE ci.event_id = ? AND ci.field_key = 'amount_received'`
-  ).bind(eventId).first<{ value: string | null }>();
-  event.amount_received = amountRow?.value ?? null;
+     WHERE ci.event_id = ? AND ci.field_key IN ('costing_email', 'payment_status')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+  for (const row of finRows ?? []) {
+    if (row.field_key === "costing_email") event.costing_email = row.value ?? null;
+    if (row.field_key === "payment_status") event.payment_status = row.value ?? null;
+  }
   return { event, readiness: buildLifecycleReadiness(event) };
 }
 
@@ -541,7 +547,8 @@ export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleRead
       eventType: event.event_type,
       confirmationStatus: event.confirmation_status,
       approvalStatus: event.approval_status,
-      amountReceived: event.amount_received ?? null,
+      costingEmail: event.costing_email ?? null,
+      paymentStatus: event.payment_status ?? null,
     }),
     blockers: confirmBlockers,
     nextAction,
@@ -559,9 +566,13 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     }
   }
   if (to === "confirmed") {
-    // Financials gate first — crossing the financials is the opening step.
-    if (event.amount_received === null || event.amount_received === undefined || event.amount_received === "") {
-      blockers.push("Amount received must be entered.");
+    // Financials gate — costing email sent and payment received. These are the
+    // first post-inquiry financial steps; instalment tracking does NOT gate.
+    if (!event.costing_email || !["sent", "approved"].includes(event.costing_email.toLowerCase())) {
+      blockers.push("Costing email must be sent.");
+    }
+    if (!event.payment_status || event.payment_status.toLowerCase() !== "received") {
+      blockers.push("Payment must be received.");
     }
     if (!event.confirmation_status || event.confirmation_status === "none") {
       blockers.push("Confirmation letter must be made.");
