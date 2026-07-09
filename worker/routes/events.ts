@@ -269,6 +269,11 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   const lifecycleNote = parsed.data.note?.trim() || null;
   const lifecycleReason = parsed.data.reason?.trim() || null;
   await db.prepare("UPDATE events SET status = ?, updated_at = ? WHERE id = ?").bind(to, now, id).run();
+  if (to === "confirmed") {
+    await db.prepare(
+      "UPDATE venue_bookings SET booking_status = 'confirmed', updated_at = ? WHERE event_id = ? AND booking_status != 'confirmed'"
+    ).bind(now, id).run();
+  }
   await db.prepare(
     `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason, note)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
