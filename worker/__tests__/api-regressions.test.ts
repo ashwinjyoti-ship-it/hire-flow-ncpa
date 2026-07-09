@@ -695,4 +695,104 @@ describe("API regressions", () => {
     });
     expect(updatedStatus).toBeNull();
   });
+
+  it("surfaces a confirmed event on the show calendar even with no schedule entries", async () => {
+    // Regression ("Ankh"): an event created with only the required fields (org,
+    // name, venue, type, operating-window date) and advanced to Confirmed never
+    // appeared on the Show Calendar. The old query started FROM schedule_entries
+    // (INNER JOIN), so a confirmed event with zero schedule rows was dropped.
+    // The query must now also include a date-anchored branch keyed on the
+    // event's own operating window.
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      // Match the calendar UNION query (it still contains "FROM schedule_entries se"
+      // in its enriched branch).
+      if (sql.includes("FROM schedule_entries se")) {
+        capturedSql = sql;
+        expect(sql).toContain("e.event_start_date <=");
+        expect(sql).toContain("COALESCE(e.event_end_date, e.event_start_date) >=");
+        expect(sql).toContain("NOT EXISTS (SELECT 1 FROM schedule_entries se2");
+        expect(sql).toContain("JOIN venue_bookings vb ON vb.event_id = e.id");
+        expect(sql).toContain("UNION ALL");
+        // The status gate must still default to confirmed-only.
+        expect(sql).toContain("e.status = ?");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: null,
+                activity_type: "show",
+                activity_date: "2026-09-10",
+                title: "Ankh",
+                status: "confirmed",
+                event_id: "ev_ankh",
+                event_type: "EE",
+                venue: "JBT",
+                organisation_name: "Ankh Productions",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+    const body = await res.json() as { entries: Array<Record<string, unknown>>; byDate: Record<string, unknown[]> };
+
+    expect(res.status).toBe(200);
+    expect(capturedSql).not.toBe("");
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]).toMatchObject({ title: "Ankh", status: "confirmed", venue: "JBT" });
+    // The date-anchored card must be grouped under the show month.
+    expect(body.byDate["2026-09-10"]).toBeTruthy();
+  });
+
+  it("mirrors edited event fields into the Operations checklist on PUT", async () => {
+    // Regression ("Ankh"): editing the event (title/description/type) must keep
+    // the Operations tab's "Event Reference" rows in sync — previously the PUT
+    // handler only updated the events row, leaving the checklist blank.
+    const touchedSql: string[] = [];
+    let checklistUpdated = false;
+    const db = fakeDb((sql) => {
+      touchedSql.push(sql);
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.startsWith("UPDATE events SET title")) return { run: () => ({ success: true }) };
+      // syncEventReferenceChecklist reads the event + venues then updates the
+      // checklist reference rows; assert the UPDATE fires.
+      if (sql.includes("SELECT id, title, event_type, description FROM events")) {
+        return { first: () => ({ id: "ev_ankh", title: "Ankh", event_type: "EE", description: "Hindi play" }) };
+      }
+      if (sql.includes("SELECT venue FROM venue_bookings")) {
+        return { all: () => ({ results: [{ venue: "JBT" }] }) };
+      }
+      if (sql.startsWith("UPDATE checklist_items")) {
+        return { run: () => { checklistUpdated = true; return { success: true }; } };
+      }
+      if (sql.includes("INSERT INTO audit_logs")) return { run: () => ({ success: true }) };
+      if (sql.includes("INSERT INTO event_activity")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/ev_ankh",
+      {
+        method: "PUT",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Ankh", description: "Hindi play" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(touchedSql.some((sql) => sql.startsWith("UPDATE events SET title"))).toBe(true);
+    expect(checklistUpdated).toBe(true);
+  });
 });

@@ -143,6 +143,10 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
       now
     ).run();
   }
+  // Backfill the "Event Reference" rows (event_name/type/nature/venue) from the
+  // event form's own data, so the Operations tab is never blank on a freshly
+  // created event.
+  await syncEventReferenceChecklist(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
@@ -295,6 +299,59 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
     await db.prepare("UPDATE events SET confirmation_status = 'signed_received', updated_at = ? WHERE id = ?")
       .bind(now, eventId).run();
   }
+}
+
+/**
+ * Mirror the event's own reference data into the Operations checklist's
+ * "Event Reference" rows. These fields (event_name, event_type,
+ * nature_of_event, venue) are denormalised copies the Operations tab reads via
+ * `checklist_items.value`; at create/edit time they were seeded from
+ * `default_value` only (NULL for these four), so the Operations tab rendered
+ * them blank even though the event form had captured the values.
+ *
+ * Source-of-truth mapping:
+ *   event_name     <- events.title
+ *   event_type     <- events.event_type
+ *   nature_of_event<- events.description   (no dedicated column; the form's
+ *                                            "Description" carries the nature)
+ *   venue          <- comma-joined venue_bookings.venue
+ *
+ * Only rows whose current value is NULL/empty are written, so a user's manual
+ * entry is never clobbered. Status is re-derived from the new value so the
+ * completion rollups stay accurate. Safe to call repeatedly (idempotent).
+ */
+export async function syncEventReferenceChecklist(db: D1Database, eventId: string): Promise<void> {
+  const event = await db.prepare(
+    "SELECT id, title, event_type, description FROM events WHERE id = ?"
+  ).bind(eventId).first<{ id: string; title: string; event_type: string | null; description: string | null }>();
+  if (!event) return;
+
+  const { results: venues } = await db.prepare(
+    "SELECT venue FROM venue_bookings WHERE event_id = ? ORDER BY sort_order, rowid"
+  ).bind(eventId).all<{ venue: string }>();
+  const venueValue = (venues ?? []).map((v) => v.venue).filter(Boolean).join(", ") || null;
+
+  // field_key -> source value. Skip empty sources so we don't overwrite a real
+  // manual checklist value with NULL.
+  const fieldToValue: Record<string, string | null> = {
+    event_name: event.title?.trim() || null,
+    event_type: event.event_type ?? null,
+    nature_of_event: event.description?.trim() || null,
+    venue: venueValue,
+  };
+
+  const now = new Date().toISOString();
+  for (const [fieldKey, value] of Object.entries(fieldToValue)) {
+    if (!value) continue; // nothing to copy for this field
+    // Only update rows that are currently empty — never clobber a manual entry.
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = 'completed', completed_at = COALESCE(completed_at, ?),
+           completed_by = COALESCE(completed_by, NULL), last_updated_at = ?
+       WHERE event_id = ? AND field_key = ? AND (value IS NULL OR TRIM(value) = '')`
+    ).bind(value, now, now, eventId, fieldKey).run();
+  }
+  await recalculateEventCompletion(db, eventId);
 }
 
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {
