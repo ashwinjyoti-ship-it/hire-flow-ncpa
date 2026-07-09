@@ -63,8 +63,8 @@ export type LifecycleReadiness = {
   actions: LifecycleAction[];
 };
 
-const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "ready", "applicable", "full received"]);
-const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a."]);
+const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received"]);
+const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable"]);
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -418,9 +418,9 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
   if (fieldKey === "feedback_received" && v) rules.push("feedback");
   if (fieldKey === "file_sent_to_accounts" && v) rules.push("send_file_to_accounts");
   if (fieldKey === "final_file_received" && v === "yes") rules.push("accounts_file");
-  // Instalment follow-up tasks close out once payment is received (the team
+  // Instalment follow-up tasks close out once payment is completed (the team
   // records this via the Payment Status field). Instalment itself never blocks.
-  if (fieldKey === "payment_status" && v === "received") rules.push("instalment");
+  if (fieldKey === "payment_status" && v === "completed") rules.push("instalment");
   if (!rules.length) return;
 
   await completeTasksForSourceRules(db, eventId, rules, userId, "Completed automatically from checklist update.");
@@ -566,13 +566,13 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     }
   }
   if (to === "confirmed") {
-    // Financials gate — costing email sent and payment received. These are the
-    // first post-inquiry financial steps; instalment tracking does NOT gate.
-    if (!event.costing_email || !["sent", "approved"].includes(event.costing_email.toLowerCase())) {
+    // Financials gate — costing email = Yes and payment = Completed. These are
+    // the first post-inquiry financial steps; instalment tracking does NOT gate.
+    if (!event.costing_email || event.costing_email.toLowerCase() !== "yes") {
       blockers.push("Costing email must be sent.");
     }
-    if (!event.payment_status || event.payment_status.toLowerCase() !== "received") {
-      blockers.push("Payment must be received.");
+    if (!event.payment_status || event.payment_status.toLowerCase() !== "completed") {
+      blockers.push("Payment must be completed.");
     }
     if (!event.confirmation_status || event.confirmation_status === "none") {
       blockers.push("Confirmation letter must be made.");

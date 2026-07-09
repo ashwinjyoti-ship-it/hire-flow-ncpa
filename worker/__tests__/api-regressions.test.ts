@@ -324,12 +324,12 @@ describe("API regressions", () => {
         };
       }
       if (sql.includes("field_key IN ('costing_email', 'payment_status')")) {
-        // Financials gate: costing email sent + payment received.
+        // Financials gate: costing email = Yes + payment = Completed.
         return {
           all: () => ({
             results: [
-              { field_key: "costing_email", value: "sent" },
-              { field_key: "payment_status", value: "received" },
+              { field_key: "costing_email", value: "Yes" },
+              { field_key: "payment_status", value: "Completed" },
             ],
           }),
         };

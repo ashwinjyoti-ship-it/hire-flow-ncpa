@@ -9,11 +9,11 @@ function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
     event_type: "VFH",
     approval_status: "sent",
     confirmation_status: "none",
-    // Default: financials gate satisfied (costing sent + payment received) so
-    // tests about other parts of the gate aren't cluttered with finance
+    // Default: financials gate satisfied (costing = Yes + payment = Completed)
+    // so tests about other parts of the gate aren't cluttered with finance
     // blockers. Tests that care about the financials gate override these.
-    costing_email: "sent",
-    payment_status: "received",
+    costing_email: "Yes",
+    payment_status: "Completed",
     ops_completion: 0,
     accounts_completion: 0,
     overall_completion: 0,
@@ -64,17 +64,17 @@ describe("operational lifecycle readiness", () => {
     expect(blockersForTransition(event({ confirmation_status: "couriered" }), "confirmed")).toContain("Signed confirmation must be received.");
   });
 
-  it("requires costing email sent and payment received before confirming", () => {
-    // Costing not sent → costing blocker.
-    expect(blockersForTransition(event({ costing_email: "pending", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
+  it("requires costing email = Yes and payment = Completed before confirming", () => {
+    // Costing = No → costing blocker.
+    expect(blockersForTransition(event({ costing_email: "No", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
       .toContain("Costing email must be sent.");
-    // Payment not received → payment blocker.
-    expect(blockersForTransition(event({ payment_status: "awaiting", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
-      .toContain("Payment must be received.");
+    // Payment incomplete → payment blocker.
+    expect(blockersForTransition(event({ payment_status: "Incomplete", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
+      .toContain("Payment must be completed.");
     // Both satisfied → no financials blockers.
-    const blockers = blockersForTransition(event({ costing_email: "sent", payment_status: "received", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed");
+    const blockers = blockersForTransition(event({ costing_email: "Yes", payment_status: "Completed", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed");
     expect(blockers).not.toContain("Costing email must be sent.");
-    expect(blockers).not.toContain("Payment must be received.");
+    expect(blockers).not.toContain("Payment must be completed.");
     expect(blockers).not.toContain("Amount received must be entered.");
   });
 
