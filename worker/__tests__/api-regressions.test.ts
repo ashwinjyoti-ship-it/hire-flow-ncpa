@@ -308,6 +308,59 @@ describe("API regressions", () => {
     expect(capturedBinds).toContain("confirmed");
   });
 
+  it("promotes venue bookings when an event is confirmed", async () => {
+    let updatedEventStatus = false;
+    let promotedVenueBookings = false;
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events WHERE id")) {
+        return {
+          first: () => ({
+            status: "tentative",
+            event_type: "EE",
+            approval_status: "not_required",
+            confirmation_status: "signed_received",
+          }),
+        };
+      }
+      if (sql.startsWith("UPDATE events SET status")) {
+        return {
+          run: () => {
+            updatedEventStatus = true;
+            return { success: true };
+          },
+        };
+      }
+      if (sql.startsWith("UPDATE venue_bookings SET booking_status = 'confirmed'")) {
+        return {
+          run: () => {
+            promotedVenueBookings = true;
+            return { success: true };
+          },
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/ev_test/status",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION_COOKIE}=sess_test`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ to_status: "confirmed" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(updatedEventStatus).toBe(true);
+    expect(promotedVenueBookings).toBe(true);
+  });
+
   it("honours an explicit status choice on the show calendar over the confirmed default", async () => {
     // When a user deliberately picks a status from the filter (e.g. to inspect
     // tentative holds), that exact choice wins — the default does not override
