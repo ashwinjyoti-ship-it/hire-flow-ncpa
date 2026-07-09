@@ -159,7 +159,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "installment_3_expected_date": return null;
     case "installment_4_expected_date": return null;
     case "installment_5_expected_date": return null;
-    case "full_payment_received": return "No";
+    case "payment_status": return active ? "Received" : "Awaiting";
     case "confirmation_made": return "No";
     case "confirmation_couriered": return null;
     case "confirmation_signed_received": return "No";

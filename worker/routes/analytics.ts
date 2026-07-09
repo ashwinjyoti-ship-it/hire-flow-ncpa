@@ -111,11 +111,14 @@ analyticsRoutes.get("/payment-tracking", async (c) => {
      GROUP BY 1 ORDER BY count DESC`
   ).bind(range.from, range.to).all<{ payment_status: string; count: number }>();
 
+  // "Full payment received" is now derived from payment_status = 'received'
+  // (the dedicated full_payment_received field was removed). Counted across
+  // confirmed events that have a payment_status checklist value at all.
   const fullPayment = await c.env.DB.prepare(
-    `SELECT SUM(CASE WHEN LOWER(TRIM(COALESCE(ci.value,''))) = 'yes' THEN 1 ELSE 0 END) AS received,
+    `SELECT SUM(CASE WHEN LOWER(TRIM(COALESCE(ci.value,''))) = 'received' THEN 1 ELSE 0 END) AS received,
             COUNT(*) AS total
      FROM events e
-     JOIN checklist_items ci ON ci.event_id = e.id AND ci.field_key = 'full_payment_received'
+     JOIN checklist_items ci ON ci.event_id = e.id AND ci.field_key = 'payment_status'
      WHERE e.is_archived = 0 AND e.status = 'confirmed'
        AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?`
   ).bind(range.from, range.to).first<{ received: number | null; total: number }>();

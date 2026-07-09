@@ -241,7 +241,7 @@ function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_fiel
   if (haystack.includes("confirmation") || haystack.includes("letter")) return { module: "operations", fieldKey: "confirmation_made" };
   if (haystack.includes("proforma") || haystack.includes("invoice")) return { module: "operations", fieldKey: "proforma_invoice" };
   if (haystack.includes("installment") || haystack.includes("instalment") || haystack.includes("payment") || haystack.includes("deposit")) {
-    return { module: "operations", fieldKey: "full_payment_received" };
+    return { module: "operations", fieldKey: "payment_status" };
   }
   if (haystack.includes("technical") || haystack.includes("meeting")) return { module: "operations", fieldKey: "technical_meeting_date" };
   if (haystack.includes("onstage") || haystack.includes("stage")) return { module: "operations", fieldKey: "onstage_received_from_client" };
