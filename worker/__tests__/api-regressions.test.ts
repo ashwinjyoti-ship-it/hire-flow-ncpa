@@ -1013,6 +1013,112 @@ describe("API regressions", () => {
     expect(capturedSql).not.toBe("");
   });
 
+  it("finds duplicate events by organisation, start date, and overlapping venue even when the title differs", async () => {
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events e") && sql.includes("GROUP_CONCAT(venue")) {
+        capturedSql = sql;
+        expect(sql).toContain("EXISTS (SELECT 1 FROM venue_bookings vb_match");
+        expect(sql).toContain("vb_match.venue IN (?)");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "ev_sbi_jbt_1",
+                event_code: "SBI_001",
+                title: "SBI Leadership Meet",
+                status: "tentative",
+                event_start_date: "10-Jul-2026",
+                event_end_date: "10-Jul-2026",
+                organisation_name: "SBI",
+                venues: "JBT",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/duplicates?org=org_sbi&title=Another%20SBI%20Event&date=2026-07-10&venues=JBT",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      duplicates: [
+        {
+          id: "ev_sbi_jbt_1",
+          organisation_name: "SBI",
+          venues: "JBT",
+        },
+      ],
+    });
+    expect(capturedSql).not.toBe("");
+  });
+
+  it("rejects creating a new event when the same organisation already has that date and venue booked", async () => {
+    let insertAttempted = false;
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events e") && sql.includes("GROUP_CONCAT(venue")) {
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "ev_sbi_existing",
+                event_code: "SBI_002",
+                title: "SBI Existing Booking",
+                status: "confirmed",
+                event_start_date: "10-Jul-2026",
+                event_end_date: "10-Jul-2026",
+                organisation_name: "SBI",
+                venues: "JBT",
+              },
+            ],
+          }),
+        };
+      }
+      if (sql.includes("INSERT INTO events")) {
+        insertAttempted = true;
+        return { run: () => ({ success: true }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Another SBI Event",
+          organisation_id: "org_sbi",
+          event_start_date: "2026-07-10",
+          venue_bookings: [{ venue: "JBT" }],
+        }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringContaining("possible duplicate"),
+      duplicates: [
+        {
+          id: "ev_sbi_existing",
+          venues: "JBT",
+        },
+      ],
+    });
+    expect(insertAttempted).toBe(false);
+  });
+
   it("mirrors edited event fields into the Operations checklist on PUT", async () => {
     // Regression ("Ankh"): editing the event (title/description/type) must keep
     // the Operations tab's "Event Reference" rows in sync — previously the PUT

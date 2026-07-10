@@ -58,6 +58,57 @@ function normalisedDateSql(raw: string): string {
   END`;
 }
 
+type DuplicateLookupInput = {
+  orgId: string;
+  title: string;
+  date: string;
+  venues?: string[];
+  excludeEventId?: string | null;
+};
+
+async function findLikelyDuplicateEvents(
+  db: D1Database,
+  { orgId, title, date, venues = [], excludeEventId }: DuplicateLookupInput,
+) {
+  const normalisedVenues = Array.from(new Set(venues.map((venue) => venue.trim()).filter(Boolean)));
+  const duplicateSignals = ["trim(lower(e.title)) = trim(lower(?))"];
+  const binds: unknown[] = [orgId, date, title];
+
+  if (normalisedVenues.length > 0) {
+    duplicateSignals.push(`EXISTS (SELECT 1 FROM venue_bookings vb_match WHERE vb_match.event_id = e.id AND vb_match.venue IN (${normalisedVenues.map(() => "?").join(", ")}))`);
+    binds.push(...normalisedVenues);
+  }
+
+  const where = [
+    "e.is_archived = 0",
+    "e.organisation_id = ?",
+    `${normalisedDateSql("e.event_start_date")} = ?`,
+    `(${duplicateSignals.join(" OR ")})`,
+  ];
+  if (excludeEventId) {
+    where.push("e.id != ?");
+    binds.push(excludeEventId);
+  }
+
+  const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
+               o.name AS organisation_name,
+               (SELECT GROUP_CONCAT(venue, ' · ') FROM venue_bookings WHERE event_id = e.id) AS venues
+               FROM events e
+               LEFT JOIN organisations o ON o.id = e.organisation_id
+               WHERE ${where.join(" AND ")}
+               ORDER BY CASE e.status
+                 WHEN 'confirmed' THEN 1
+                 WHEN 'approved' THEN 2
+                 WHEN 'tentative' THEN 3
+                 WHEN 'enquiry' THEN 4
+                 ELSE 5
+               END, e.updated_at DESC
+               LIMIT 10`;
+
+  const { results } = await db.prepare(sql).bind(...binds).all();
+  return results;
+}
+
 // GET / — list with filters
 eventRoutes.get("/", requireUser, async (c) => {
   const { status, venue, org, type, owner, q, from, to, mine } = c.req.query();
@@ -97,37 +148,18 @@ eventRoutes.get("/duplicates", requireUser, async (c) => {
   const title = c.req.query("title")?.trim();
   const date = c.req.query("date")?.trim();
   const exclude = c.req.query("exclude")?.trim();
+  const venues = c.req.query("venues")?.split("|").map((venue) => venue.trim()).filter(Boolean) ?? [];
 
   if (!org || !title || !date) return c.json({ duplicates: [] });
 
-  const binds: unknown[] = [org, title, date];
-  const where = [
-    "e.is_archived = 0",
-    "e.organisation_id = ?",
-    "trim(lower(e.title)) = trim(lower(?))",
-    `${normalisedDateSql("e.event_start_date")} = ?`,
-  ];
-  if (exclude) {
-    where.push("e.id != ?");
-    binds.push(exclude);
-  }
-
-  const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
-               o.name AS organisation_name,
-               (SELECT GROUP_CONCAT(venue, ' · ') FROM venue_bookings WHERE event_id = e.id) AS venues
-               FROM events e
-               LEFT JOIN organisations o ON o.id = e.organisation_id
-               WHERE ${where.join(" AND ")}
-               ORDER BY CASE e.status
-                 WHEN 'confirmed' THEN 1
-                 WHEN 'approved' THEN 2
-                 WHEN 'tentative' THEN 3
-                 WHEN 'enquiry' THEN 4
-                 ELSE 5
-               END, e.updated_at DESC
-               LIMIT 10`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json({ duplicates: results });
+  const duplicates = await findLikelyDuplicateEvents(c.env.DB, {
+    orgId: org,
+    title,
+    date,
+    venues,
+    excludeEventId: exclude,
+  });
+  return c.json({ duplicates });
 });
 
 // GET /:id — full detail
@@ -185,6 +217,19 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   const id = makeId("ev");
   const now = new Date().toISOString();
   const d = parsed.data;
+
+  const duplicates = await findLikelyDuplicateEvents(db, {
+    orgId: d.organisation_id,
+    title: d.title,
+    date: d.event_start_date ?? "",
+    venues: d.venue_bookings.map((booking) => booking.venue),
+  });
+  if (duplicates.length > 0) {
+    return c.json({
+      error: "A possible duplicate already exists for this organisation on that date. Open the existing record or change the event name or venue before saving.",
+      duplicates,
+    }, 409);
+  }
 
   await db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
