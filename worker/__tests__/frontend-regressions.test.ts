@@ -276,6 +276,8 @@ describe("frontend regression guards", () => {
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
     expect(settings).toContain('listKeys={["caterer", "decorator"]}');
     expect(settings).toContain("EventOwnersSection");
+    expect(settings).toContain("Check List Intervals");
+    expect(settings).toContain("ChecklistIntervalsSection");
   });
 
   it("keeps event form navigation at both top and bottom", () => {
