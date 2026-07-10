@@ -10,8 +10,15 @@ import { ACTIVITY_TYPES } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
+const EVENT_TYPE_OPTIONS = [
+  { value: "EE", label: "EE" },
+  { value: "FR", label: "FR (Foundation)" },
+  { value: "VFH", label: "VFH (Venue For Hire)" },
+  { value: "Free Event", label: "Free Event" },
+] as const;
 
 type OrgListItem = { id: string; name: string; org_type: string | null };
+type ReviewEntry = { label: string; value: string };
 type DuplicateCheckResponse = {
   duplicates: Array<{
     id: string;
@@ -83,6 +90,24 @@ function parseRequirements(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function normaliseEventType(value: unknown): EventInputT["event_type"] {
+  switch (value) {
+    case "EE":
+    case "FR":
+    case "VFH":
+    case "Free Event":
+      return value;
+    case "FE":
+      return "Free Event";
+    case "FR (Foundation)":
+      return "FR";
+    case "VFH (Venue For Hire)":
+      return "VFH";
+    default:
+      return null;
+  }
+}
+
 /** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
 function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
   if (!start || !end) return null;
@@ -97,6 +122,121 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
 }
 // (formatDuration is imported from lib/use-lookups for consistent hh/d rendering)
 
+function isFilledReviewValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return !Number.isNaN(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function formatReviewValue(value: unknown): string | null {
+  if (!isFilledReviewValue(value)) return null;
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => formatReviewValue(item))
+      .filter((item): item is string => Boolean(item));
+    return items.length > 0 ? items.join(", ") : null;
+  }
+  return JSON.stringify(value);
+}
+
+function titleCaseWords(value: string): string {
+  return value
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatReviewLabel(key: string): string {
+  const explicitLabels: Record<string, string> = {
+    no_of_pax: "No. of Pax",
+    crew_cards: "No. of Crew Cards",
+    liquor_licence: "Liquor Licence",
+    liquor_licence_details: "Liquor Licence Details",
+    sound_call_time: "Sound Call Time",
+    light_call_time: "Light Call Time",
+    recording_type: "Recording Type",
+    camera_count: "No. of Cameras",
+  };
+  return explicitLabels[key] ?? titleCaseWords(key);
+}
+
+function formatOperatingWindow(start: string | null | undefined, end: string | null | undefined): string | null {
+  if (!start) return null;
+  return end ? `${start} → ${end}` : start;
+}
+
+function formatScheduleSummary(entry: ScheduleEntryInputT): string {
+  const segments = [
+    titleCaseWords(entry.activity_type),
+    entry.activity_date,
+    entry.start_time && entry.end_time ? `${entry.start_time} - ${entry.end_time}` : null,
+    entry.with_ac_start && entry.with_ac_end
+      ? `With AC ${entry.with_ac_start} - ${entry.with_ac_end} (${formatDuration(entry.with_ac_minutes ?? diffMinutes(entry.with_ac_start, entry.with_ac_end))})`
+      : null,
+    entry.without_ac_start && entry.without_ac_end
+      ? `Without AC ${entry.without_ac_start} - ${entry.without_ac_end} (${formatDuration(entry.without_ac_minutes ?? diffMinutes(entry.without_ac_start, entry.without_ac_end))})`
+      : null,
+    entry.notes,
+  ].filter((segment): segment is string => Boolean(segment && segment.trim().length > 0));
+
+  return segments.join(" · ");
+}
+
+function buildReviewItems({
+  form,
+  organisationName,
+  organisationType,
+  isVfh,
+}: {
+  form: EventInputT;
+  organisationName: string | null;
+  organisationType: string;
+  isVfh: boolean;
+}): ReviewEntry[] {
+  const items: ReviewEntry[] = [];
+  const pushItem = (label: string, value: unknown) => {
+    const text = formatReviewValue(value);
+    if (text) items.push({ label, value: text });
+  };
+
+  pushItem("Organisation", organisationName);
+  pushItem("Organisation Type", organisationType);
+  pushItem("Event Name", form.title);
+  pushItem("Description", form.description);
+  pushItem("Type", normaliseEventType(form.event_type));
+  pushItem("Enquiry Source", form.enquiry_source);
+  pushItem("Program Officer", form.program_officer);
+  pushItem("Owner", form.event_owner);
+  pushItem("Operating Window", formatOperatingWindow(form.event_start_date, form.event_end_date));
+
+  form.venue_bookings.forEach((venueBooking, venueIndex) => {
+    const labelPrefix = `Venue ${venueIndex + 1}`;
+    pushItem(labelPrefix, venueBooking.venue);
+    pushItem(`${labelPrefix} Booking Status`, titleCaseWords(venueBooking.booking_status));
+    pushItem(`${labelPrefix} Number of Shows`, venueBooking.number_of_shows);
+    pushItem(`${labelPrefix} Notes`, venueBooking.notes);
+    venueBooking.schedule_entries.forEach((entry, scheduleIndex) => {
+      pushItem(`Schedule ${venueIndex + 1}.${scheduleIndex + 1}`, formatScheduleSummary(entry));
+    });
+  });
+
+  const requirements = (form.requirements ?? {}) as Record<string, unknown>;
+  Object.entries(requirements).forEach(([key, value]) => {
+    pushItem(formatReviewLabel(key), value);
+  });
+
+  if (isVfh) pushItem("VFH Approval", "Will apply (VFH)");
+
+  return items;
+}
+
 export function EventEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -105,6 +245,7 @@ export function EventEditPage() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [newOrganisationType, setNewOrganisationType] = useState("");
+  const [selectedOrganisation, setSelectedOrganisation] = useState<OrgListItem | null>(null);
 
   // Form state
   const [form, setForm] = useState<EventInputT>({
@@ -170,7 +311,7 @@ export function EventEditPage() {
       description: e.description ?? null,
       organisation_id: e.organisation_id ?? "",
       primary_contact_id: e.primary_contact_id ?? null,
-      event_type: e.event_type ?? null,
+      event_type: normaliseEventType(e.event_type),
       program_officer: e.program_officer ?? null,
       event_owner: e.event_owner ?? null,
       event_owner_id: (e as { event_owner_id?: string | null }).event_owner_id ?? null,
@@ -185,6 +326,12 @@ export function EventEditPage() {
     setSingleDay(!e.event_end_date);
     setHydrated(true);
   }, [isEdit, existing, hydrated]);
+
+  useEffect(() => {
+    if (!form.organisation_id || form.organisation_id.startsWith("new:")) {
+      setSelectedOrganisation(null);
+    }
+  }, [form.organisation_id]);
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -244,6 +391,16 @@ export function EventEditPage() {
     staleTime: 10_000,
   });
   const duplicates = duplicateData?.duplicates ?? [];
+  const reviewOrganisationName = useMemo(() => {
+    if (form.organisation_id.startsWith("new:")) return `${form.organisation_id.slice(4)} (new)`;
+    return selectedOrganisation?.name ?? null;
+  }, [form.organisation_id, selectedOrganisation]);
+  const reviewItems = useMemo(() => buildReviewItems({
+    form,
+    organisationName: reviewOrganisationName,
+    organisationType: newOrganisationType,
+    isVfh,
+  }), [form, reviewOrganisationName, newOrganisationType, isVfh]);
 
   // ---- Venue booking helpers ----
   const addVenue = () => {
@@ -340,7 +497,10 @@ export function EventEditPage() {
               <OrganisationCombobox
                 value={form.organisation_id}
                 onChange={(v) => update({ organisation_id: v })}
-                onSelectOrganisation={(org) => setNewOrganisationType(org.org_type ?? "")}
+                onSelectOrganisation={(org) => {
+                  setSelectedOrganisation(org);
+                  setNewOrganisationType(org.org_type ?? "");
+                }}
               />
             </Field>
             <Field label="Organisation Type">
@@ -363,10 +523,7 @@ export function EventEditPage() {
             <Field label="Event Type">
               <select value={form.event_type ?? ""} onChange={(e) => update({ event_type: (e.target.value || null) as EventInputT["event_type"] })} className="carved input">
                 <option value="">Select…</option>
-                <option value="EE">EE</option>
-                <option value="FR">FR (Foundation)</option>
-                <option value="VFH">VFH (Venue For Hire)</option>
-                <option value="Free Event">Free Event</option>
+                {EVENT_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
               {isVfh && <p className="mt-1 text-[11px] text-status-awaitingApproval etched">VFH selected — approval workflow will apply.</p>}
             </Field>
@@ -779,16 +936,9 @@ export function EventEditPage() {
         <div className="carved-card space-y-4 rounded-2xl bg-marble-highlight/50 p-6">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Review</h3>
           <dl className="grid gap-3 text-sm md:grid-cols-2">
-            <ReviewItem label="Organisation" value={form.organisation_id.startsWith("new:") ? `${form.organisation_id.slice(4)} (new)` : form.organisation_id} />
-            <ReviewItem label="Organisation Type" value={newOrganisationType} />
-            <ReviewItem label="Event Name" value={form.title} />
-            <ReviewItem label="Type" value={form.event_type} />
-            <ReviewItem label="Program Officer" value={form.program_officer} />
-            <ReviewItem label="Owner" value={form.event_owner} />
-            <ReviewItem label="Operating Window" value={form.event_start_date ? `${form.event_start_date}${form.event_end_date ? " → " + form.event_end_date : ""}` : null} />
-            <ReviewItem label="Venues" value={`${form.venue_bookings.length} booking(s): ${form.venue_bookings.map((v) => v.venue || "(unset)").join(", ")}`} />
-            <ReviewItem label="Schedule details" value={`${form.venue_bookings.reduce((acc, vb) => acc + vb.schedule_entries.length, 0)} total`} />
-            <ReviewItem label="VFH approval" value={isVfh ? "Will apply (VFH)" : "Not applicable"} />
+            {reviewItems.map((item) => (
+              <ReviewItem key={`${item.label}:${item.value}`} label={item.label} value={item.value} />
+            ))}
           </dl>
           <Field label="Notes">
             <textarea value={form.notes ?? ""} onChange={(e) => update({ notes: e.target.value || null })} className="carved input" rows={2} placeholder="Event-level notes…" />
