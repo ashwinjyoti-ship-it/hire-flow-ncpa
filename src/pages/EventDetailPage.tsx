@@ -322,7 +322,7 @@ export function EventDetailPage() {
       />
 
       <div className="carved-card mb-5 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/50 p-5 md:grid-cols-5">
-        <SummaryItem label="Type" value={e.event_type ?? "-"} />
+        <SummaryItem label="Type" value={formatEventType(e.event_type)} />
         <SummaryItem label="Dates" value={e.event_start_date ? `${formatDate(e.event_start_date)}${e.event_end_date && e.event_end_date !== e.event_start_date ? " to " + formatDate(e.event_end_date) : ""}` : "-"} />
         <SummaryItem label="Owner" value={e.event_owner ?? "-"} />
         <SummaryItem label="Approval" value={prettyState(e.approval_status)} />
@@ -1160,6 +1160,28 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function normaliseEventType(value: string | null | undefined): string | null {
+  switch (value) {
+    case "EE":
+    case "FR":
+    case "VFH":
+    case "Free Event":
+      return value;
+    case "FE":
+      return "Free Event";
+    case "FR (Foundation)":
+      return "FR";
+    case "VFH (Venue For Hire)":
+      return "VFH";
+    default:
+      return value?.trim() ? value : null;
+  }
+}
+
+function formatEventType(value: string | null | undefined): string {
+  return normaliseEventType(value) ?? "-";
+}
+
 function ProgressBar({ label, value, emphasis }: { label: string; value: number | null; emphasis?: boolean }) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
@@ -1200,7 +1222,7 @@ function LifecycleTrack({
   }
 
   // Build the track. Approval is VFH-only; Tentative is a holding status, not a normal milestone.
-  const track: EventStatus[] = eventType === "VFH"
+  const track: EventStatus[] = normaliseEventType(eventType) === "VFH"
     ? ["enquiry", "approved", "confirmed"]
     : ["enquiry", "confirmed"];
   const currentIdx = track.indexOf(current);

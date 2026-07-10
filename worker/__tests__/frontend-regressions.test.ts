@@ -64,6 +64,15 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Lifecycle note");
   });
 
+  it("shows event type on the detail page with normalized fallback formatting", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("function formatEventType");
+    expect(source).toContain('case "FE":');
+    expect(source).toContain('return "Free Event";');
+    expect(source).toContain('<SummaryItem label="Type" value={formatEventType(e.event_type)} />');
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
