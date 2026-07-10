@@ -32,6 +32,32 @@ import { z } from "zod";
 
 export const eventRoutes = new Hono<AuthEnv>();
 
+function importedMonthSql(raw: string): string {
+  return `CASE lower(substr(${raw}, 4, 3))
+    WHEN 'jan' THEN '01'
+    WHEN 'feb' THEN '02'
+    WHEN 'mar' THEN '03'
+    WHEN 'apr' THEN '04'
+    WHEN 'may' THEN '05'
+    WHEN 'jun' THEN '06'
+    WHEN 'jul' THEN '07'
+    WHEN 'aug' THEN '08'
+    WHEN 'sep' THEN '09'
+    WHEN 'oct' THEN '10'
+    WHEN 'nov' THEN '11'
+    WHEN 'dec' THEN '12'
+  END`;
+}
+
+function normalisedDateSql(raw: string): string {
+  const month = importedMonthSql(raw);
+  return `CASE
+    WHEN ${raw} LIKE '____-__-__%' THEN substr(${raw}, 1, 10)
+    WHEN ${raw} LIKE '__-___-____' AND substr(${raw}, 1, 2) BETWEEN '01' AND '31' AND (${month}) IS NOT NULL THEN substr(${raw}, 8, 4) || '-' || (${month}) || '-' || substr(${raw}, 1, 2)
+    ELSE NULL
+  END`;
+}
+
 // GET / — list with filters
 eventRoutes.get("/", requireUser, async (c) => {
   const { status, venue, org, type, owner, q, from, to, mine } = c.req.query();
@@ -63,6 +89,45 @@ eventRoutes.get("/", requireUser, async (c) => {
                LIMIT 300`;
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
   return c.json({ events: results });
+});
+
+// GET /duplicates — warn when a likely duplicate event already exists.
+eventRoutes.get("/duplicates", requireUser, async (c) => {
+  const org = c.req.query("org")?.trim();
+  const title = c.req.query("title")?.trim();
+  const date = c.req.query("date")?.trim();
+  const exclude = c.req.query("exclude")?.trim();
+
+  if (!org || !title || !date) return c.json({ duplicates: [] });
+
+  const binds: unknown[] = [org, title, date];
+  const where = [
+    "e.is_archived = 0",
+    "e.organisation_id = ?",
+    "trim(lower(e.title)) = trim(lower(?))",
+    `${normalisedDateSql("e.event_start_date")} = ?`,
+  ];
+  if (exclude) {
+    where.push("e.id != ?");
+    binds.push(exclude);
+  }
+
+  const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
+               o.name AS organisation_name,
+               (SELECT GROUP_CONCAT(venue, ' · ') FROM venue_bookings WHERE event_id = e.id) AS venues
+               FROM events e
+               LEFT JOIN organisations o ON o.id = e.organisation_id
+               WHERE ${where.join(" AND ")}
+               ORDER BY CASE e.status
+                 WHEN 'confirmed' THEN 1
+                 WHEN 'approved' THEN 2
+                 WHEN 'tentative' THEN 3
+                 WHEN 'enquiry' THEN 4
+                 ELSE 5
+               END, e.updated_at DESC
+               LIMIT 10`;
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  return c.json({ duplicates: results });
 });
 
 // GET /:id — full detail

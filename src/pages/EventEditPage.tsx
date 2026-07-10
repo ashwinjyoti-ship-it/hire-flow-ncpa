@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
-import { useLookups, formatDuration } from "../lib/use-lookups";
+import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES } from "../../worker/lib/types";
@@ -12,6 +12,18 @@ const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
 
 type OrgListItem = { id: string; name: string; org_type: string | null };
+type DuplicateCheckResponse = {
+  duplicates: Array<{
+    id: string;
+    event_code: string | null;
+    title: string;
+    status: string;
+    event_start_date: string | null;
+    event_end_date: string | null;
+    organisation_name: string | null;
+    venues: string | null;
+  }>;
+};
 
 /** Shape returned by GET /events/:id. Only the fields we need to hydrate the form. */
 type EventDetailResponse = {
@@ -212,6 +224,26 @@ export function EventEditPage() {
     queryFn: () => apiGet("/users"),
   });
   const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
+  const trimmedTitle = form.title.trim();
+  const duplicateCheckReady = Boolean(
+    form.event_start_date
+      && trimmedTitle
+      && form.organisation_id
+      && !form.organisation_id.startsWith("new:")
+  );
+  const duplicateQuery = new URLSearchParams({
+    org: form.organisation_id,
+    title: trimmedTitle,
+    date: form.event_start_date ?? "",
+    ...(id ? { exclude: id } : {}),
+  });
+  const { data: duplicateData } = useQuery<DuplicateCheckResponse>({
+    queryKey: ["event-duplicates", form.organisation_id, trimmedTitle, form.event_start_date ?? "", id ?? ""],
+    queryFn: () => apiGet<DuplicateCheckResponse>(`/events/duplicates?${duplicateQuery.toString()}`),
+    enabled: duplicateCheckReady,
+    staleTime: 10_000,
+  });
+  const duplicates = duplicateData?.duplicates ?? [];
 
   // ---- Venue booking helpers ----
   const addVenue = () => {
@@ -393,6 +425,26 @@ export function EventEditPage() {
                 </Field>
               )}
             </div>
+            {duplicateCheckReady && duplicates.length > 0 && (
+              <div role="alert" className="mt-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-status-awaitingApproval">
+                <p className="text-sm font-semibold etched">Possible duplicate</p>
+                <p className="mt-1 text-xs etched">
+                  We found existing events with the same organisation, event name, and start date.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {duplicates.map((duplicate) => (
+                    <div key={duplicate.id} className="rounded-lg bg-white/55 px-3 py-2 text-xs text-ink-primary">
+                      <Link to={`/events/${duplicate.id}`} className="font-semibold text-ink-primary underline">
+                        {duplicate.title}
+                      </Link>
+                      <div className="mt-1 text-ink-secondary etched">
+                        {duplicate.organisation_name ?? "No organisation"} · {formatDate(duplicate.event_start_date)} · {duplicate.venues ?? "No venue"} · {duplicate.status}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <p className="text-[11px] text-ink-muted etched">
             The operating window is the full duration the organisation is at NCPA. Specific venue dates/AC timings are captured in Step 2.

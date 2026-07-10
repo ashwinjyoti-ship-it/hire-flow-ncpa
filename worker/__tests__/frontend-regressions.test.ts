@@ -163,6 +163,15 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain('label="Owner contact"');
   });
 
+  it("warns about possible duplicate events before save", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain('queryKey: ["event-duplicates"');
+    expect(eventForm).toContain('apiGet<DuplicateCheckResponse>(`/events/duplicates?${duplicateQuery.toString()}`)');
+    expect(eventForm).toContain("Possible duplicate");
+    expect(eventForm).toContain("organisation, event name, and start date");
+  });
+
   it("keeps dashboard task rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 

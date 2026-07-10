@@ -964,6 +964,56 @@ describe("API regressions", () => {
     expect(body.byDate["2026-07-04"]).toBeTruthy();
   });
 
+  it("finds duplicate events by organisation, title, and imported start date", async () => {
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events e") && sql.includes("GROUP_CONCAT(venue")) {
+        capturedSql = sql;
+        expect(sql).toContain("trim(lower(e.title)) = trim(lower(?))");
+        expect(sql).toContain("e.organisation_id = ?");
+        expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "ev_conf_ank_46",
+                event_code: "CONF_ank_46",
+                title: "Play - AAPAS KI BAAT",
+                status: "confirmed",
+                event_start_date: "04-Jul-2026",
+                event_end_date: "04-Jul-2026",
+                organisation_name: "ANK",
+                venues: "GDT",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/duplicates?org=org_ank&title=Play%20-%20AAPAS%20KI%20BAAT&date=2026-07-04",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      duplicates: [
+        {
+          id: "ev_conf_ank_46",
+          title: "Play - AAPAS KI BAAT",
+          organisation_name: "ANK",
+          venues: "GDT",
+        },
+      ],
+    });
+    expect(capturedSql).not.toBe("");
+  });
+
   it("mirrors edited event fields into the Operations checklist on PUT", async () => {
     // Regression ("Ankh"): editing the event (title/description/type) must keep
     // the Operations tab's "Event Reference" rows in sync — previously the PUT
