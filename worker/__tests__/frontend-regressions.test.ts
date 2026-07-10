@@ -87,6 +87,16 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("lifecycle");
   });
 
+  it("syncs dashboard card query params into the mounted calendar page", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("useEffect");
+    expect(calendar).toContain("setView(nextView)");
+    expect(calendar).toContain("setCursor(nextFrom ? new Date(`${nextFrom}T00:00:00`) : new Date())");
+    expect(calendar).toContain("setFilters({");
+    expect(calendar).toContain("searchParams.get(\"status\") ?? \"\"");
+  });
+
   it("keeps calendar month prominent without a today shortcut", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 

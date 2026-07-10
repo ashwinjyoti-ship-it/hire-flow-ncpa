@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -117,6 +117,22 @@ export function CalendarPage() {
   // signed-in user (event_owner_id = me). Applies to both calendar views.
   const [mine, setMine] = useState(searchParams.get("mine") === "1");
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
+
+  useEffect(() => {
+    const nextView: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
+    const nextFrom = searchParams.get("from");
+    setView(nextView);
+    setCursor(nextFrom ? new Date(`${nextFrom}T00:00:00`) : new Date());
+    setFilters({
+      status: searchParams.get("status") ?? "",
+      venue: searchParams.get("venue") ?? "",
+      type: searchParams.get("type") ?? "",
+      owner: searchParams.get("owner") ?? "",
+      q: searchParams.get("q") ?? "",
+    });
+    setMine(searchParams.get("mine") === "1");
+    setSideEvent(null);
+  }, [searchParams]);
 
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
