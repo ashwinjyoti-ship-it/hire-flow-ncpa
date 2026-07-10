@@ -10,6 +10,32 @@ import { requireUser } from "../middleware/auth";
 
 export const calendarRoutes = new Hono<AuthEnv>();
 
+function importedMonthSql(raw: string): string {
+  return `CASE lower(substr(${raw}, 4, 3))
+    WHEN 'jan' THEN '01'
+    WHEN 'feb' THEN '02'
+    WHEN 'mar' THEN '03'
+    WHEN 'apr' THEN '04'
+    WHEN 'may' THEN '05'
+    WHEN 'jun' THEN '06'
+    WHEN 'jul' THEN '07'
+    WHEN 'aug' THEN '08'
+    WHEN 'sep' THEN '09'
+    WHEN 'oct' THEN '10'
+    WHEN 'nov' THEN '11'
+    WHEN 'dec' THEN '12'
+  END`;
+}
+
+function normalisedDateSql(raw: string): string {
+  const month = importedMonthSql(raw);
+  return `CASE
+    WHEN ${raw} LIKE '____-__-__%' THEN substr(${raw}, 1, 10)
+    WHEN ${raw} LIKE '__-___-____' AND substr(${raw}, 1, 2) BETWEEN '01' AND '31' AND (${month}) IS NOT NULL THEN substr(${raw}, 8, 4) || '-' || (${month}) || '-' || substr(${raw}, 1, 2)
+    ELSE NULL
+  END`;
+}
+
 calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
@@ -44,15 +70,16 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         'current_' || e.id AS id,
         e.status AS milestone_type,
         CASE
-          WHEN e.status = 'enquiry' THEN COALESCE(NULLIF(e.enquiry_date, ''), NULLIF(e.event_start_date, ''), date(e.created_at))
-          ELSE COALESCE(NULLIF(substr(sh.changed_at, 1, 10), ''), NULLIF(e.event_start_date, ''), date(e.created_at))
-        END AS milestone_date,
+          WHEN e.status = 'enquiry' THEN NULLIF(e.enquiry_date, '')
+          ELSE NULLIF(substr(sh.changed_at, 1, 10), '')
+        END AS raw_date,
         e.id AS event_id,
         e.event_code,
-        e.event_start_date,
+        e.event_start_date AS raw_event_start_date,
         e.title,
         e.status,
         e.event_type,
+        e.created_at,
         o.name AS organisation_name,
         e.event_owner,
         e.event_owner_id,
@@ -70,10 +97,30 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         LIMIT 1
       )
       WHERE e.status IN ('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')
+    ),
+    normalised_dates AS (
+      SELECT
+        id,
+        milestone_type,
+        COALESCE(${normalisedDateSql("raw_date")}, ${normalisedDateSql("raw_event_start_date")}, date(created_at)) AS milestone_date,
+        event_id,
+        event_code,
+        ${normalisedDateSql("raw_event_start_date")} AS event_start_date,
+        title,
+        status,
+        event_type,
+        organisation_name,
+        event_owner,
+        event_owner_id,
+        venues,
+        task_id,
+        task_title,
+        is_archived
+      FROM lifecycle
     )
     SELECT id, milestone_type, milestone_date, event_id, event_code, event_start_date, title, status, event_type,
            organisation_name, event_owner, venues, task_id, task_title
-    FROM lifecycle
+    FROM normalised_dates
     WHERE ${where.join(" AND ")}
     ORDER BY milestone_date,
       CASE milestone_type
@@ -157,9 +204,10 @@ calendarRoutes.get("/", requireUser, async (c) => {
   // its current confirmed lifecycle state, then to creation date. That keeps
   // confirmed lifecycle records visible on the Show Calendar while the team
   // fills in the final show metadata.
-  const showDateExpr = "COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at))";
+  const showDateExpr = `COALESCE(${normalisedDateSql("e.event_start_date")}, ${normalisedDateSql("substr(sh.changed_at, 1, 10)")}, date(e.created_at))`;
+  const eventEndExpr = `COALESCE(${normalisedDateSql("e.event_end_date")}, ${showDateExpr})`;
   const evWhere = [
-    `COALESCE(NULLIF(e.event_end_date, ''), ${showDateExpr}) >= ?`,
+    `${eventEndExpr} >= ?`,
     `${showDateExpr} <= ?`,
     ...commonWhere,
     // Only events that have NO schedule entries at all belong in this set —

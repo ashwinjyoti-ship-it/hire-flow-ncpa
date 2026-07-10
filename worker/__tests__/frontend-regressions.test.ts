@@ -87,14 +87,25 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("lifecycle");
   });
 
-  it("syncs dashboard card query params into the mounted calendar page", () => {
+  it("syncs calendar query params into the mounted calendar page without invalid dates", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("useEffect");
+    expect(calendar).toContain("function dateFromParam");
+    expect(calendar).toContain("Number.isNaN(date.getTime())");
     expect(calendar).toContain("setView(nextView)");
-    expect(calendar).toContain("setCursor(nextFrom ? new Date(`${nextFrom}T00:00:00`) : new Date())");
+    expect(calendar).toContain("setCursor(dateFromParam(nextFrom))");
     expect(calendar).toContain("setFilters({");
     expect(calendar).toContain("searchParams.get(\"status\") ?? \"\"");
+  });
+
+  it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(dashboard).toContain("function SummaryCard({ label, value, status }");
+    expect(dashboard).not.toContain("href={getLifecycleCalendarHref");
+    expect(dashboard).not.toContain("href={getConfirmedShowCalendarHref");
+    expect(dashboard).not.toContain("<Link to={href}");
   });
 
   it("keeps calendar month prominent without a today shortcut", () => {

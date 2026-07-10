@@ -4,7 +4,6 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
-import { getConfirmedShowCalendarHref, getLifecycleCalendarHref } from "../lib/lifecycle-calendar-links";
 import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -71,12 +70,12 @@ export function DashboardPage() {
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={getLifecycleCalendarHref(lifecycleEntries, "enquiry", today)} />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={getLifecycleCalendarHref(lifecycleEntries, "tentative", today)} />
-        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href={getLifecycleCalendarHref(lifecycleEntries, "approved", today)} />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={getConfirmedShowCalendarHref(lifecycleEntries, today)} />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={getLifecycleCalendarHref(lifecycleEntries, "regret", today)} />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={getLifecycleCalendarHref(lifecycleEntries, "cancelled", today)} />
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" />
+        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" />
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 lg:gap-6">
@@ -177,15 +176,15 @@ function eventDisplayName(title: string, organisationName: string | null): strin
   return title;
 }
 
-function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href: string }) {
+function SummaryCard({ label, value, status }: { label: string; value: number; status: EventStatus }) {
   const surface = getEventStatusSurface(status);
   return (
-    <Link to={href} className="carved-card rounded-2xl bg-marble-highlight/50 p-4 transition-colors hover:bg-marble-highlight/80">
+    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
         <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + surface.dot} aria-hidden="true" />
       </div>
       <div className="text-3xl font-semibold text-ink-primary etched-deep">{value}</div>
-    </Link>
+    </div>
   );
 }
