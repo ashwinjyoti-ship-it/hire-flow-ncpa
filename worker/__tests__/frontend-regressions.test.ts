@@ -309,6 +309,15 @@ describe("frontend regression guards", () => {
     expect(eventForm).not.toContain("}, [resolvedOrg, onSelectOrganisation]);");
   });
 
+  it("centres review labels and values instead of right-justifying them", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain('className="grid gap-3 text-sm md:grid-cols-2"');
+    expect(eventForm).toContain('className="flex min-h-24 flex-col items-center justify-center rounded-xl');
+    expect(eventForm).toContain('className="text-center font-medium text-ink-primary etched-deep"');
+    expect(eventForm).not.toContain('className="flex justify-between border-b border-ink-muted/10 pb-2"');
+  });
+
   it("keeps carved select fields visually embedded on tablet browsers", () => {
     const css = readFileSync(resolve(root, "src/index.css"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");

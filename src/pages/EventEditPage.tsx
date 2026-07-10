@@ -1127,9 +1127,9 @@ function YesNoSelect({ value, onChange, yesValue = "Required", noValue = "Not Re
 
 function ReviewItem({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="flex justify-between border-b border-ink-muted/10 pb-2">
-      <dt className="text-ink-muted">{label}</dt>
-      <dd className="font-medium text-ink-primary etched-deep">{String(value ?? "—")}</dd>
+    <div className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-ink-muted/10 bg-white/35 px-4 py-3 text-center">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{label}</dt>
+      <dd className="text-center font-medium text-ink-primary etched-deep">{String(value ?? "—")}</dd>
     </div>
   );
 }
