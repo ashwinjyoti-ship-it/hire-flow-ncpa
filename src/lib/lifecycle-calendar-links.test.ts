@@ -14,6 +14,25 @@ describe("getLifecycleCalendarHref", () => {
     expect(href).toBe("/calendar?view=lifecycle&status=enquiry&from=2026-08-12");
   });
 
+  it("normalizes imported dashboard dates before choosing a calendar month", () => {
+    const href = getLifecycleCalendarHref([
+      { milestone_type: "tentative", milestone_date: "00-Jan-1900" },
+      { milestone_type: "tentative", milestone_date: "07-Jun-2026" },
+      { milestone_type: "tentative", milestone_date: "22-Jul-2026" },
+    ], "tentative", today);
+
+    expect(href).toBe("/calendar?view=lifecycle&status=tentative&from=2026-07-22");
+  });
+
+  it("does not send invalid imported dates to the calendar", () => {
+    const href = getLifecycleCalendarHref([
+      { milestone_type: "tentative", milestone_date: "00-Jan-1900" },
+      { milestone_type: "tentative", milestone_date: "not a date" },
+    ], "tentative", today);
+
+    expect(href).toBe("/calendar?view=lifecycle&status=tentative");
+  });
+
   it("opens the most recent matching month when all matching records are in the past", () => {
     const href = getLifecycleCalendarHref([
       { milestone_type: "confirmed", milestone_date: "2026-04-20" },
@@ -49,5 +68,14 @@ describe("getLifecycleCalendarHref", () => {
     ], today);
 
     expect(href).toBe("/calendar?view=show&status=confirmed&from=2026-07-08");
+  });
+
+  it("normalizes imported confirmed show dates before choosing a calendar month", () => {
+    const href = getConfirmedShowCalendarHref([
+      { milestone_type: "confirmed", milestone_date: "07-Jun-2026", event_start_date: "30-Aug-2026" },
+      { milestone_type: "confirmed", milestone_date: "22-Jul-2026", event_start_date: "00-Jan-1900" },
+    ], today);
+
+    expect(href).toBe("/calendar?view=show&status=confirmed&from=2026-07-22");
   });
 });

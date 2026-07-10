@@ -187,7 +187,8 @@ describe("API regressions", () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
-        expect(sql).toContain("WHEN e.status = 'enquiry' THEN COALESCE(NULLIF(e.enquiry_date, '')");
+        expect(sql).toContain("WHEN e.status = 'enquiry' THEN NULLIF(e.enquiry_date, '')");
+        expect(sql).toContain("normalised_dates");
         expect(sql).toContain("event_status_history");
         expect(sql).not.toContain("tasks t");
         expect(sql).not.toContain("'show' AS milestone_type");
@@ -282,7 +283,8 @@ describe("API regressions", () => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
         expect(sql).toContain("COALESCE(");
-        expect(sql).toContain("date(e.created_at)");
+        expect(sql).toContain("date(created_at)");
+        expect(sql).toContain("raw_event_start_date");
         return { all: () => ({ results: [rowWithFallbackDate] }) };
       }
       return {};
@@ -307,10 +309,11 @@ describe("API regressions", () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
-        expect(sql).toContain("NULLIF(e.enquiry_date, '')");
-        expect(sql).toContain("NULLIF(substr(sh.changed_at, 1, 10), '')");
-        expect(sql).toContain("NULLIF(e.event_start_date, '')");
-        expect(sql).toContain("date(e.created_at)");
+        expect(sql).toContain("WHEN e.status = 'enquiry' THEN NULLIF(e.enquiry_date, '')");
+        expect(sql).toContain("ELSE NULLIF(substr(sh.changed_at, 1, 10), '')");
+        expect(sql).toContain("normalised_dates");
+        expect(sql).toContain("raw_event_start_date");
+        expect(sql).toContain("date(created_at)");
         expect(sql).not.toContain("END, '') AS milestone_date");
         return { all: () => ({ results: [] }) };
       }
@@ -325,6 +328,45 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
   });
 
+  it("normalizes imported lifecycle dates before filtering or returning calendar entries", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("normalised_dates");
+        expect(sql).toContain("lower(substr(raw_date, 4, 3))");
+        expect(sql).toContain("WHEN 'jun' THEN '06'");
+        expect(sql).toContain("substr(raw_date, 8, 4) || '-'");
+        expect(sql).not.toContain("THEN COALESCE(NULLIF(e.enquiry_date, '')");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "current_imported",
+                milestone_type: "tentative",
+                milestone_date: "2026-06-07",
+                event_id: "ev_imported",
+                title: "Imported date",
+                status: "tentative",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/calendar/lifecycle?from=2026-06-01&to=2026-06-30", {
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      entries: [{ milestone_date: "2026-06-07" }],
+      byDate: { "2026-06-07": [{ event_id: "ev_imported" }] },
+    });
+  });
+
   it("applies text search on the show calendar", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
@@ -332,6 +374,8 @@ describe("API regressions", () => {
         expect(sql).toContain("LOWER(e.title) LIKE ?");
         expect(sql).toContain("LOWER(COALESCE(o.name, '')) LIKE ?");
         expect(sql).toContain("LOWER(COALESCE(e.event_code, '')) LIKE ?");
+        expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
+        expect(sql).toContain("WHEN 'jun' THEN '06'");
         return { all: () => ({ results: [] }) };
       }
       return {};
@@ -783,8 +827,10 @@ describe("API regressions", () => {
       // in its enriched branch).
       if (sql.includes("FROM schedule_entries se")) {
         capturedSql = sql;
-        expect(sql).toContain("COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at)) <= ?");
-        expect(sql).toContain("COALESCE(NULLIF(e.event_end_date, ''), COALESCE(NULLIF(e.event_start_date, '')");
+        expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
+        expect(sql).toContain("lower(substr(e.event_end_date, 4, 3))");
+        expect(sql).toContain("date(e.created_at)) <= ?");
+        expect(sql).toContain("WHEN 'jun' THEN '06'");
         expect(sql).toContain("NOT EXISTS (SELECT 1 FROM schedule_entries se2");
         expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
         expect(sql).toContain("UNION ALL");
@@ -834,7 +880,9 @@ describe("API regressions", () => {
       if (sql.includes("FROM schedule_entries se")) {
         capturedSql = sql;
         expect(sql).toContain("LEFT JOIN event_status_history sh ON sh.id =");
-        expect(sql).toContain("COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at))");
+        expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
+        expect(sql).toContain("lower(substr(substr(sh.changed_at, 1, 10), 4, 3))");
+        expect(sql).toContain("date(e.created_at)");
         expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
         expect(sql).toContain("COALESCE(vb.venue, 'No venue') AS venue");
         expect(sql).not.toContain("\n    JOIN venue_bookings vb ON vb.event_id = e.id");
@@ -870,7 +918,7 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
     expect(body.entries).toHaveLength(1);
     expect(body.byDate["2026-09-10"]).toBeTruthy();
-    expect(capturedSql).toContain("MAX('2026-09-01', COALESCE(NULLIF(e.event_start_date, '')");
+    expect(capturedSql).toContain("MAX('2026-09-01', COALESCE(CASE");
   });
 
   it("mirrors edited event fields into the Operations checklist on PUT", async () => {

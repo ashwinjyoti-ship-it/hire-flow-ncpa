@@ -76,6 +76,11 @@ function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMon
 function endOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
 function isoDate(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(d.getDate() + n); return x; }
+function dateFromParam(value: string | null): Date {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date();
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
 
 type MonthCell = { date: Date; key: string; inCurrentMonth: boolean };
 
@@ -105,7 +110,7 @@ export function CalendarPage() {
   const initialView: View = requestedView === "show" ? "show" : "lifecycle";
   const initialFrom = searchParams.get("from");
   const [view, setView] = useState<View>(initialView);
-  const [cursor, setCursor] = useState(() => initialFrom ? new Date(`${initialFrom}T00:00:00`) : new Date());
+  const [cursor, setCursor] = useState(() => dateFromParam(initialFrom));
   const [filters, setFilters] = useState({
     status: searchParams.get("status") ?? "",
     venue: searchParams.get("venue") ?? "",
@@ -122,7 +127,7 @@ export function CalendarPage() {
     const nextView: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
     const nextFrom = searchParams.get("from");
     setView(nextView);
-    setCursor(nextFrom ? new Date(`${nextFrom}T00:00:00`) : new Date());
+    setCursor(dateFromParam(nextFrom));
     setFilters({
       status: searchParams.get("status") ?? "",
       venue: searchParams.get("venue") ?? "",
