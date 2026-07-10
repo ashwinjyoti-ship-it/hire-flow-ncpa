@@ -158,7 +158,7 @@ export function getTaskUrgencyLabels(task: TaskLike, todayIso = isoToday()): str
   const labels: string[] = [];
   const timing = getTimingGroup(task, todayIso);
   if (timing === "overdue") labels.push("Overdue");
-  else if (timing === "today") labels.push("Target today");
+  else if (timing === "today") labels.push("Due today");
   else if (task.priority === "high") labels.push("High priority");
   if (!task.assignee_name) labels.push("Unassigned");
   return labels;

@@ -29,7 +29,7 @@ type TaskView = "cards" | "queue" | "lanes";
 const VIEW_LABELS: Record<TaskView, string> = {
   cards: "By event",
   lanes: "Work lanes",
-  queue: "Target date",
+  queue: "Due date",
 };
 
 export function TasksPage() {
@@ -158,7 +158,7 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
                       </Link>
                       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-ink-muted etched">
                         <span>{workflowLabel(getWorkflowFamily(nextTask))}</span>
-                        {nextTask.due_date && <span>Target {formatDate(nextTask.due_date)}</span>}
+                        {nextTask.due_date && <span>Due {formatDate(nextTask.due_date)}</span>}
                         {!nextTask.due_date && <span>No date</span>}
                         {nextTask.assignee_name && <span>{nextTask.assignee_name}</span>}
                         {getTimingGroup(nextTask, today) === "overdue" && <span>Needs attention</span>}
@@ -284,7 +284,7 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
         <span>{task.task_type === "automatic" ? "System-generated" : "Manual"}</span>
         <span>{getTaskIntentLabel(task)}</span>
-        {task.due_date && <span>Target {formatDate(task.due_date)}</span>}
+        {task.due_date && <span>Due {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}
         {showEvent && task.event_id && task.event_title && <Link to={getTaskWorkLink(task)} className="text-sage-text underline">{task.event_title}</Link>}
       </div>
@@ -336,7 +336,7 @@ function taskStatusLabel(status: string): string {
 
 function urgencyClass(label: string): string {
   if (label === "Overdue") return "rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled";
-  if (label === "Target today") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval";
+  if (label === "Due today") return "rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval";
   if (label === "High priority") return "rounded-full bg-status-tentative/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-tentative";
   return "rounded-full bg-marble-shadow/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted";
 }
