@@ -145,6 +145,16 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("Open full record →");
   });
 
+  it("lets lifecycle calendar open overflowed day entries in a dedicated panel", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("LifecycleOverflowPanel");
+    expect(calendar).toContain("setLifecycleOverflow");
+    expect(calendar).toContain("onOpenOverflow");
+    expect(calendar).toContain("View all lifecycle records");
+    expect(calendar).toContain("entries.slice(5)");
+  });
+
   it("keeps missing call-time fields on the new event form", () => {
     const edit = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 

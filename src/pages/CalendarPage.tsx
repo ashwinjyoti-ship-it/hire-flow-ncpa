@@ -60,6 +60,7 @@ type LifecycleEntry = {
   task_title: string | null;
 };
 type LifecycleResponse = { entries: LifecycleEntry[]; byDate: Record<string, LifecycleEntry[]> };
+type LifecycleOverflowState = { date: string; entries: LifecycleEntry[] };
 
 type View = "show" | "lifecycle";
 type LifecycleType =
@@ -123,6 +124,7 @@ export function CalendarPage() {
   // signed-in user (event_owner_id = me). Applies to both calendar views.
   const [mine, setMine] = useState(searchParams.get("mine") === "1");
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
+  const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
 
   useEffect(() => {
     const nextView: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
@@ -138,6 +140,7 @@ export function CalendarPage() {
     });
     setMine(searchParams.get("mine") === "1");
     setSideEvent(null);
+    setLifecycleOverflow(null);
   }, [searchParams]);
 
   // Visible range = the exact calendar month being viewed (1st → last day).
@@ -193,7 +196,11 @@ export function CalendarPage() {
             <button
               key={v}
               type="button"
-              onClick={() => setView(v)}
+              onClick={() => {
+                setView(v);
+                setLifecycleOverflow(null);
+                setSideEvent(null);
+              }}
               className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
             >
               {v === "show" ? "Show Calendar" : "Lifecycle"}
@@ -258,7 +265,7 @@ export function CalendarPage() {
         lifecycleLoading ? (
           <div className="text-sm text-ink-muted">Loading…</div>
         ) : (
-          <LifecycleMonthGrid byDate={lifecycleByDate} today={today} cursor={cursor} />
+          <LifecycleMonthGrid byDate={lifecycleByDate} today={today} cursor={cursor} onOpenOverflow={setLifecycleOverflow} />
         )
       ) : isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
@@ -267,6 +274,7 @@ export function CalendarPage() {
       )}
 
       {sideEvent && <ShowCalendarDetailPanel entry={sideEvent} onClose={() => setSideEvent(null)} />}
+      {lifecycleOverflow && <LifecycleOverflowPanel overflow={lifecycleOverflow} onClose={() => setLifecycleOverflow(null)} />}
     </div>
   );
 }
@@ -443,7 +451,7 @@ function lifecycleDot(type: LifecycleType): string {
   return LIFECYCLE_TONE[type] ?? "bg-ink-muted";
 }
 
-function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date }) {
+function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date; onOpenOverflow: (overflow: LifecycleOverflowState) => void }) {
   const cells = calendarCellsForMonth(cursor);
   return (
     <div>
@@ -455,6 +463,7 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {cells.map(({ date: d, key, inCurrentMonth }) => {
           const entries = inCurrentMonth ? byDate[key] ?? [] : [];
+          const hiddenEntries = entries.slice(5);
           const isToday = key === today;
           return (
             <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
@@ -474,16 +483,68 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
                 {entries.slice(0, 5).map((entry) => (
                   <LifecycleChip key={entry.id} entry={entry} />
                 ))}
-                {entries.length > 5 && (
-                  <div className="truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-[10px] font-medium text-ink-muted etched sm:px-2">
-                    +{entries.length - 5} more
-                  </div>
+                {hiddenEntries.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenOverflow({ date: key, entries })}
+                    className="block w-full truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-left text-[10px] font-medium text-ink-muted etched transition hover:bg-marble-shadow/70 sm:px-2"
+                  >
+                    +{hiddenEntries.length} more
+                  </button>
                 )}
               </div>
             </article>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOverflowState; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
+      <aside className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View all lifecycle records</div>
+            <h3 className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
+            <p className="mt-1 text-xs text-neutral-600">
+              {overflow.entries.length} lifecycle record{overflow.entries.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+        </div>
+
+        <div className="space-y-3">
+          {overflow.entries.map((entry) => (
+            <Link
+              key={entry.id}
+              to={`/events/${entry.event_id}`}
+              onClick={onClose}
+              className="block rounded-xl border border-white/65 bg-white/46 p-4 hover:bg-white/65"
+            >
+              <div className="flex items-center gap-2">
+                <span className={"h-2 w-2 shrink-0 rounded-full " + lifecycleDot(entry.milestone_type)} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                  {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
+                </span>
+              </div>
+              <div className="mt-2 text-base font-semibold text-neutral-950">
+                {entry.organisation_name ?? entry.title}
+              </div>
+              {entry.organisation_name && entry.organisation_name !== entry.title && (
+                <div className="mt-1 text-sm text-neutral-700">{entry.title}</div>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-600">
+                {entry.event_code && <span>{entry.event_code}</span>}
+                {entry.venues && <span>{entry.venues}</span>}
+                {entry.event_owner && <span>{entry.event_owner}</span>}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </aside>
     </div>
   );
 }
