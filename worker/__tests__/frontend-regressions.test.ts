@@ -273,6 +273,34 @@ describe("frontend regression guards", () => {
     expect(orgTypes).toContain("Cooperative");
   });
 
+  it("shows the organisation name on the review step instead of the raw id", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain("const reviewOrganisationName");
+    expect(eventForm).toContain('pushItem("Organisation", organisationName)');
+    expect(eventForm).toContain("resolvedOrg?.organisation?.name");
+  });
+
+  it("normalises legacy event type values so the selector stays selected", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain("const EVENT_TYPE_OPTIONS");
+    expect(eventForm).toContain("function normaliseEventType");
+    expect(eventForm).toContain('case "FE":');
+    expect(eventForm).toContain('return "Free Event";');
+    expect(eventForm).toContain("EVENT_TYPE_OPTIONS.map");
+  });
+
+  it("builds the review step from filled values instead of fixed blank rows", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain("function buildReviewItems");
+    expect(eventForm).toContain("Object.entries(requirements)");
+    expect(eventForm).toContain("reviewItems.map((item) =>");
+    expect(eventForm).not.toContain('<ReviewItem label="Program Officer" value={form.program_officer} />');
+    expect(eventForm).not.toContain('<ReviewItem label="Owner" value={form.event_owner} />');
+  });
+
   it("keeps carved select fields visually embedded on tablet browsers", () => {
     const css = readFileSync(resolve(root, "src/index.css"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
