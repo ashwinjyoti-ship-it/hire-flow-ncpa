@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { getConfirmedShowCalendarHref, getLifecycleCalendarHref } from "../lib/lifecycle-calendar-links";
 import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -13,6 +14,7 @@ type LifecycleEntry = {
   milestone_type: EventStatus;
   milestone_date: string;
   event_id: string;
+  event_start_date: string | null;
   title: string;
   status: EventStatus;
   organisation_name: string | null;
@@ -69,12 +71,12 @@ export function DashboardPage() {
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href="/calendar?view=lifecycle&status=enquiry" />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href="/calendar?view=lifecycle&status=tentative" />
-        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href="/calendar?view=lifecycle&status=approved" />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href="/calendar?view=lifecycle&status=confirmed" />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/calendar?view=lifecycle&status=regret" />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href="/calendar?view=lifecycle&status=cancelled" />
+        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" href={getLifecycleCalendarHref(lifecycleEntries, "enquiry", today)} />
+        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" href={getLifecycleCalendarHref(lifecycleEntries, "tentative", today)} />
+        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" href={getLifecycleCalendarHref(lifecycleEntries, "approved", today)} />
+        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" href={getConfirmedShowCalendarHref(lifecycleEntries, today)} />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href={getLifecycleCalendarHref(lifecycleEntries, "regret", today)} />
+        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" href={getLifecycleCalendarHref(lifecycleEntries, "cancelled", today)} />
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 lg:gap-6">

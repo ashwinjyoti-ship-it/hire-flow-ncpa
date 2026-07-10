@@ -43,12 +43,13 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
       SELECT
         'current_' || e.id AS id,
         e.status AS milestone_type,
-        COALESCE(CASE
-          WHEN e.status = 'enquiry' THEN e.enquiry_date
-          ELSE substr(sh.changed_at, 1, 10)
-        END, '') AS milestone_date,
+        CASE
+          WHEN e.status = 'enquiry' THEN COALESCE(NULLIF(e.enquiry_date, ''), NULLIF(e.event_start_date, ''), date(e.created_at))
+          ELSE COALESCE(NULLIF(substr(sh.changed_at, 1, 10), ''), NULLIF(e.event_start_date, ''), date(e.created_at))
+        END AS milestone_date,
         e.id AS event_id,
         e.event_code,
+        e.event_start_date,
         e.title,
         e.status,
         e.event_type,
@@ -70,7 +71,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
       )
       WHERE e.status IN ('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')
     )
-    SELECT id, milestone_type, milestone_date, event_id, event_code, title, status, event_type,
+    SELECT id, milestone_type, milestone_date, event_id, event_code, event_start_date, title, status, event_type,
            organisation_name, event_owner, venues, task_id, task_title
     FROM lifecycle
     WHERE ${where.join(" AND ")}
@@ -151,12 +152,15 @@ calendarRoutes.get("/", requireUser, async (c) => {
   if (venue) { seWhere.push("vb.venue = ?"); seBinds.push(venue); }
 
   // ---- Set 2: date-anchored rows for events with no schedule entries ----
-  // An event's operating window [event_start_date, event_end_date] must overlap
-  // the viewed [from, to] range. COALESCE the end date to the start so a
-  // single-day event (event_end_date IS NULL) still counts for its one day.
+  // An event's operating window must overlap the viewed [from, to] range. If a
+  // confirmed import has no operating date, fall back to the date it entered
+  // its current confirmed lifecycle state, then to creation date. That keeps
+  // confirmed lifecycle records visible on the Show Calendar while the team
+  // fills in the final show metadata.
+  const showDateExpr = "COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at))";
   const evWhere = [
-    "COALESCE(e.event_end_date, e.event_start_date) >= ?",
-    "e.event_start_date <= ?",
+    `COALESCE(NULLIF(e.event_end_date, ''), ${showDateExpr}) >= ?`,
+    `${showDateExpr} <= ?`,
     ...commonWhere,
     // Only events that have NO schedule entries at all belong in this set —
     // otherwise they'd be double-counted with set 1.
@@ -176,14 +180,14 @@ calendarRoutes.get("/", requireUser, async (c) => {
       vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes`;
 
   // Set 2: one card per (event × venue_booking) for confirmed events with no
-  // schedule entries. activity_date is the event's start date clamped into the
-  // viewed range (single-day events anchor on event_start_date). This avoids a
-  // recursive date spine — simpler and robust on D1 — while still surfacing the
-  // event under its show month. `from` is a validated yyyy-mm-dd string, so it
-  // is inlined as a quoted literal (single statement bind order stays simple).
+  // schedule entries. activity_date is the best available show date clamped
+  // into the viewed range. This avoids a recursive date spine — simpler and
+  // robust on D1 — while still surfacing the event under its show month. `from`
+  // is a validated yyyy-mm-dd string, so it is inlined as a quoted literal
+  // (single statement bind order stays simple).
   const fromLit = `'${from}'`;
   const sql = `SELECT NULL AS id, 'show' AS activity_type,
-      MAX(${fromLit}, e.event_start_date) AS activity_date,
+      MAX(${fromLit}, ${showDateExpr}) AS activity_date,
       NULL AS start_time, NULL AS end_time,
       NULL AS with_ac_start, NULL AS with_ac_end, NULL AS with_ac_minutes,
       NULL AS without_ac_start, NULL AS without_ac_end, NULL AS without_ac_minutes,
@@ -192,9 +196,16 @@ calendarRoutes.get("/", requireUser, async (c) => {
       u.email AS event_owner_email,
       e.description, e.requirements AS event_requirements, e.notes AS event_notes,
       o.name AS organisation_name,
-      vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
+      COALESCE(vb.venue, 'No venue') AS venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
     FROM events e
-    JOIN venue_bookings vb ON vb.event_id = e.id
+    LEFT JOIN event_status_history sh ON sh.id = (
+      SELECT latest.id
+      FROM event_status_history latest
+      WHERE latest.event_id = e.id AND latest.to_status = e.status
+      ORDER BY latest.changed_at DESC
+      LIMIT 1
+    )
+    LEFT JOIN venue_bookings vb ON vb.event_id = e.id
     LEFT JOIN organisations o ON o.id = e.organisation_id
     LEFT JOIN users u ON u.id = e.event_owner_id
     WHERE ${evWhere.join(" AND ")}
