@@ -61,7 +61,7 @@ export function DashboardPage() {
     if (entry.milestone_type in counts) counts[entry.milestone_type] = (counts[entry.milestone_type] ?? 0) + 1;
   }
   const lifecycleQueue = [...lifecycleEntries]
-    .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || a.milestone_date.localeCompare(b.milestone_date));
+    .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
 
   return (
     <div>

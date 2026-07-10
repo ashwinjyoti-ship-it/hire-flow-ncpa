@@ -259,6 +259,46 @@ describe("API regressions", () => {
     await expect(res.json()).resolves.toMatchObject({ entries: [], byDate: {} });
   });
 
+  it("returns lifecycle entries even when milestone_date is null (no blank dashboard)", async () => {
+    // Regression: an enquiry with no enquiry_date, or a non-enquiry event with no
+    // status-history row, yields milestone_date = null. The dashboard sorts entries
+    // with localeCompare, which throws on null and blanks the page. The SQL now
+    // COALESCEs milestone_date to '' so the client never sees null.
+    const rowWithNullDate = {
+      id: "current_42",
+      milestone_type: "enquiry",
+      milestone_date: null,
+      event_id: "ev_42",
+      event_code: "EVT-042",
+      title: "Untitled enquiry",
+      status: "enquiry",
+      event_type: "concert",
+      organisation_name: null,
+      event_owner: null,
+      venues: null,
+      task_id: null,
+      task_title: null,
+    };
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("COALESCE(");
+        return { all: () => ({ results: [rowWithNullDate] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/calendar/lifecycle", {
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entries: Array<{ event_id: string; milestone_date: string | null }> };
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]).toMatchObject({ event_id: "ev_42", milestone_date: null });
+  });
+
   it("applies text search on the show calendar", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };

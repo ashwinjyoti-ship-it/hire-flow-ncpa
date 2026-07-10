@@ -43,10 +43,10 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
       SELECT
         'current_' || e.id AS id,
         e.status AS milestone_type,
-        CASE
+        COALESCE(CASE
           WHEN e.status = 'enquiry' THEN e.enquiry_date
           ELSE substr(sh.changed_at, 1, 10)
-        END AS milestone_date,
+        END, '') AS milestone_date,
         e.id AS event_id,
         e.event_code,
         e.title,
