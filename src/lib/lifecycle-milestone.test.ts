@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { confirmationInProgress, selectBlockedForwardAction, type LifecycleMilestoneAction } from "./lifecycle-milestone";
+import {
+  confirmationInProgress,
+  selectBlockedForwardAction,
+  selectNextLifecycleBlocker,
+  type LifecycleMilestoneAction,
+} from "./lifecycle-milestone";
 
 /** A forward action that is blocked by the given blocker strings. */
 function blocked(status: "approved" | "confirmed", blockers: string[]): LifecycleMilestoneAction {
@@ -76,5 +81,21 @@ describe("selectBlockedForwardAction", () => {
       "none",
     );
     expect(selected?.status).toBe("confirmed");
+  });
+});
+
+describe("selectNextLifecycleBlocker", () => {
+  it("returns only the first blocker when the chosen milestone has several blockers", () => {
+    expect(
+      selectNextLifecycleBlocker([
+        "Costing email must be sent.",
+        "Payment must be completed.",
+        "Confirmation letter must be made.",
+      ]),
+    ).toBe("Costing email must be sent.");
+  });
+
+  it("returns null when there are no blockers", () => {
+    expect(selectNextLifecycleBlocker([])).toBeNull();
   });
 });

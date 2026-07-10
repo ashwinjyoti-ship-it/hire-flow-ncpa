@@ -10,6 +10,7 @@ import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS } from "../../worker/lib/state-machine";
+import { shouldShowLifecycleStepCountBadge } from "../lib/lifecycle-calendar-display";
 
 type CalEntry = {
   id: string;
@@ -458,7 +459,13 @@ function LifecycleMonthGrid({ byDate, today, cursor }: { byDate: Record<string, 
           return (
             <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
               <div className="mb-2 flex items-center justify-between gap-2">
-                {entries.length > 0 ? <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">{entries.length} step{entries.length === 1 ? "" : "s"}</span> : <span />}
+                {shouldShowLifecycleStepCountBadge() && entries.length > 0 ? (
+                  <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">
+                    {entries.length} step{entries.length === 1 ? "" : "s"}
+                  </span>
+                ) : (
+                  <span />
+                )}
                 <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>

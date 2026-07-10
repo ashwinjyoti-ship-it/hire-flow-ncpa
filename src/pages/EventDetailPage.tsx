@@ -10,7 +10,7 @@ import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
-import { selectBlockedForwardAction } from "../lib/lifecycle-milestone";
+import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -333,7 +333,6 @@ export function EventDetailPage() {
         event={e}
         actions={actions}
         nextAction={checklistData?.lifecycle.nextAction ?? null}
-        blockers={checklistData?.lifecycle.blockers ?? []}
         canChangeStatus={canChangeStatus}
         canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
@@ -539,7 +538,6 @@ function LifecyclePanel({
   event,
   actions,
   nextAction,
-  blockers,
   canChangeStatus,
   canShowStatusActions,
   onOpenBlocker,
@@ -548,7 +546,6 @@ function LifecyclePanel({
   event: DetailResponse["event"];
   actions: LifecycleAction[];
   nextAction: LifecycleAction | null;
-  blockers: string[];
   canChangeStatus: boolean;
   canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
@@ -566,7 +563,12 @@ function LifecyclePanel({
   const blockedForwardAction = nextAction
     ? null
     : selectBlockedForwardAction(visibleActions, event.confirmation_status, forwardStatuses);
-  const visibleBlockers = blockedForwardAction?.blockers ?? blockers;
+  const visibleBlocker = blockedForwardAction
+    ? selectNextLifecycleBlocker(blockedForwardAction.blockers)
+    : null;
+  const visibleBlockerTarget = visibleBlocker
+    ? BLOCKER_TARGETS[visibleBlocker]
+    : undefined;
 
   return (
     <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
@@ -623,25 +625,20 @@ function LifecyclePanel({
           )}
         </div>
 
-        {blockedForwardAction && visibleBlockers.length > 0 && (
+        {blockedForwardAction && visibleBlocker && (
           <div className="mt-3 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-xs text-status-awaitingApproval etched">
-            {visibleBlockers.map((b) => {
-              const target = BLOCKER_TARGETS[b];
-              return (
-                <div key={b} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span>{b}</span>
-                  {target && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenBlocker(target)}
-                      className="font-semibold text-sage-text underline decoration-sage/40 underline-offset-2 hover:decoration-sage"
-                    >
-                      Go to {target.label}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>{visibleBlocker}</span>
+              {visibleBlockerTarget && (
+                <button
+                  type="button"
+                  onClick={() => onOpenBlocker(visibleBlockerTarget)}
+                  className="font-semibold text-sage-text underline decoration-sage/40 underline-offset-2 hover:decoration-sage"
+                >
+                  Go to {visibleBlockerTarget.label}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
