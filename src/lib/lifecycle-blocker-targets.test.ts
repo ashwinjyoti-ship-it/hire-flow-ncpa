@@ -25,9 +25,10 @@ function event(overrides: Partial<EventLifecycleRow> = {}): EventLifecycleRow {
 describe("BLOCKER_TARGETS", () => {
   it("maps every actionable lifecycle blocker to an Operations field", () => {
     for (const blocker of ACTIONABLE_LIFECYCLE_BLOCKERS) {
-      expect(BLOCKER_TARGETS[blocker], `missing target for: ${blocker}`).toBeDefined();
-      expect(BLOCKER_TARGETS[blocker].tab).toBe("operations");
-      expect(BLOCKER_TARGETS[blocker].fieldKey.length).toBeGreaterThan(0);
+      const target = BLOCKER_TARGETS[blocker];
+      expect(target, `missing target for: ${blocker}`).toBeDefined();
+      expect(target!.tab).toBe("operations");
+      expect(target!.fieldKey.length).toBeGreaterThan(0);
     }
   });
 
