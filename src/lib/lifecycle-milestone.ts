@@ -51,3 +51,12 @@ export function selectBlockedForwardAction(
   }
   return blocked[0] ?? null;
 }
+
+/**
+ * The lifecycle panel should surface one immediate blocker at a time.
+ * Back-end blocker arrays are already ordered from nearest to furthest step,
+ * so the first blocker is the next thing the user needs to resolve.
+ */
+export function selectNextLifecycleBlocker(blockers: string[]): string | null {
+  return blockers[0] ?? null;
+}

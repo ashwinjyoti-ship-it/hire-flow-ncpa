@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
+import { canCreateEvent, pruneEmptyVenueBookings } from "../lib/event-edit-form";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
@@ -344,7 +345,12 @@ export function EventEditPage() {
         const created = await apiPost<{ id: string }>("/organisations", { name, org_type: newOrganisationType || null });
         orgId = created.id;
       }
-      const payload = { ...form, organisation_id: orgId, event_end_date: singleDay ? null : form.event_end_date };
+      const payload = {
+        ...form,
+        organisation_id: orgId,
+        event_end_date: singleDay ? null : form.event_end_date,
+        venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
+      };
       if (isEdit && id) {
         const { venue_bookings: _vb, ...rest } = payload;
         void _vb;
@@ -450,7 +456,7 @@ export function EventEditPage() {
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
   const liquorLicence = isYes(reqs.liquor_licence);
 
-  const canSave = form.title.trim().length > 0 && !!form.organisation_id && !!form.venue_bookings[0]?.venue.trim();
+  const canSave = canCreateEvent(form);
 
   // In edit mode, wait for the existing event before rendering the form so the
   // user never sees an empty form for an event that already has data.
@@ -516,48 +522,7 @@ export function EventEditPage() {
           <Field label="Event Name *">
             <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" placeholder="e.g. Symphony Concert Series" />
           </Field>
-          <Field label="Description">
-            <textarea value={form.description ?? ""} onChange={(e) => update({ description: e.target.value || null })} className="carved input" rows={3} />
-          </Field>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Event Type">
-              <select value={form.event_type ?? ""} onChange={(e) => update({ event_type: (e.target.value || null) as EventInputT["event_type"] })} className="carved input">
-                <option value="">Select…</option>
-                {EVENT_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              {isVfh && <p className="mt-1 text-[11px] text-status-awaitingApproval etched">VFH selected — approval workflow will apply.</p>}
-            </Field>
-            <Field label="Enquiry Source">
-              <select value={form.enquiry_source ?? ""} onChange={(e) => update({ enquiry_source: e.target.value || null })} className="carved input">
-                <option value="">Select…</option>
-                {sources.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-              </select>
-            </Field>
-            <Field label="Program Officer">
-              <select value={form.program_officer ?? ""} onChange={(e) => update({ program_officer: e.target.value || null })} className="carved input">
-                <option value="">Select…</option>
-                {programOfficers.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-              </select>
-            </Field>
-            <Field label="Event Owner">
-              <select
-                value={form.event_owner_id ?? ""}
-                onChange={(e) => {
-                  const u = activeOwners.find((o) => o.id === e.target.value);
-                  update({ event_owner_id: e.target.value || null, event_owner: u?.name ?? null });
-                }}
-                className="carved input"
-              >
-                <option value="">Select…</option>
-                {activeOwners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
-              {form.event_owner && !form.event_owner_id && (
-                <p className="mt-1 text-[11px] text-ink-muted etched">Legacy owner “{form.event_owner}” has no linked account — pick an owner above to link one.</p>
-              )}
-            </Field>
-          </div>
-
-          {/* Operating window — start/end on one row; end hidden for single-day events. */}
+          {/* Operating window — start date is the core required date for a new event. */}
           <div>
             <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-sage etched">
               <input
@@ -603,6 +568,47 @@ export function EventEditPage() {
               </div>
             )}
           </div>
+          <Field label="Description">
+            <textarea value={form.description ?? ""} onChange={(e) => update({ description: e.target.value || null })} className="carved input" rows={3} />
+          </Field>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Event Type">
+              <select value={form.event_type ?? ""} onChange={(e) => update({ event_type: (e.target.value || null) as EventInputT["event_type"] })} className="carved input">
+                <option value="">Select…</option>
+                {EVENT_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              {isVfh && <p className="mt-1 text-[11px] text-status-awaitingApproval etched">VFH selected — approval workflow will apply.</p>}
+            </Field>
+            <Field label="Enquiry Source">
+              <select value={form.enquiry_source ?? ""} onChange={(e) => update({ enquiry_source: e.target.value || null })} className="carved input">
+                <option value="">Select…</option>
+                {sources.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+              </select>
+            </Field>
+            <Field label="Program Officer">
+              <select value={form.program_officer ?? ""} onChange={(e) => update({ program_officer: e.target.value || null })} className="carved input">
+                <option value="">Select…</option>
+                {programOfficers.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+              </select>
+            </Field>
+            <Field label="Event Owner">
+              <select
+                value={form.event_owner_id ?? ""}
+                onChange={(e) => {
+                  const u = activeOwners.find((o) => o.id === e.target.value);
+                  update({ event_owner_id: e.target.value || null, event_owner: u?.name ?? null });
+                }}
+                className="carved input"
+              >
+                <option value="">Select…</option>
+                {activeOwners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              {form.event_owner && !form.event_owner_id && (
+                <p className="mt-1 text-[11px] text-ink-muted etched">Legacy owner “{form.event_owner}” has no linked account — pick an owner above to link one.</p>
+              )}
+            </Field>
+          </div>
+
           <p className="text-[11px] text-ink-muted etched">
             The operating window is the full duration the organisation is at NCPA. Specific venue dates/AC timings are captured in Step 2.
           </p>
