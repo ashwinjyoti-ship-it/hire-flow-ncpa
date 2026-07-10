@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { canCreateEvent, pruneEmptyVenueBookings } from "../lib/event-edit-form";
+import { buildReviewItems as buildEventReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
@@ -201,6 +202,7 @@ function buildReviewItems({
   organisationType: string;
   isVfh: boolean;
 }): ReviewEntry[] {
+  return buildEventReviewItems(form, organisationName);
   const items: ReviewEntry[] = [];
   const pushItem = (label: string, value: unknown) => {
     const text = formatReviewValue(value);
@@ -398,7 +400,7 @@ export function EventEditPage() {
   });
   const duplicates = duplicateData?.duplicates ?? [];
   const reviewOrganisationName = useMemo(() => {
-    if (form.organisation_id.startsWith("new:")) return `${form.organisation_id.slice(4)} (new)`;
+    if (form.organisation_id.startsWith("new:")) return form.organisation_id.slice(4);
     return selectedOrganisation?.name ?? null;
   }, [form.organisation_id, selectedOrganisation]);
   const reviewItems = useMemo(() => buildReviewItems({
