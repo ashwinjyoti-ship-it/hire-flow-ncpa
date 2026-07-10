@@ -14,7 +14,6 @@ import {
   getTaskIntentLabel,
   getTaskUrgencyLabels,
   getTaskWorkLink,
-  getTimingGroup,
   getWorkflowFamily,
   isStaleConfirmedLifecycleTask,
   WORKFLOW_LABELS,
@@ -156,12 +155,8 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
                       <Link to={getTaskWorkLink(nextTask)} className="mt-1 block truncate text-xs font-semibold text-ink-primary etched-deep hover:text-sage-text">
                         {nextTask.title}
                       </Link>
-                      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-ink-muted etched">
-                        <span>{workflowLabel(getWorkflowFamily(nextTask))}</span>
-                        {nextTask.due_date && <span>Due {formatDate(nextTask.due_date)}</span>}
-                        {!nextTask.due_date && <span>No date</span>}
-                        {nextTask.assignee_name && <span>{nextTask.assignee_name}</span>}
-                        {getTimingGroup(nextTask, today) === "overdue" && <span>Needs attention</span>}
+                      <div className="mt-0.5 text-[11px] text-ink-muted etched">
+                        {workflowLabel(getWorkflowFamily(nextTask))}
                       </div>
                     </div>
                   )}
@@ -239,9 +234,11 @@ type TaskViewProps = {
 };
 
 function TaskMiniCard({ task, today }: TaskCardProps) {
+  // Inside an event card the show date already heads the card, so the
+  // per-task due date would just repeat it.
   return (
     <div className="rounded-lg bg-marble-highlight/75 px-3 py-2 ring-1 ring-ink-muted/10">
-      <TaskCardMain task={task} today={today} compact={false} />
+      <TaskCardMain task={task} today={today} compact={false} showDueDate={false} />
     </div>
   );
 }
@@ -273,7 +270,7 @@ type TaskCardProps = {
   today: string;
 };
 
-function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskRow; today: string; compact: boolean; showEvent?: boolean }) {
+function TaskCardMain({ task, today, compact, showEvent = false, showDueDate = true }: { task: TaskRow; today: string; compact: boolean; showEvent?: boolean; showDueDate?: boolean }) {
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +281,7 @@ function TaskCardMain({ task, today, compact, showEvent = false }: { task: TaskR
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
         <span>{task.task_type === "automatic" ? "System-generated" : "Manual"}</span>
         <span>{getTaskIntentLabel(task)}</span>
-        {task.due_date && <span>Due {formatDate(task.due_date)}</span>}
+        {showDueDate && task.due_date && <span>Due {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}
         {showEvent && task.event_id && task.event_title && <Link to={getTaskWorkLink(task)} className="text-sage-text underline">{task.event_title}</Link>}
       </div>
