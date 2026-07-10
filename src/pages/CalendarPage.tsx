@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
-import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
+import { useLookups, formatDate, formatDuration, formatTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -317,8 +317,8 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           <dl className="space-y-2 text-sm">
             <DetailLine label="With AC" value={formatTimedDuration(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes)} />
             <DetailLine label="Without AC" value={formatTimedDuration(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes)} />
-            <DetailLine label="Sound Call Time" value={formatRequirement(reqs.sound_call_time)} />
-            <DetailLine label="Light Call Time" value={formatRequirement(reqs.light_call_time)} />
+            <DetailLine label="Sound Call Time" value={formatTimeRequirement(reqs.sound_call_time)} />
+            <DetailLine label="Light Call Time" value={formatTimeRequirement(reqs.light_call_time)} />
           </dl>
         </section>
 
@@ -393,6 +393,11 @@ function formatRequirement(value: unknown): string {
   return String(value);
 }
 
+function formatTimeRequirement(value: unknown): string {
+  if (typeof value !== "string") return formatRequirement(value);
+  return formatTime(value);
+}
+
 function formatGreenRoomRequirements(reqs: Record<string, unknown>): string {
   const parts = [
     formatRequirement(reqs.green_rooms_required),
@@ -410,9 +415,8 @@ function formatHouseSeatDecisions(reqs: Record<string, unknown>): string {
 }
 
 function formatRange(start: string | null, end: string | null): string {
-  if (!start && !end) return "-";
-  if (!end) return start ?? "-";
-  return `${start ?? "-"} - ${end}`;
+  const range = formatTimeRange(start, end);
+  return range === "—" ? "-" : range;
 }
 
 function formatTimedDuration(start: string | null, end: string | null, minutes: number | null): string {
@@ -638,7 +642,7 @@ const VenueTimeline = ({ byDate, venues, start, onPick }: { byDate: Record<strin
             <th className="sticky left-0 z-10 bg-marble-highlight px-3 py-2 text-left text-[11px] uppercase tracking-wider text-ink-dayHeader etched">Venue</th>
             {days.map((d) => (
               <th key={isoDate(d)} className="min-w-[120px] px-2 py-2 text-center text-[11px] uppercase tracking-wider text-ink-dayHeader etched">
-                {d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" })}
+                {formatDate(isoDate(d))}
               </th>
             ))}
           </tr>
@@ -658,7 +662,7 @@ const VenueTimeline = ({ byDate, venues, start, onPick }: { byDate: Record<strin
                           <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + getEventStatusSurface(e.status).dot} />
                           <span className="truncate text-[11px] font-medium etched">{e.title}</span>
                         </div>
-                        {e.start_time && <div className="mt-0.5 text-[10px] text-ink-muted etched">{e.start_time} · {e.activity_type.replace(/_/g, " ")}</div>}
+                        {e.start_time && <div className="mt-0.5 text-[10px] text-ink-muted etched">{formatTime(e.start_time)} · {e.activity_type.replace(/_/g, " ")}</div>}
                       </button>
                     ))}
                   </td>

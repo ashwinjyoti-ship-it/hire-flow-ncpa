@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
-import { formatDate, formatDateTime, formatDuration } from "../lib/use-lookups";
+import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
@@ -790,6 +790,7 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
         <input
           disabled={disabled}
           type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
+          lang={item.field_type === "date" ? "en-US" : undefined}
           defaultValue={item.value ?? ""}
           onBlur={(ev) => {
             const next = ev.currentTarget.value || null;
@@ -1052,16 +1053,16 @@ function VenuesView({ bookings }: { bookings: DetailResponse["venue_bookings"] }
                       <div className="flex flex-wrap items-center gap-3 text-xs text-ink-secondary etched">
                         <span className="inline-block w-24 font-medium capitalize text-sage-text">{entry.activity_type.replace(/_/g, " ")}</span>
                         <span>{formatDate(entry.activity_date)}</span>
-                        {entry.start_time && <span>{entry.start_time}{entry.end_time ? `-${entry.end_time}` : ""}</span>}
+                        {entry.start_time && <span>{formatTimeRange(entry.start_time, entry.end_time)}</span>}
                         {entry.notes && <span className="text-ink-muted">· {entry.notes}</span>}
                       </div>
                       {(entry.with_ac_start || entry.without_ac_start) && (
                         <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
                           {entry.with_ac_start && (
-                            <span>With AC: {entry.with_ac_start}{entry.with_ac_end ? `-${entry.with_ac_end}` : ""}{entry.with_ac_minutes != null ? ` (${formatDuration(entry.with_ac_minutes)})` : ""}</span>
+                            <span>With AC: {formatTimeRange(entry.with_ac_start, entry.with_ac_end)}{entry.with_ac_minutes != null ? ` (${formatDuration(entry.with_ac_minutes)})` : ""}</span>
                           )}
                           {entry.without_ac_start && (
-                            <span>Without AC: {entry.without_ac_start}{entry.without_ac_end ? `-${entry.without_ac_end}` : ""}{entry.without_ac_minutes != null ? ` (${formatDuration(entry.without_ac_minutes)})` : ""}</span>
+                            <span>Without AC: {formatTimeRange(entry.without_ac_start, entry.without_ac_end)}{entry.without_ac_minutes != null ? ` (${formatDuration(entry.without_ac_minutes)})` : ""}</span>
                           )}
                         </div>
                       )}

@@ -547,11 +547,11 @@ export function EventEditPage() {
             </label>
             <div className={"mt-2 grid gap-4 " + (singleDay ? "grid-cols-1" : "md:grid-cols-2")}>
               <Field label="Operating Window — Start Date">
-                <input type="date" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
+                <input type="date" lang="en-US" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
               </Field>
               {!singleDay && (
                 <Field label="Operating Window — End Date">
-                  <input type="date" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
+                  <input type="date" lang="en-US" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
                 </Field>
               )}
             </div>
@@ -673,29 +673,29 @@ export function EventEditPage() {
                             </select>
                           </Field>
                           <Field label="Date">
-                            <input type="date" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
+                            <input type="date" lang="en-US" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
                           </Field>
                           <Field label="Activity Start">
-                            <input type="time" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
+                            <input type="time" lang="en-GB" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
                           </Field>
                           <Field label="Activity End">
-                            <input type="time" value={se.end_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { end_time: e.target.value || null })} className="carved input" />
+                            <input type="time" lang="en-GB" value={se.end_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { end_time: e.target.value || null })} className="carved input" />
                           </Field>
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="rounded-lg bg-marble-highlight/50 p-2">
                             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">With AC</div>
                             <div className="grid grid-cols-3 items-end gap-2">
-                              <Field label="Start"><input type="time" value={se.with_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_start: e.target.value || null })} className="carved input" /></Field>
-                              <Field label="End"><input type="time" value={se.with_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_end: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="Start"><input type="time" lang="en-GB" value={se.with_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_start: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="End"><input type="time" lang="en-GB" value={se.with_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { with_ac_end: e.target.value || null })} className="carved input" /></Field>
                               <Field label="Duration"><input readOnly value={formatDuration(withMin)} className="carved input bg-transparent" /></Field>
                             </div>
                           </div>
                           <div className="rounded-lg bg-marble-highlight/50 p-2">
                             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">Without AC</div>
                             <div className="grid grid-cols-3 items-end gap-2">
-                              <Field label="Start"><input type="time" value={se.without_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_start: e.target.value || null })} className="carved input" /></Field>
-                              <Field label="End"><input type="time" value={se.without_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_end: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="Start"><input type="time" lang="en-GB" value={se.without_ac_start ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_start: e.target.value || null })} className="carved input" /></Field>
+                              <Field label="End"><input type="time" lang="en-GB" value={se.without_ac_end ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { without_ac_end: e.target.value || null })} className="carved input" /></Field>
                               <Field label="Duration"><input readOnly value={formatDuration(withoutMin)} className="carved input bg-transparent" /></Field>
                             </div>
                           </div>
@@ -726,7 +726,7 @@ export function EventEditPage() {
                 <textarea value={(reqs.sound as string) ?? ""} onChange={(e) => setReq("sound", e.target.value || null)} className="carved input" rows={2} />
               </Field>
               <Field label="Sound Call Time">
-                <input type="time" value={(reqs.sound_call_time as string) ?? ""} onChange={(e) => setReq("sound_call_time", e.target.value || null)} className="carved input" />
+                <input type="time" lang="en-GB" value={(reqs.sound_call_time as string) ?? ""} onChange={(e) => setReq("sound_call_time", e.target.value || null)} className="carved input" />
               </Field>
             </div>
           </section>
@@ -737,7 +737,7 @@ export function EventEditPage() {
                 <textarea value={(reqs.light as string) ?? ""} onChange={(e) => setReq("light", e.target.value || null)} className="carved input" rows={2} />
               </Field>
               <Field label="Light Call Time">
-                <input type="time" value={(reqs.light_call_time as string) ?? ""} onChange={(e) => setReq("light_call_time", e.target.value || null)} className="carved input" />
+                <input type="time" lang="en-GB" value={(reqs.light_call_time as string) ?? ""} onChange={(e) => setReq("light_call_time", e.target.value || null)} className="carved input" />
               </Field>
             </div>
           </section>
@@ -754,14 +754,14 @@ export function EventEditPage() {
                 <YesNoSelect value={(reqs.ushers_required as string) ?? ""} onChange={(v) => setReq("ushers_required", v || null)} />
               </Field>
               <Field label="Ushers Call Time">
-                <input type="time" value={(reqs.ushers_call_time as string) ?? ""} onChange={(e) => setReq("ushers_call_time", e.target.value || null)} className="carved input" />
+                <input type="time" lang="en-GB" value={(reqs.ushers_call_time as string) ?? ""} onChange={(e) => setReq("ushers_call_time", e.target.value || null)} className="carved input" />
               </Field>
               <Field label="Loaders Required">
                 <YesNoSelect value={(reqs.loaders_required as string) ?? ""} onChange={(v) => setReq("loaders_required", v || null)} />
               </Field>
               {loadersRequired && (
                 <Field label="Loaders Call Time (conditional)">
-                  <input type="time" value={(reqs.loaders_call_time as string) ?? ""} onChange={(e) => setReq("loaders_call_time", e.target.value || null)} className="carved input" />
+                  <input type="time" lang="en-GB" value={(reqs.loaders_call_time as string) ?? ""} onChange={(e) => setReq("loaders_call_time", e.target.value || null)} className="carved input" />
                 </Field>
               )}
               <Field label="House Seats Release">
@@ -801,7 +801,7 @@ export function EventEditPage() {
               </Field>
               {pianoRequired && (
                 <Field label="Piano Tuning Time (conditional)">
-                  <input type="time" value={(reqs.piano_tuning_time as string) ?? ""} onChange={(e) => setReq("piano_tuning_time", e.target.value || null)} className="carved input" />
+                  <input type="time" lang="en-GB" value={(reqs.piano_tuning_time as string) ?? ""} onChange={(e) => setReq("piano_tuning_time", e.target.value || null)} className="carved input" />
                 </Field>
               )}
               <Field label="Liquor Licence">

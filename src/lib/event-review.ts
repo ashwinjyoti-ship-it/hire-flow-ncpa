@@ -1,5 +1,5 @@
 import type { EventInputT } from "../../worker/lib/types";
-import { formatDuration } from "./use-lookups";
+import { formatDate, formatDuration } from "./use-lookups";
 
 export type ReviewEntry = {
   label: string;
@@ -16,7 +16,7 @@ function titleCaseWords(value: string): string {
 
 function formatOperatingWindow(start: string | null | undefined, end: string | null | undefined): string {
   if (!start) return "—";
-  return end ? `${start} → ${end}` : start;
+  return end ? `${formatDate(start)} to ${formatDate(end)}` : formatDate(start);
 }
 
 function minutesBetween(start: string | null | undefined, end: string | null | undefined): number | null {

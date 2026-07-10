@@ -6,6 +6,9 @@ type LookupsResponse = {
   lookups: Record<string, Array<{ value: string; metadata?: Record<string, unknown> }>>;
 };
 
+const UI_DATE_LOCALE = "en-US";
+const UI_TIME_ZONE = "Asia/Kolkata";
+
 export function useLookups() {
   return useQuery({
     queryKey: ["lookups"],
@@ -14,20 +17,73 @@ export function useLookups() {
   });
 }
 
-/** Format an ISO date string (yyyy-mm-dd) to a readable IST-style display. */
-export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00+05:30` : iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+function parseUiDate(value: string): Date {
+  return new Date(value.length <= 10 ? `${value}T00:00:00+05:30` : value);
 }
 
-/** Format an ISO timestamp for display in IST. */
+function partValue(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
+  return parts.find((part) => part.type === type)?.value ?? "";
+}
+
+/** Format an ISO date string (yyyy-mm-dd) to MM/DD/YYYY in IST. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = parseUiDate(iso);
+  if (isNaN(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat(UI_DATE_LOCALE, {
+    timeZone: UI_TIME_ZONE,
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).formatToParts(d);
+  return `${partValue(parts, "month")}/${partValue(parts, "day")}/${partValue(parts, "year")}`;
+}
+
+/** Format an ISO timestamp for display in IST as MM/DD/YYYY HH:MM (24-hour). */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+  const parts = new Intl.DateTimeFormat(UI_DATE_LOCALE, {
+    timeZone: UI_TIME_ZONE,
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  return `${partValue(parts, "month")}/${partValue(parts, "day")}/${partValue(parts, "year")} ${partValue(parts, "hour")}:${partValue(parts, "minute")}`;
+}
+
+/** Format a time-only string for display as HH:MM (24-hour). */
+export function formatTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const trimmed = value.trim();
+  const timeMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeMatch) {
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2]);
+    if (!Number.isNaN(hours) && !Number.isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    }
+  }
+  const d = new Date(trimmed);
+  if (isNaN(d.getTime())) return value;
+  const parts = new Intl.DateTimeFormat(UI_DATE_LOCALE, {
+    timeZone: UI_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  return `${partValue(parts, "hour")}:${partValue(parts, "minute")}`;
+}
+
+/** Format a time range as HH:MM - HH:MM (24-hour). */
+export function formatTimeRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start && !end) return "—";
+  if (!end) return formatTime(start);
+  return `${formatTime(start)} - ${formatTime(end)}`;
 }
 
 /** Format a number as INR currency. */

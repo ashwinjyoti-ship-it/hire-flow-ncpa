@@ -12,7 +12,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost } from "../lib/api";
-import { formatDate, formatDateTime } from "../lib/use-lookups";
+import { formatDate, formatDateTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { downloadWordDoc, htmlTableSection } from "../lib/export";
@@ -109,6 +109,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
               <span className="text-xs font-semibold text-ink-secondary etched">Report date (IST)</span>
               <input
                 type="date"
+                lang="en-US"
                 value={date}
                 onChange={(ev) => setDate(ev.target.value)}
                 className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
@@ -236,7 +237,7 @@ function ReportSections({ content }: { content: DailyReportContent }) {
           rows={content.scheduled.map((r) => [
             r.venue,
             r.activity_type.replace(/_/g, " "),
-            r.start_time ? `${r.start_time}${r.end_time ? `–${r.end_time}` : ""}` : "—",
+            r.start_time ? formatTimeRange(r.start_time, r.end_time) : "—",
             <Link key="e" to={`/events/${r.event_id}`} className="underline decoration-sage/40 underline-offset-2">{r.event_title}</Link>,
             r.organisation_name ?? "—",
             r.event_status,
@@ -411,11 +412,11 @@ function AnalyticsView() {
       <section className="carved-card flex flex-wrap items-end gap-3 rounded-2xl bg-marble-highlight/50 p-5">
         <label className="block print-hidden">
           <span className="text-xs font-semibold text-ink-secondary etched">From</span>
-          <input type="date" value={from} onChange={(ev) => setFrom(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+          <input type="date" lang="en-US" value={from} onChange={(ev) => setFrom(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
         </label>
         <label className="block print-hidden">
           <span className="text-xs font-semibold text-ink-secondary etched">To</span>
-          <input type="date" value={to} onChange={(ev) => setTo(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+          <input type="date" lang="en-US" value={to} onChange={(ev) => setTo(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
         </label>
         <p className="pb-2 text-xs text-ink-muted etched">
           Venue analytics · {formatDate(from)} to {formatDate(to)} — all five sections follow this range.
