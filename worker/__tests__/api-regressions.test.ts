@@ -187,7 +187,7 @@ describe("API regressions", () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
-        expect(sql).toContain("WHEN e.status = 'enquiry' THEN e.enquiry_date");
+        expect(sql).toContain("WHEN e.status = 'enquiry' THEN COALESCE(NULLIF(e.enquiry_date, '')");
         expect(sql).toContain("event_status_history");
         expect(sql).not.toContain("tasks t");
         expect(sql).not.toContain("'show' AS milestone_type");
@@ -259,15 +259,14 @@ describe("API regressions", () => {
     await expect(res.json()).resolves.toMatchObject({ entries: [], byDate: {} });
   });
 
-  it("returns lifecycle entries even when milestone_date is null (no blank dashboard)", async () => {
-    // Regression: an enquiry with no enquiry_date, or a non-enquiry event with no
-    // status-history row, yields milestone_date = null. The dashboard sorts entries
-    // with localeCompare, which throws on null and blanks the page. The SQL now
-    // COALESCEs milestone_date to '' so the client never sees null.
-    const rowWithNullDate = {
+  it("returns lifecycle entries with a dated milestone fallback (no blank dashboard or calendar)", async () => {
+    // Regression: imported/historical records can lack enquiry_date or matching
+    // status-history rows. They still need a real date so the dashboard can sort
+    // them and the lifecycle calendar can place them in a month grid.
+    const rowWithFallbackDate = {
       id: "current_42",
       milestone_type: "enquiry",
-      milestone_date: null,
+      milestone_date: "2026-07-01",
       event_id: "ev_42",
       event_code: "EVT-042",
       title: "Untitled enquiry",
@@ -283,7 +282,8 @@ describe("API regressions", () => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
         expect(sql).toContain("COALESCE(");
-        return { all: () => ({ results: [rowWithNullDate] }) };
+        expect(sql).toContain("date(e.created_at)");
+        return { all: () => ({ results: [rowWithFallbackDate] }) };
       }
       return {};
     });
@@ -294,9 +294,35 @@ describe("API regressions", () => {
     }, { DB: db } as never);
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { entries: Array<{ event_id: string; milestone_date: string | null }> };
+    const body = (await res.json()) as {
+      entries: Array<{ event_id: string; milestone_date: string }>;
+      byDate: Record<string, Array<{ event_id: string }>>;
+    };
     expect(body.entries).toHaveLength(1);
-    expect(body.entries[0]).toMatchObject({ event_id: "ev_42", milestone_date: null });
+    expect(body.entries[0]).toMatchObject({ event_id: "ev_42", milestone_date: "2026-07-01" });
+    expect(body.byDate).toMatchObject({ "2026-07-01": [{ event_id: "ev_42" }] });
+  });
+
+  it("builds lifecycle milestone dates with fallbacks so dashboard records can appear on the calendar", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("NULLIF(e.enquiry_date, '')");
+        expect(sql).toContain("NULLIF(substr(sh.changed_at, 1, 10), '')");
+        expect(sql).toContain("NULLIF(e.event_start_date, '')");
+        expect(sql).toContain("date(e.created_at)");
+        expect(sql).not.toContain("END, '') AS milestone_date");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/calendar/lifecycle", {
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
   });
 
   it("applies text search on the show calendar", async () => {
@@ -757,10 +783,10 @@ describe("API regressions", () => {
       // in its enriched branch).
       if (sql.includes("FROM schedule_entries se")) {
         capturedSql = sql;
-        expect(sql).toContain("e.event_start_date <=");
-        expect(sql).toContain("COALESCE(e.event_end_date, e.event_start_date) >=");
+        expect(sql).toContain("COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at)) <= ?");
+        expect(sql).toContain("COALESCE(NULLIF(e.event_end_date, ''), COALESCE(NULLIF(e.event_start_date, '')");
         expect(sql).toContain("NOT EXISTS (SELECT 1 FROM schedule_entries se2");
-        expect(sql).toContain("JOIN venue_bookings vb ON vb.event_id = e.id");
+        expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
         expect(sql).toContain("UNION ALL");
         // The status gate must still default to confirmed-only.
         expect(sql).toContain("e.status = ?");
@@ -799,6 +825,52 @@ describe("API regressions", () => {
     expect(body.entries[0]).toMatchObject({ title: "Ankh", status: "confirmed", venue: "JBT" });
     // The date-anchored card must be grouped under the show month.
     expect(body.byDate["2026-09-10"]).toBeTruthy();
+  });
+
+  it("surfaces confirmed lifecycle records on the show calendar even when show metadata is incomplete", async () => {
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se")) {
+        capturedSql = sql;
+        expect(sql).toContain("LEFT JOIN event_status_history sh ON sh.id =");
+        expect(sql).toContain("COALESCE(NULLIF(e.event_start_date, ''), NULLIF(substr(sh.changed_at, 1, 10), ''), date(e.created_at))");
+        expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
+        expect(sql).toContain("COALESCE(vb.venue, 'No venue') AS venue");
+        expect(sql).not.toContain("\n    JOIN venue_bookings vb ON vb.event_id = e.id");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: null,
+                activity_type: "show",
+                activity_date: "2026-09-10",
+                title: "Imported Confirmed Event",
+                status: "confirmed",
+                event_id: "ev_imported",
+                event_type: "EE",
+                venue: "No venue",
+                organisation_name: "Imported Org",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-09-01&to=2026-09-30",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+    const body = await res.json() as { entries: Array<Record<string, unknown>>; byDate: Record<string, unknown[]> };
+
+    expect(res.status).toBe(200);
+    expect(body.entries).toHaveLength(1);
+    expect(body.byDate["2026-09-10"]).toBeTruthy();
+    expect(capturedSql).toContain("MAX('2026-09-01', COALESCE(NULLIF(e.event_start_date, '')");
   });
 
   it("mirrors edited event fields into the Operations checklist on PUT", async () => {
