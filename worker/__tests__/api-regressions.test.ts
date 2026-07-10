@@ -921,6 +921,49 @@ describe("API regressions", () => {
     expect(capturedSql).toContain("MAX('2026-09-01', COALESCE(CASE");
   });
 
+  it("normalizes imported schedule entry dates before filtering the show calendar", async () => {
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se")) {
+        capturedSql = sql;
+        expect(sql).toContain("lower(substr(se.activity_date, 4, 3))");
+        expect(sql).toContain("WHEN se.activity_date LIKE '__-___-____'");
+        expect(sql).toContain("AS activity_date");
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "se_imported",
+                activity_type: "show",
+                activity_date: "2026-07-04",
+                title: "Play - AAPAS KI BAAT",
+                status: "confirmed",
+                event_id: "ev_ank",
+                venue: "GDT",
+                organisation_name: "ANK",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-07-01&to=2026-07-31",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+    const body = await res.json() as { entries: Array<Record<string, unknown>>; byDate: Record<string, unknown[]> };
+
+    expect(res.status).toBe(200);
+    expect(capturedSql).not.toBe("");
+    expect(body.entries[0]).toMatchObject({ activity_date: "2026-07-04", organisation_name: "ANK" });
+    expect(body.byDate["2026-07-04"]).toBeTruthy();
+  });
+
   it("mirrors edited event fields into the Operations checklist on PUT", async () => {
     // Regression ("Ankh"): editing the event (title/description/type) must keep
     // the Operations tab's "Event Reference" rows in sync — previously the PUT

@@ -190,9 +190,10 @@ calendarRoutes.get("/", requireUser, async (c) => {
   }
 
   // ---- Set 1: schedule-entry-driven (enriched) rows ----
+  const scheduleActivityDateExpr = normalisedDateSql("se.activity_date");
   const seWhere = [
-    "se.activity_date >= ?",
-    "se.activity_date <= ?",
+    `${scheduleActivityDateExpr} >= ?`,
+    `${scheduleActivityDateExpr} <= ?`,
     ...commonWhere,
   ];
   const seBinds: unknown[] = [from, to, ...commonBinds];
@@ -217,7 +218,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
   const evBinds: unknown[] = [from, to, ...commonBinds];
   if (venue) { evWhere.push("vb.venue = ?"); evBinds.push(venue); }
 
-  const columnList = `se.id, se.activity_type, se.activity_date, se.start_time, se.end_time,
+  const columnList = `se.id, se.activity_type, ${scheduleActivityDateExpr} AS activity_date, se.start_time, se.end_time,
       se.with_ac_start, se.with_ac_end, se.with_ac_minutes,
       se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
       se.notes AS schedule_notes,
