@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
@@ -971,6 +971,7 @@ function OrganisationCombobox({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const hydratedOrgIdRef = useRef<string | null>(null);
 
   // Decode the current value into a display string.
   const displayName = useMemo(() => {
@@ -998,11 +999,16 @@ function OrganisationCombobox({
 
   // Once we know the org's type, push it up so the form's "Organisation Type"
   // field reflects the saved value (mirrors selecting from the dropdown).
-  // Deliberately only keyed on resolvedOrg — this is a one-shot hydration that
-  // must not refire on every parent re-render.
   useEffect(() => {
-    if (resolvedOrg?.organisation) onSelectOrganisation(resolvedOrg.organisation);
-  }, [resolvedOrg, onSelectOrganisation]);
+    const org = resolvedOrg?.organisation;
+    if (!org || hydratedOrgIdRef.current === org.id) return;
+    hydratedOrgIdRef.current = org.id;
+    onSelectOrganisation(org);
+  }, [resolvedOrg?.organisation?.id, onSelectOrganisation]);
+
+  useEffect(() => {
+    if (!isExistingId) hydratedOrgIdRef.current = null;
+  }, [isExistingId, value]);
 
   const results = data?.organisations ?? [];
   const inputText = query || resolvedOrg?.organisation?.name || displayName;
