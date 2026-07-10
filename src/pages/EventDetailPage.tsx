@@ -10,6 +10,7 @@ import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
+import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
 
 type DetailResponse = {
@@ -91,44 +92,6 @@ const ACTIVITY_LABELS: Record<string, string> = {
   task_created: "Task created",
   task_completed: "Task completed",
   checklist_updated: "Checklist updated",
-};
-
-const BLOCKER_TARGETS: Record<string, { tab: "operations" | "accounts"; fieldKey: string; label: string }> = {
-  "Costing email must be sent.": {
-    tab: "operations",
-    fieldKey: "costing_email",
-    label: "Costing Email",
-  },
-  "Payment must be received.": {
-    tab: "operations",
-    fieldKey: "payment_status",
-    label: "Payment Status",
-  },
-  "Confirmation letter must be made.": {
-    tab: "operations",
-    fieldKey: "confirmation_made",
-    label: "Confirmation Letter Made",
-  },
-  "Confirmation letter must be couriered.": {
-    tab: "operations",
-    fieldKey: "confirmation_couriered",
-    label: "Confirmation Letter Couriered",
-  },
-  "Signed confirmation must be received.": {
-    tab: "operations",
-    fieldKey: "confirmation_signed_received",
-    label: "Signed Copy Received",
-  },
-  "VFH approval must be received or approved.": {
-    tab: "operations",
-    fieldKey: "approval_received_on",
-    label: "Approval Received On",
-  },
-  "VFH approval must be received before marking the event approved.": {
-    tab: "operations",
-    fieldKey: "approval_received_on",
-    label: "Approval Received On",
-  },
 };
 
 type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "documents" | "venues" | "conflicts" | "activity";
@@ -627,18 +590,18 @@ function LifecyclePanel({
 
         {blockedForwardAction && visibleBlocker && (
           <div className="mt-3 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-xs text-status-awaitingApproval etched">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {visibleBlockerTarget ? (
+              <button
+                type="button"
+                onClick={() => onOpenBlocker(visibleBlockerTarget)}
+                className="text-left font-medium underline decoration-current/40 underline-offset-2 hover:decoration-current"
+                title={`Go to ${visibleBlockerTarget.label}`}
+              >
+                {visibleBlocker}
+              </button>
+            ) : (
               <span>{visibleBlocker}</span>
-              {visibleBlockerTarget && (
-                <button
-                  type="button"
-                  onClick={() => onOpenBlocker(visibleBlockerTarget)}
-                  className="font-semibold text-sage-text underline decoration-sage/40 underline-offset-2 hover:decoration-sage"
-                >
-                  Go to {visibleBlockerTarget.label}
-                </button>
-              )}
-            </div>
+            )}
           </div>
         )}
 
