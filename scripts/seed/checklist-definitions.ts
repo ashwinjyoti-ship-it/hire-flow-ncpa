@@ -56,10 +56,12 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Point of Contact", field_key: "vendor_registration_form", label: "Vendor Registration Form", field_type: "dropdown", options: ["Pending", "Received"], default_value: "Pending" },
 
   // 3. APPROVAL (VFH only)
+  // When Approval Required? = Not Required, the rest of this section is skipped:
+  // dependent fields are hidden (visibility_rule) and marked not_applicable.
   { module: "operations", section: "Approval", field_key: "approval_required", label: "Approval Required?", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required", vfh_only: true },
-  { module: "operations", section: "Approval", field_key: "approval_sent_on", label: "Approval Sent On", field_type: "date", vfh_only: true, triggers_task: { rule: "approval_followup", title: "Follow up on Approval", due_after_days: 7, complete_when: "Approval is Received or the event becomes Approved" } },
-  { module: "operations", section: "Approval", field_key: "approval_received_on", label: "Approval Received On", field_type: "date", vfh_only: true },
-  { module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", field_type: "text", vfh_only: true },
+  { module: "operations", section: "Approval", field_key: "approval_sent_on", label: "Approval Sent On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)", triggers_task: { rule: "approval_followup", title: "Follow up on Approval", due_after_days: 7, complete_when: "Approval is Received or the event becomes Approved" } },
+  { module: "operations", section: "Approval", field_key: "approval_received_on", label: "Approval Received On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
+  { module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", field_type: "text", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
 
   // 4. EVENT DATES
   { module: "operations", section: "Event Dates", field_key: "setup_date", label: "Setup Date", field_type: "date" },

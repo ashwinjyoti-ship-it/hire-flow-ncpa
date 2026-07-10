@@ -136,7 +136,11 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   // Operations tab blank for every event created before this fix landed.
   await syncEventReferenceChecklist(db, eventId);
 
-  if (!results.length) return;
+  if (!results.length) {
+    // Heal Approval dependents for existing VFH events (idempotent).
+    await syncApprovalDependentChecklistFromEvent(db, eventId);
+    return;
+  }
 
   const now = new Date().toISOString();
   for (const def of results) {
@@ -162,6 +166,8 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
       now
     ).run();
   }
+  // After seeding, mark Approval dependents N/A when default is Not Required.
+  await syncApprovalDependentChecklistFromEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
@@ -297,6 +303,9 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
       await db.prepare("UPDATE events SET approval_status = 'pending', updated_at = ? WHERE id = ? AND approval_status NOT IN ('received','approved')")
         .bind(now, eventId).run();
     }
+    // Hide/skip Approval Sent On, Approval Received On, and Genre Head when
+    // approval is Not Required; reopen them when Required again.
+    await syncApprovalDependentChecklist(db, eventId, value);
   }
   if (fieldKey === "approval_sent_on" && v) {
     await db.prepare("UPDATE events SET approval_status = 'sent', updated_at = ? WHERE id = ? AND approval_status NOT IN ('received','approved')")
@@ -318,6 +327,63 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
     await db.prepare("UPDATE events SET confirmation_status = 'signed_received', updated_at = ? WHERE id = ?")
       .bind(now, eventId).run();
   }
+}
+
+/** Checklist fields that only apply when Approval Required? = Required (VFH). */
+export const APPROVAL_DEPENDENT_FIELD_KEYS = [
+  "approval_sent_on",
+  "approval_received_on",
+  "genre_head",
+] as const;
+
+/**
+ * When Approval Required? is Not Required, mark the dependent Approval fields
+ * not_applicable so they drop out of pending work / completion. When Required,
+ * re-derive each field's status from its current value so the thread reopens.
+ */
+export async function syncApprovalDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  approvalRequiredValue: string | null | undefined,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (normalise(approvalRequiredValue) === "not required") {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = 'not_applicable', last_updated_at = ?
+       WHERE event_id = ?
+         AND field_key IN ('approval_sent_on', 'approval_received_on', 'genre_head')
+         AND status != 'not_applicable'`
+    ).bind(now, eventId).run();
+    return;
+  }
+
+  const { results } = await db.prepare(
+    `SELECT ci.id, ci.value, cd.field_type, cd.is_computed
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND ci.field_key IN ('approval_sent_on', 'approval_received_on', 'genre_head')`
+  ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
+
+  for (const row of results ?? []) {
+    const status = itemStatusForValue({
+      field_type: row.field_type,
+      value: row.value,
+      is_computed: row.is_computed,
+    });
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
+    ).bind(status, now, row.id).run();
+  }
+}
+
+async function syncApprovalDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'approval_required'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncApprovalDependentChecklist(db, eventId, row.value);
 }
 
 /**
@@ -605,6 +671,7 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined, userId: string): Promise<void> {
   const v = normalise(value);
   const rules: string[] = [];
+  if (fieldKey === "approval_required" && v === "not required") rules.push("approval_followup");
   if (fieldKey === "approval_received_on" && v) rules.push("approval_followup");
   if (fieldKey === "confirmation_signed_received" && v === "yes") rules.push("confirmation_letter");
   if (fieldKey === "onstage_received_from_client" && v) rules.push("onstage");

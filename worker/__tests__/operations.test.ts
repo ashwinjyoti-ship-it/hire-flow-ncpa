@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncAdditionalRequirementsChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -595,5 +596,88 @@ describe("additional requirements <-> checklist sync", () => {
         expect(yesValues.includes(formValue)).toBe(checklistVal === "Required");
       }
     });
+  });
+});
+
+describe("VFH approval Not Required skips dependent checklist fields", () => {
+  it("seeds visibility_rule so dependents only show when Approval Required? = Required", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    for (const key of ["approval_sent_on", "approval_received_on", "genre_head"]) {
+      expect(byKey[key]?.visibility_rule).toBe("onlyWhen(approval_required == Required)");
+      expect(byKey[key]?.vfh_only).toBe(true);
+    }
+    expect(byKey.approval_required?.visibility_rule).toBeUndefined();
+  });
+
+  it("marks Approval Sent/Received and Genre Head not_applicable when Not Required", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncApprovalDependentChecklist(db, "ev_vfh", "Not Required");
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = 'not_applicable'");
+    expect(updates[0]?.sql).toContain("approval_sent_on");
+    expect(updates[0]?.sql).toContain("approval_received_on");
+    expect(updates[0]?.sql).toContain("genre_head");
+    expect(updates[0]?.binds[1]).toBe("ev_vfh");
+  });
+
+  it("re-derives dependent statuses from values when Approval becomes Required", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("approval_sent_on")) {
+              return {
+                results: [
+                  { id: "cli_sent", value: null, field_type: "date", is_computed: 0 },
+                  { id: "cli_recv", value: "2026-07-01", field_type: "date", is_computed: 0 },
+                  { id: "cli_genre", value: null, field_type: "text", is_computed: 0 },
+                ],
+              };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncApprovalDependentChecklist(db, "ev_vfh", "Required");
+
+    expect(updates).toHaveLength(3);
+    const byId = Object.fromEntries(updates.map((u) => [u.binds[2], u.binds[0]]));
+    expect(byId.cli_sent).toBe("not_started");
+    expect(byId.cli_recv).toBe("completed");
+    expect(byId.cli_genre).toBe("not_started");
   });
 });
