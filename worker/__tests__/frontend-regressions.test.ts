@@ -313,9 +313,16 @@ describe("frontend regression guards", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
     expect(eventForm).toContain('className="grid gap-3 text-sm md:grid-cols-2"');
-    expect(eventForm).toContain('className="flex min-h-24 flex-col items-center justify-center rounded-xl');
-    expect(eventForm).toContain('className="text-center font-medium text-ink-primary etched-deep"');
+    expect(eventForm).toContain('className="flex min-h-24 h-full flex-col items-center justify-center rounded-xl');
+    expect(eventForm).toContain('className="mt-2 w-full max-w-full whitespace-normal break-words text-center font-medium leading-relaxed text-ink-primary etched-deep"');
     expect(eventForm).not.toContain('className="flex justify-between border-b border-ink-muted/10 pb-2"');
+  });
+
+  it("lets review card values wrap horizontally for multi-venue and multi-show content", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain('className="flex min-h-24 h-full flex-col items-center justify-center rounded-xl');
+    expect(eventForm).toContain('className="mt-2 w-full max-w-full whitespace-normal break-words text-center font-medium leading-relaxed text-ink-primary etched-deep"');
   });
 
   it("keeps carved select fields visually embedded on tablet browsers", () => {
