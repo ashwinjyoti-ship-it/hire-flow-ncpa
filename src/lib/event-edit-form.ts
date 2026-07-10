@@ -16,3 +16,8 @@ export function canCreateEvent(form: Pick<EventInputT, "title" | "organisation_i
     && form.event_start_date != null
     && form.event_start_date.trim().length > 0;
 }
+
+export function organisationValueFromName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed ? `new:${trimmed}` : "";
+}

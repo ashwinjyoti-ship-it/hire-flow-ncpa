@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
-import { canCreateEvent, pruneEmptyVenueBookings } from "../lib/event-edit-form";
+import { canCreateEvent, organisationValueFromName, pruneEmptyVenueBookings } from "../lib/event-edit-form";
 import { buildReviewItems as buildEventReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
@@ -967,7 +967,7 @@ export function EventEditPage() {
   );
 }
 
-/** Organisation combobox — searches existing orgs by prefix; offers "Create new" when no match. */
+/** Organisation combobox — free text creates a new org; suggestions only select existing orgs. */
 function OrganisationCombobox({
   value,
   onChange,
@@ -1027,38 +1027,34 @@ function OrganisationCombobox({
         type="text"
         value={inputText}
         placeholder="Start typing the organisation name…"
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange(""); }}
+        onChange={(e) => {
+          const nextName = e.target.value;
+          setQuery(nextName);
+          setOpen(true);
+          onChange(organisationValueFromName(nextName));
+        }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         className="carved input"
       />
-      {open && (query || !value) && (
+      {open && query.trim().length > 0 && results.length > 0 && (
         <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl bg-marble-highlight shadow-lg">
-          {results.length > 0 ? (
-            results.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(o.id); onSelectOrganisation(o); setQuery(o.name); setOpen(false); }}
-                className="block w-full px-4 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40"
-              >
-                {o.name}
-              </button>
-            ))
-          ) : (
-            query.trim().length > 0 && (
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(`new:${query.trim()}`); setQuery(query.trim()); setOpen(false); }}
-                className="block w-full px-4 py-2 text-left text-sm text-sage-text hover:bg-marble-shadow/40"
-              >
-                + Create new: “{query.trim()}”
-              </button>
-            )
-          )}
-          {query.trim().length === 0 && results.length === 0 && (
-            <div className="px-4 py-2 text-xs text-ink-muted etched">Type to search existing organisations.</div>
-          )}
+          {results.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(o.id);
+                onSelectOrganisation(o);
+                setQuery(o.name);
+                setOpen(false);
+              }}
+              className="block w-full px-4 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40"
+            >
+              {o.name}
+            </button>
+          ))}
         </div>
       )}
     </div>
