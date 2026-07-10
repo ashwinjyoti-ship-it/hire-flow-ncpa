@@ -369,6 +369,89 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
   await recalculateEventCompletion(db, eventId);
 }
 
+/**
+ * Sync the event form's "Requirements" step into the Operations checklist's
+ * "Additional Requirements" + "Operations Details" sections. The event form is
+ * the source of truth, so where the form carries a value we overwrite the
+ * matching checklist row; where the form is silent (blank/null) we leave the
+ * checklist untouched, preserving any value entered on the Operations tab.
+ *
+ * Checklist dropdown fields only accept "Required" / "Not Required", so the
+ * form's varied values (Yes/No, Keep/Remove, non-empty text for sound/piano)
+ * are normalised. The form's note fields (qty/model text) are intentionally
+ * not synced — they live only in events.requirements.
+ *
+ *   field_key                  source (events.requirements)     -> checklist value
+ *   req_sound                  sound (free text)               -> Required if set
+ *   req_piano                  piano_required (free text)      -> Required if set
+ *   req_liquor_license         liquor_licence                  -> as-is
+ *   req_orchestra_pit_chairs   orchestra_pit_chairs (Keep/Rm)  -> Required/Not Required
+ *   req_digital_standee        digital_standee (Yes/No)        -> Required/Not Required
+ *   req_car_display            car_display (Yes/No)            -> Required/Not Required
+ *   req_bike_display           bike_display (Yes/No)           -> Required/Not Required
+ *   req_stalls                 stalls (Yes/No)                 -> Required/Not Required
+ *   req_telecasting_media      telecasting_media (Yes/No)      -> Required/Not Required
+ *   no_of_crew_cards           crew_cards (number)             -> the number string
+ *   licenses                   licenses (text)                 -> the text
+ *
+ * Status is re-derived via itemStatusForValue so completion rollups stay
+ * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
+ * Safe to call repeatedly (idempotent).
+ */
+export async function syncAdditionalRequirementsChecklist(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare("SELECT requirements FROM events WHERE id = ?")
+    .bind(eventId).first<{ requirements: string | null }>();
+  if (!row?.requirements) return;
+
+  let reqs: Record<string, unknown>;
+  try {
+    reqs = JSON.parse(row.requirements) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  const str = (v: unknown): string | null => {
+    const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+    return s.length ? s : null;
+  };
+  // Normalise a form control value to the checklist's Required/Not Required
+  // vocabulary. Returns null when the form is silent (leave checklist as-is).
+  const toReq = (v: unknown, yesValues: string[]): string | null => {
+    const s = str(v);
+    if (!s) return null;
+    return yesValues.includes(s) ? "Required" : "Not Required";
+  };
+
+  type Pending = { fieldKey: string; fieldType: string; value: string | null };
+  const updates: Pending[] = [
+    // Free-text fields: any non-empty entry counts as "Required".
+    { fieldKey: "req_sound", fieldType: "dropdown", value: str(reqs.sound) ? "Required" : null },
+    { fieldKey: "req_piano", fieldType: "dropdown", value: str(reqs.piano_required) ? "Required" : null },
+    { fieldKey: "req_liquor_license", fieldType: "dropdown", value: toReq(reqs.liquor_licence, ["Required"]) },
+    { fieldKey: "req_orchestra_pit_chairs", fieldType: "dropdown", value: toReq(reqs.orchestra_pit_chairs, ["Keep"]) },
+    { fieldKey: "req_digital_standee", fieldType: "dropdown", value: toReq(reqs.digital_standee, ["Yes"]) },
+    { fieldKey: "req_car_display", fieldType: "dropdown", value: toReq(reqs.car_display, ["Yes"]) },
+    { fieldKey: "req_bike_display", fieldType: "dropdown", value: toReq(reqs.bike_display, ["Yes"]) },
+    { fieldKey: "req_stalls", fieldType: "dropdown", value: toReq(reqs.stalls, ["Yes"]) },
+    { fieldKey: "req_telecasting_media", fieldType: "dropdown", value: toReq(reqs.telecasting_media, ["Yes"]) },
+    // Operations Details: pass the raw value through.
+    { fieldKey: "no_of_crew_cards", fieldType: "number", value: str(reqs.crew_cards) },
+    { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
+  ];
+
+  const now = new Date().toISOString();
+  for (const { fieldKey, fieldType, value } of updates) {
+    if (value === null) continue; // form silent — don't clobber a manual ops value
+    const status = itemStatusForValue({ field_type: fieldType, value });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, last_updated_at = ?
+       WHERE event_id = ? AND field_key = ?`
+    ).bind(value, status, now, eventId, fieldKey).run();
+  }
+  await recalculateEventCompletion(db, eventId);
+}
+
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {
   if (!item.triggers_task || !normalise(item.value)) return;
   let rule: { rule: string; title: string; due_after_days: number } | null = null;
