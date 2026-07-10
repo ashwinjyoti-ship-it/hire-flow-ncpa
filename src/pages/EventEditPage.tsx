@@ -573,7 +573,7 @@ export function EventEditPage() {
                 </>
               )}
               <Field label="Piano Required">
-                <input type="text" placeholder="e.g. Yamaha Grand" value={(reqs.piano_required as string) ?? ""} onChange={(e) => setReq("piano_required", e.target.value || null)} className="carved input" />
+                <YesNoSelect value={(reqs.piano_required as string) ?? ""} onChange={(v) => setReq("piano_required", v || null)} yesValue="Yes" noValue="No" />
               </Field>
               {pianoRequired && (
                 <Field label="Piano Tuning Time (conditional)">

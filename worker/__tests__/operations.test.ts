@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncEventReferenceChecklist, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncAdditionalRequirementsChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
   return {
@@ -356,5 +356,244 @@ describe("checklist item status from value", () => {
   it("a non-default, non-done dropdown value stays in_progress", () => {
     // e.g. a custom intermediate choice that is neither a known default nor done.
     expect(itemStatusForValue({ field_type: "dropdown", value: "Partially done" })).toBe("in_progress");
+  });
+});
+
+describe("additional requirements <-> checklist sync", () => {
+  // The event form (events.requirements JSON) and the Operations checklist
+  // (checklist_items) must round-trip. Forward map: form value ->
+  // checklist Required/Not Required. Reverse map: checklist value -> form
+  // vocabulary. Sound is forward-only (free text the checklist can't represent).
+
+  // A mock D1Database. Forward sync updates checklist_items; reverse sync
+  // updates events.requirements. Both call recalculateEventCompletion, whose
+  // checklist_items reads return empty so completion stays 0 (a no-op UPDATE).
+  type Upd = { sql: string; binds: unknown[] };
+  function buildReqDb(eventsRequirements: Record<string, unknown> | null) {
+    const updates: Upd[] = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            // Both sync functions SELECT requirements FROM events.
+            if (sql.includes("SELECT requirements FROM events")) {
+              return { requirements: eventsRequirements ? JSON.stringify(eventsRequirements) : null };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    return { db, updates };
+  }
+
+  describe("forward: syncAdditionalRequirementsChecklist", () => {
+    it("maps dropdown form values to Required/Not Required, writing each row", async () => {
+      const { db, updates } = buildReqDb({
+        // Yes-vocabulary fields
+        digital_standee: "Yes", car_display: "Yes", bike_display: "Yes",
+        stalls: "Yes", telecasting_media: "Yes",
+        // Inverted vocabulary
+        orchestra_pit_chairs: "Keep",
+        // Already Required/Not Required
+        liquor_licence: "Required",
+        // Free-text -> Required when non-empty
+        sound: "8-channel PA",
+        // Now a Yes/No dropdown (was free text)
+        piano_required: "Yes",
+        // Passthrough
+        crew_cards: "12", licenses: "PPL, IPRS",
+      });
+
+      await syncAdditionalRequirementsChecklist(db, "ev_ankh");
+
+      const byField = new Map(updates
+        .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+        .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+      expect(byField.get("req_digital_standee")).toBe("Required");
+      expect(byField.get("req_car_display")).toBe("Required");
+      expect(byField.get("req_orchestra_pit_chairs")).toBe("Required");
+      expect(byField.get("req_liquor_license")).toBe("Required");
+      expect(byField.get("req_sound")).toBe("Required");
+      expect(byField.get("req_piano")).toBe("Required");
+      expect(byField.get("no_of_crew_cards")).toBe("12");
+      expect(byField.get("licenses")).toBe("PPL, IPRS");
+    });
+
+    it("maps negative/empty form values: No/Remove -> Not Required, blank -> skip", async () => {
+      const { db, updates } = buildReqDb({
+        digital_standee: "No", car_display: "No",
+        orchestra_pit_chairs: "Remove",
+        liquor_licence: "Not Required",
+        piano_required: "No",
+        crew_cards: "12", // set, should still write
+        // bike_display / stalls / telecasting_media / sound / licenses omitted entirely
+      });
+
+      await syncAdditionalRequirementsChecklist(db, "ev_ankh");
+
+      const byField = new Map(updates
+        .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+        .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+      expect(byField.get("req_digital_standee")).toBe("Not Required");
+      expect(byField.get("req_car_display")).toBe("Not Required");
+      expect(byField.get("req_orchestra_pit_chairs")).toBe("Not Required");
+      expect(byField.get("req_liquor_license")).toBe("Not Required");
+      expect(byField.get("req_piano")).toBe("Not Required");
+      expect(byField.get("no_of_crew_cards")).toBe("12");
+      // Omitted form keys are "silent" and must not produce a checklist write.
+      expect(byField.has("req_bike_display")).toBe(false);
+      expect(byField.has("req_stalls")).toBe(false);
+      expect(byField.has("req_telecasting_media")).toBe(false);
+      expect(byField.has("req_sound")).toBe(false);
+      expect(byField.has("licenses")).toBe(false);
+    });
+  });
+
+  describe("reverse: syncRequirementsFromChecklistItem", () => {
+    it("maps checklist Required/Not Required back into the form vocabulary", async () => {
+      const { db, updates } = buildReqDb({ existing_field: "keep me" });
+
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Required");
+
+      // Single UPDATE events SET requirements = ? ...; binds[0] is the JSON.
+      const evUpd = updates.find((u) => u.sql.startsWith("UPDATE events"));
+      expect(evUpd).toBeDefined();
+      const written = JSON.parse(evUpd!.binds[0] as string) as Record<string, unknown>;
+      expect(written.car_display).toBe("Yes");
+      // Existing keys must survive the read-modify-write.
+      expect(written.existing_field).toBe("keep me");
+    });
+
+    it("handles Keep/Remove and liquor vocabulary, plus passthrough fields", async () => {
+      const cases: Array<[string, string | null, string, string]> = [
+        ["req_orchestra_pit_chairs", "Required", "orchestra_pit_chairs", "Keep"],
+        ["req_orchestra_pit_chairs", "Not Required", "orchestra_pit_chairs", "Remove"],
+        ["req_liquor_license", "Required", "liquor_licence", "Required"],
+        ["req_liquor_license", "Not Required", "liquor_licence", "Not Required"],
+        ["req_piano", "Required", "piano_required", "Yes"],
+        ["req_piano", "Not Required", "piano_required", "No"],
+        ["req_telecasting_media", "Not Required", "telecasting_media", "No"],
+        ["no_of_crew_cards", "42", "crew_cards", "42"],
+        ["licenses", "PPL, IPRS", "licenses", "PPL, IPRS"],
+      ];
+      for (const [fieldKey, value, formKey, expected] of cases) {
+        const { db, updates } = buildReqDb({});
+        await syncRequirementsFromChecklistItem(db, "ev_ankh", fieldKey, value);
+        const evUpd = updates.find((u) => u.sql.startsWith("UPDATE events"));
+        expect(evUpd).toBeDefined();
+        const written = JSON.parse(evUpd!.binds[0] as string) as Record<string, unknown>;
+        expect(written[formKey]).toBe(expected);
+      }
+    });
+
+    it("is a no-op for req_sound (form->checklist only) and unknown fields", async () => {
+      const { db, updates } = buildReqDb({ sound: "8-channel PA" });
+
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_sound", "Not Required");
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "event_name", "Some Title");
+
+      // No UPDATE events should be issued.
+      expect(updates.find((u) => u.sql.startsWith("UPDATE events"))).toBeUndefined();
+    });
+
+    it("is a no-op when a dropdown value is neither Required nor Not Required", async () => {
+      const { db, updates } = buildReqDb({});
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", null);
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "");
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Pending");
+      expect(updates.find((u) => u.sql.startsWith("UPDATE events"))).toBeUndefined();
+    });
+
+    it("survives a malformed requirements JSON (starts fresh, still writes)", async () => {
+      const updates: Upd[] = [];
+      const db = {
+        prepare(sql: string) {
+          const statement = {
+            binds: [] as unknown[],
+            bind(...values: unknown[]) { this.binds = values; return this; },
+            async first() {
+              if (sql.includes("SELECT requirements FROM events")) return { requirements: "{not json" };
+              return null;
+            },
+            async all() { return { results: [] }; },
+            async run() {
+              updates.push({ sql, binds: [...this.binds] });
+              return { success: true };
+            },
+          };
+          return statement;
+        },
+      } as unknown as D1Database;
+
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Required");
+      // Should not throw; parse failed so we start from {} and still write the
+      // single mirrored key.
+      const evUpd = updates.find((u) => u.sql.startsWith("UPDATE events"));
+      expect(evUpd).toBeDefined();
+      const written = JSON.parse(evUpd!.binds[0] as string) as Record<string, unknown>;
+      expect(written).toEqual({ car_display: "Yes" });
+    });
+  });
+
+  describe("round-trip stability", () => {
+    // For each Yes/No-style field, checklist -> form -> checklist must yield the
+    // same checklist value. This is the invariant that prevents a slow drift
+    // when the user edits the checklist, then saves the event form.
+    it("checklist -> form -> checklist is idempotent for every mapped dropdown", async () => {
+      const roundTrip: Array<[string, string, string, string[]]> = [
+        // [fieldKey, checklistVal, formKey, forward yesValues]
+        ["req_piano", "Required", "piano_required", ["Yes"]],
+        ["req_piano", "Not Required", "piano_required", ["Yes"]],
+        ["req_liquor_license", "Required", "liquor_licence", ["Required"]],
+        ["req_liquor_license", "Not Required", "liquor_licence", ["Required"]],
+        ["req_orchestra_pit_chairs", "Required", "orchestra_pit_chairs", ["Keep"]],
+        ["req_orchestra_pit_chairs", "Not Required", "orchestra_pit_chairs", ["Keep"]],
+        ["req_digital_standee", "Required", "digital_standee", ["Yes"]],
+        ["req_digital_standee", "Not Required", "digital_standee", ["Yes"]],
+        ["req_car_display", "Required", "car_display", ["Yes"]],
+        ["req_car_display", "Not Required", "car_display", ["Yes"]],
+        ["req_bike_display", "Required", "bike_display", ["Yes"]],
+        ["req_bike_display", "Not Required", "bike_display", ["Yes"]],
+        ["req_stalls", "Required", "stalls", ["Yes"]],
+        ["req_stalls", "Not Required", "stalls", ["Yes"]],
+        ["req_telecasting_media", "Required", "telecasting_media", ["Yes"]],
+        ["req_telecasting_media", "Not Required", "telecasting_media", ["Yes"]],
+      ];
+      for (const [fieldKey, checklistVal, _formKey, yesValues] of roundTrip) {
+        // Reverse: checklist value -> form value.
+        const revDb = buildReqDb({});
+        await syncRequirementsFromChecklistItem(revDb.db, "ev_ankh", fieldKey, checklistVal);
+        const revWritten = JSON.parse(
+          revDb.updates.find((u) => u.sql.startsWith("UPDATE events"))!.binds[0] as string,
+        ) as Record<string, unknown>;
+        const formValue = revWritten[_formKey] as string;
+
+        // Forward: form value -> checklist value.
+        const fwdDb = buildReqDb({ [_formKey]: formValue });
+        await syncAdditionalRequirementsChecklist(fwdDb.db, "ev_ankh");
+        const fwdWritten = fwdDb.updates
+          .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+          .map((u) => u.binds[u.binds.length - 1] as string);
+        expect(fwdWritten).toContain(fieldKey);
+        const fwdValue = fwdDb.updates
+          .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+          .map((u) => u.binds[0] as string);
+        expect(fwdValue).toContain(checklistVal);
+        // Sanity: yesValues membership reproduces the original derivation.
+        expect(yesValues.includes(formValue)).toBe(checklistVal === "Required");
+      }
+    });
   });
 });
