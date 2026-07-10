@@ -260,10 +260,11 @@ describe("API regressions", () => {
     await expect(res.json()).resolves.toMatchObject({ entries: [], byDate: {} });
   });
 
-  it("returns lifecycle entries with a dated milestone fallback (no blank dashboard or calendar)", async () => {
-    // Regression: imported/historical records can lack enquiry_date or matching
-    // status-history rows. They still need a real date so the dashboard can sort
-    // them and the lifecycle calendar can place them in a month grid.
+  it("returns lifecycle entries with a created-date fallback instead of the future show date", async () => {
+    // Regression: a new enquiry created today with an August show date was
+    // being positioned on the August lifecycle calendar because the query fell
+    // back to event_start_date. Lifecycle cards should stay on the date they
+    // entered the pipeline unless a lifecycle milestone date exists.
     const rowWithFallbackDate = {
       id: "current_42",
       milestone_type: "enquiry",
@@ -283,8 +284,7 @@ describe("API regressions", () => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
         expect(sql).toContain("COALESCE(");
-        expect(sql).toContain("date(created_at)");
-        expect(sql).toContain("raw_event_start_date");
+        expect(sql).toContain("END, date(created_at)) AS milestone_date");
         return { all: () => ({ results: [rowWithFallbackDate] }) };
       }
       return {};
@@ -312,8 +312,7 @@ describe("API regressions", () => {
         expect(sql).toContain("WHEN e.status = 'enquiry' THEN NULLIF(e.enquiry_date, '')");
         expect(sql).toContain("ELSE NULLIF(substr(sh.changed_at, 1, 10), '')");
         expect(sql).toContain("normalised_dates");
-        expect(sql).toContain("raw_event_start_date");
-        expect(sql).toContain("date(created_at)");
+        expect(sql).toContain("END, date(created_at)) AS milestone_date");
         expect(sql).not.toContain("END, '') AS milestone_date");
         return { all: () => ({ results: [] }) };
       }

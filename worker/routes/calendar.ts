@@ -102,7 +102,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
       SELECT
         id,
         milestone_type,
-        COALESCE(${normalisedDateSql("raw_date")}, ${normalisedDateSql("raw_event_start_date")}, date(created_at)) AS milestone_date,
+        COALESCE(${normalisedDateSql("raw_date")}, date(created_at)) AS milestone_date,
         event_id,
         event_code,
         ${normalisedDateSql("raw_event_start_date")} AS event_start_date,
