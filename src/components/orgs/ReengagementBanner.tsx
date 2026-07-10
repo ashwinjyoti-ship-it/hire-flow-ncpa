@@ -172,6 +172,5 @@ export function ReengagementBanner({
 function formatRange(target: Date, days: number): string {
   const from = addDays(target, -days);
   const to = addDays(target, days);
-  const fmt = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  return `${fmt(from)} – ${fmt(to)}`;
+  return `${formatDate(isoDate(from))} to ${formatDate(isoDate(to))}`;
 }
