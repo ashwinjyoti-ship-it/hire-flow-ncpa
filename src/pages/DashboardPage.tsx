@@ -131,7 +131,7 @@ export function DashboardPage() {
                       </span>
                       <span className="mt-0.5 block text-[11px] text-ink-muted etched">
                         {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
-                        {task.due_date ? `Target ${formatDate(task.due_date)}` : "No target date"}
+                        {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
                       </span>
                     </span>
                     {task.event_status && <StatusBadge status={task.event_status} />}
