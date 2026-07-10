@@ -301,6 +301,14 @@ describe("frontend regression guards", () => {
     expect(eventForm).not.toContain('<ReviewItem label="Owner" value={form.event_owner} />');
   });
 
+  it("hydrates organisation type only once per resolved organisation so manual picks do not reset", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain("const hydratedOrgIdRef = useRef<string | null>(null)");
+    expect(eventForm).toContain("if (!org || hydratedOrgIdRef.current === org.id) return;");
+    expect(eventForm).not.toContain("}, [resolvedOrg, onSelectOrganisation]);");
+  });
+
   it("keeps carved select fields visually embedded on tablet browsers", () => {
     const css = readFileSync(resolve(root, "src/index.css"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
