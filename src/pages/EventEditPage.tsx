@@ -638,6 +638,77 @@ export function EventEditPage() {
               <Field label="Housekeeping">
                 <textarea value={(reqs.housekeeping as string) ?? ""} onChange={(e) => setReq("housekeeping", e.target.value || null)} className="carved input" rows={1} />
               </Field>
+              <Field label="No. of Crew Cards">
+                <input type="number" min={0} value={(reqs.crew_cards as string) ?? ""} onChange={(e) => setReq("crew_cards", e.target.value || null)} className="carved input" />
+              </Field>
+              <Field label="Licenses (PPL/IPRS etc.)">
+                <textarea value={(reqs.licenses as string) ?? ""} onChange={(e) => setReq("licenses", e.target.value || null)} className="carved input" rows={1} />
+              </Field>
+            </div>
+          </section>
+          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Additional Requirements</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Field label="Orchestra Pit Chairs">
+                  <YesNoSelect value={(reqs.orchestra_pit_chairs as string) ?? ""} onChange={(v) => setReq("orchestra_pit_chairs", v || null)} yesValue="Keep" noValue="Remove" />
+                </Field>
+                {isYes(reqs.orchestra_pit_chairs, "Keep") && (
+                  <Field label="Orchestra Pit Chairs — note (qty)">
+                    <input type="text" value={(reqs.orchestra_pit_chairs_note as string) ?? ""} onChange={(e) => setReq("orchestra_pit_chairs_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Field label="Digital Standee">
+                  <YesNoSelect value={(reqs.digital_standee as string) ?? ""} onChange={(v) => setReq("digital_standee", v || null)} yesValue="Yes" noValue="No" />
+                </Field>
+                {isYes(reqs.digital_standee, "Yes") && (
+                  <Field label="Digital Standee — note">
+                    <input type="text" value={(reqs.digital_standee_note as string) ?? ""} onChange={(e) => setReq("digital_standee_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Field label="Car Display">
+                  <YesNoSelect value={(reqs.car_display as string) ?? ""} onChange={(v) => setReq("car_display", v || null)} yesValue="Yes" noValue="No" />
+                </Field>
+                {isYes(reqs.car_display, "Yes") && (
+                  <Field label="Car Display — note">
+                    <input type="text" value={(reqs.car_display_note as string) ?? ""} onChange={(e) => setReq("car_display_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Field label="Bike Display">
+                  <YesNoSelect value={(reqs.bike_display as string) ?? ""} onChange={(v) => setReq("bike_display", v || null)} yesValue="Yes" noValue="No" />
+                </Field>
+                {isYes(reqs.bike_display, "Yes") && (
+                  <Field label="Bike Display — note">
+                    <input type="text" value={(reqs.bike_display_note as string) ?? ""} onChange={(e) => setReq("bike_display_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Field label="Stalls">
+                  <YesNoSelect value={(reqs.stalls as string) ?? ""} onChange={(v) => setReq("stalls", v || null)} yesValue="Yes" noValue="No" />
+                </Field>
+                {isYes(reqs.stalls, "Yes") && (
+                  <Field label="Stalls — note (no. of stalls)">
+                    <input type="text" value={(reqs.stalls_note as string) ?? ""} onChange={(e) => setReq("stalls_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Field label="Telecasting / Media">
+                  <YesNoSelect value={(reqs.telecasting_media as string) ?? ""} onChange={(v) => setReq("telecasting_media", v || null)} yesValue="Yes" noValue="No" />
+                </Field>
+                {isYes(reqs.telecasting_media, "Yes") && (
+                  <Field label="Telecasting / Media — note">
+                    <input type="text" value={(reqs.telecasting_media_note as string) ?? ""} onChange={(e) => setReq("telecasting_media_note", e.target.value || null)} className="carved input" />
+                  </Field>
+                )}
+              </div>
             </div>
           </section>
         </div>

@@ -23,6 +23,7 @@ import {
   ensureChecklistForEvent,
   getChecklistItems,
   getEventLifecycle,
+  syncAdditionalRequirementsChecklist,
   syncEventReferenceChecklist,
   taskRulesCompletedByLifecycleTransition,
   updateChecklistItem,
@@ -184,6 +185,10 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   await audit({ db, actor: actorFrom(user), action: "event.created", targetType: "event", targetId: id, detail: { title: d.title } });
   await eventActivity(db, id, "created", actorFrom(user).id, { title: d.title });
   await ensureChecklistForEvent(db, id);
+  // The event form is the source of truth for requirements — propagate its
+  // values into the Operations checklist so newly captured requirements show
+  // up on the Operations tab instead of the seeded "Not Required" defaults.
+  await syncAdditionalRequirementsChecklist(db, id);
   return c.json({ id }, 201);
 });
 
@@ -222,6 +227,10 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   // Keep the Operations checklist's "Event Reference" rows in step with edits to
   // the event (title/type/description) so the Operations tab never lags behind.
   await syncEventReferenceChecklist(db, id);
+  // Reconcile the Requirements step with the Operations checklist. Where the
+  // form carries a value it wins; form-silent fields leave manual ops edits in
+  // place (see syncAdditionalRequirementsChecklist for the field mapping).
+  await syncAdditionalRequirementsChecklist(db, id);
   return c.json({ ok: true });
 });
 
