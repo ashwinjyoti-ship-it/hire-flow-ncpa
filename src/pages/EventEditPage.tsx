@@ -380,6 +380,10 @@ export function EventEditPage() {
   });
   const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
   const trimmedTitle = form.title.trim();
+  const selectedDuplicateVenues = useMemo(
+    () => Array.from(new Set(pruneEmptyVenueBookings(form.venue_bookings).map((booking) => booking.venue.trim()).filter(Boolean))),
+    [form.venue_bookings],
+  );
   const duplicateCheckReady = Boolean(
     form.event_start_date
       && trimmedTitle
@@ -390,15 +394,17 @@ export function EventEditPage() {
     org: form.organisation_id,
     title: trimmedTitle,
     date: form.event_start_date ?? "",
+    ...(selectedDuplicateVenues.length > 0 ? { venues: selectedDuplicateVenues.join("|") } : {}),
     ...(id ? { exclude: id } : {}),
   });
   const { data: duplicateData } = useQuery<DuplicateCheckResponse>({
-    queryKey: ["event-duplicates", form.organisation_id, trimmedTitle, form.event_start_date ?? "", id ?? ""],
+    queryKey: ["event-duplicates", form.organisation_id, trimmedTitle, form.event_start_date ?? "", selectedDuplicateVenues.join("|"), id ?? ""],
     queryFn: () => apiGet<DuplicateCheckResponse>(`/events/duplicates?${duplicateQuery.toString()}`),
     enabled: duplicateCheckReady,
     staleTime: 10_000,
   });
   const duplicates = duplicateData?.duplicates ?? [];
+  const hasDuplicateWarning = duplicates.length > 0;
   const reviewOrganisationName = useMemo(() => {
     if (form.organisation_id.startsWith("new:")) return form.organisation_id.slice(4);
     return selectedOrganisation?.name ?? null;
@@ -458,7 +464,7 @@ export function EventEditPage() {
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
   const liquorLicence = isYes(reqs.liquor_licence);
 
-  const canSave = canCreateEvent(form);
+  const canSave = canCreateEvent(form) && !hasDuplicateWarning;
 
   // In edit mode, wait for the existing event before rendering the form so the
   // user never sees an empty form for an event that already has data.
@@ -553,8 +559,9 @@ export function EventEditPage() {
               <div role="alert" className="mt-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-status-awaitingApproval">
                 <p className="text-sm font-semibold etched">Possible duplicate</p>
                 <p className="mt-1 text-xs etched">
-                  We found existing events with the same organisation, event name, and start date.
+                  We found existing events with the same organisation and start date, with either the same event name or one of the same venues.
                 </p>
+                <p className="mt-1 text-xs font-medium etched">Saving is disabled until you change the event details or open the existing record.</p>
                 <div className="mt-3 space-y-2">
                   {duplicates.map((duplicate) => (
                     <div key={duplicate.id} className="rounded-lg bg-white/55 px-3 py-2 text-xs text-ink-primary">

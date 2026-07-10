@@ -178,8 +178,11 @@ describe("frontend regression guards", () => {
 
     expect(eventForm).toContain('queryKey: ["event-duplicates"');
     expect(eventForm).toContain('apiGet<DuplicateCheckResponse>(`/events/duplicates?${duplicateQuery.toString()}`)');
+    expect(eventForm).toContain('venues: selectedDuplicateVenues.join("|")');
     expect(eventForm).toContain("Possible duplicate");
-    expect(eventForm).toContain("organisation, event name, and start date");
+    expect(eventForm).toContain("same organisation and start date");
+    expect(eventForm).toContain("const hasDuplicateWarning = duplicates.length > 0");
+    expect(eventForm).toContain("canCreateEvent(form) && !hasDuplicateWarning");
   });
 
   it("keeps dashboard task rows tied to a specific event", () => {
