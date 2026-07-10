@@ -46,7 +46,7 @@ describe("buildReviewItems", () => {
       "AC Hours",
     ]);
     expect(items.find((item) => item.label === "Organisation")?.value).toBe("Test");
-    expect(items.find((item) => item.label === "Operating Window")?.value).toBe("08/28/2026");
+    expect(items.find((item) => item.label === "Operating Window")?.value).toBe("28/08/2026");
     expect(items.find((item) => item.label === "AC Hours")?.value).toContain("With AC 2h");
     expect(items.find((item) => item.label === "AC Hours")?.value).toContain("Without AC 3h");
   });

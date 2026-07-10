@@ -6,7 +6,7 @@ type LookupsResponse = {
   lookups: Record<string, Array<{ value: string; metadata?: Record<string, unknown> }>>;
 };
 
-const UI_DATE_LOCALE = "en-US";
+const UI_DATE_LOCALE = "en-GB";
 const UI_TIME_ZONE = "Asia/Kolkata";
 
 export function useLookups() {
@@ -25,7 +25,7 @@ function partValue(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPa
   return parts.find((part) => part.type === type)?.value ?? "";
 }
 
-/** Format an ISO date string (yyyy-mm-dd) to MM/DD/YYYY in IST. */
+/** Format an ISO date string (yyyy-mm-dd) to DD/MM/YYYY in IST. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = parseUiDate(iso);
@@ -36,10 +36,10 @@ export function formatDate(iso: string | null | undefined): string {
     day: "2-digit",
     year: "numeric",
   }).formatToParts(d);
-  return `${partValue(parts, "month")}/${partValue(parts, "day")}/${partValue(parts, "year")}`;
+  return `${partValue(parts, "day")}/${partValue(parts, "month")}/${partValue(parts, "year")}`;
 }
 
-/** Format an ISO timestamp for display in IST as MM/DD/YYYY HH:MM (24-hour). */
+/** Format an ISO timestamp for display in IST as DD/MM/YYYY HH:MM (24-hour). */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -53,7 +53,7 @@ export function formatDateTime(iso: string | null | undefined): string {
     minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(d);
-  return `${partValue(parts, "month")}/${partValue(parts, "day")}/${partValue(parts, "year")} ${partValue(parts, "hour")}:${partValue(parts, "minute")}`;
+  return `${partValue(parts, "day")}/${partValue(parts, "month")}/${partValue(parts, "year")} ${partValue(parts, "hour")}:${partValue(parts, "minute")}`;
 }
 
 /** Format a time-only string for display as HH:MM (24-hour). */

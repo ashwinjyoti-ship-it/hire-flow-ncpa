@@ -547,11 +547,11 @@ export function EventEditPage() {
             </label>
             <div className={"mt-2 grid gap-4 " + (singleDay ? "grid-cols-1" : "md:grid-cols-2")}>
               <Field label="Operating Window — Start Date">
-                <input type="date" lang="en-US" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
+                <input type="date" lang="en-GB" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
               </Field>
               {!singleDay && (
                 <Field label="Operating Window — End Date">
-                  <input type="date" lang="en-US" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
+                  <input type="date" lang="en-GB" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
                 </Field>
               )}
             </div>
@@ -673,7 +673,7 @@ export function EventEditPage() {
                             </select>
                           </Field>
                           <Field label="Date">
-                            <input type="date" lang="en-US" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
+                            <input type="date" lang="en-GB" value={se.activity_date} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_date: e.target.value })} className="carved input" />
                           </Field>
                           <Field label="Activity Start">
                             <input type="time" lang="en-GB" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
