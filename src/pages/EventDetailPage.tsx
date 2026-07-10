@@ -790,7 +790,7 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
         <input
           disabled={disabled}
           type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
-          lang={item.field_type === "date" ? "en-US" : undefined}
+          lang={item.field_type === "date" ? "en-GB" : undefined}
           defaultValue={item.value ?? ""}
           onBlur={(ev) => {
             const next = ev.currentTarget.value || null;

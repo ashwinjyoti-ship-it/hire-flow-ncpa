@@ -109,7 +109,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
               <span className="text-xs font-semibold text-ink-secondary etched">Report date (IST)</span>
               <input
                 type="date"
-                lang="en-US"
+                lang="en-GB"
                 value={date}
                 onChange={(ev) => setDate(ev.target.value)}
                 className="carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
@@ -412,11 +412,11 @@ function AnalyticsView() {
       <section className="carved-card flex flex-wrap items-end gap-3 rounded-2xl bg-marble-highlight/50 p-5">
         <label className="block print-hidden">
           <span className="text-xs font-semibold text-ink-secondary etched">From</span>
-          <input type="date" lang="en-US" value={from} onChange={(ev) => setFrom(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+          <input type="date" lang="en-GB" value={from} onChange={(ev) => setFrom(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
         </label>
         <label className="block print-hidden">
           <span className="text-xs font-semibold text-ink-secondary etched">To</span>
-          <input type="date" lang="en-US" value={to} onChange={(ev) => setTo(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+          <input type="date" lang="en-GB" value={to} onChange={(ev) => setTo(ev.target.value)} className="carved mt-1 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
         </label>
         <p className="pb-2 text-xs text-ink-muted etched">
           Venue analytics · {formatDate(from)} to {formatDate(to)} — all five sections follow this range.
