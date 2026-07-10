@@ -6,6 +6,7 @@
  *   PUT  /settings/resend       — set the Resend API key (stored, never returned in full)
  *   POST /settings/resend/test  — send a test email to verify configuration
  *   DELETE /settings/resend     — clear the Resend API key
+ *   PUT  /settings/checklist-intervals — update checklist task due-after-days intervals
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -14,6 +15,16 @@ import { requirePermission } from "../middleware/auth";
 import { actorFrom } from "../middleware/auth";
 import { audit } from "../lib/audit";
 import { makeId } from "../lib/id";
+import {
+  CHECKLIST_INTERVAL_KEYS,
+  CHECKLIST_INTERVAL_META,
+  DEFAULT_CHECKLIST_INTERVALS,
+  SETTING_CHECKLIST_INTERVALS,
+  getChecklistIntervals,
+  mergeChecklistIntervals,
+  syncChecklistDefinitionIntervals,
+  type ChecklistIntervals,
+} from "./checklist-intervals";
 
 export const settingsRoutes = new Hono<AuthEnv>();
 
@@ -38,6 +49,7 @@ settingsRoutes.get("/", requirePermission("settings.manage"), async (c) => {
   const db = c.env.DB;
   const apiKey = await getResendApiKey(db, c.env);
   const mailFrom = await getMailFrom(db, c.env);
+  const checklistIntervals = await getChecklistIntervals(db);
   return c.json({
     resend: {
       configured: Boolean(apiKey),
@@ -46,6 +58,9 @@ settingsRoutes.get("/", requirePermission("settings.manage"), async (c) => {
       source: (await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(SETTING_RESEND_KEY).first()) ? "settings" : (c.env.RESEND_API_KEY ? "env" : "none"),
     },
     mailFrom,
+    checklistIntervals,
+    checklistIntervalMeta: CHECKLIST_INTERVAL_META,
+    checklistIntervalDefaults: DEFAULT_CHECKLIST_INTERVALS,
   });
 });
 
@@ -113,4 +128,33 @@ settingsRoutes.put("/mail-from", requirePermission("settings.manage"), async (c)
   void makeId;
   await audit({ db, actor: actorFrom(user), action: "settings.mail_from_updated", detail: { mailFrom: parsed.data.mailFrom } });
   return c.json({ ok: true, mailFrom: parsed.data.mailFrom });
+});
+
+const ChecklistIntervalsSchema = z.object(
+  Object.fromEntries(
+    CHECKLIST_INTERVAL_KEYS.map((key) => [key, z.number().int().min(0).max(365)])
+  ) as Record<(typeof CHECKLIST_INTERVAL_KEYS)[number], z.ZodNumber>
+);
+
+settingsRoutes.put("/checklist-intervals", requirePermission("settings.manage"), async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const merged = mergeChecklistIntervals(body);
+  const parsed = ChecklistIntervalsSchema.safeParse(merged);
+  if (!parsed.success) return c.json({ error: "Invalid checklist intervals", detail: parsed.error.flatten() }, 400);
+
+  const intervals = parsed.data as ChecklistIntervals;
+  const db = c.env.DB;
+  const user = c.get("user")!;
+  await db.prepare(
+    "INSERT OR REPLACE INTO app_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)"
+  ).bind(SETTING_CHECKLIST_INTERVALS, JSON.stringify(intervals), new Date().toISOString(), user.id).run();
+
+  await syncChecklistDefinitionIntervals(db, intervals);
+  await audit({
+    db,
+    actor: actorFrom(user),
+    action: "settings.checklist_intervals_updated",
+    detail: { intervals },
+  });
+  return c.json({ ok: true, checklistIntervals: intervals });
 });

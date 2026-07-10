@@ -7,7 +7,49 @@ import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
 type Settings = {
   resend: { configured: boolean; keyHint: string | null; source: string };
   mailFrom: string;
+  checklistIntervals: ChecklistIntervals;
+  checklistIntervalMeta: ChecklistIntervalMeta[];
+  checklistIntervalDefaults: ChecklistIntervals;
 };
+
+type ChecklistIntervals = {
+  approval_followup: number;
+  instalment: number;
+  confirmation_letter: number;
+  onstage: number;
+  technical_meeting: number;
+  feedback: number;
+  accounts_file: number;
+  send_file_to_accounts: number;
+};
+
+type ChecklistIntervalMeta = {
+  key: keyof ChecklistIntervals;
+  label: string;
+  description: string;
+};
+
+const DEFAULT_CHECKLIST_INTERVALS: ChecklistIntervals = {
+  approval_followup: 7,
+  instalment: 0,
+  confirmation_letter: 3,
+  onstage: 3,
+  technical_meeting: 0,
+  feedback: 5,
+  accounts_file: 3,
+  send_file_to_accounts: 1,
+};
+
+const DEFAULT_CHECKLIST_INTERVAL_META: ChecklistIntervalMeta[] = [
+  { key: "approval_followup", label: "Approval follow-up", description: "Days after Approval Sent On before the follow-up task is due." },
+  { key: "instalment", label: "Installment follow-up", description: "Days after each installment expected date (0 = due on that date)." },
+  { key: "confirmation_letter", label: "Confirmation letter follow-up", description: "Days after Confirmation Letter is couriered." },
+  { key: "onstage", label: "OnStage follow-up", description: "Days after OnStage is asked of the client." },
+  { key: "technical_meeting", label: "Technical meeting", description: "Days after the technical meeting date (0 = due on that date)." },
+  { key: "feedback", label: "Feedback follow-up", description: "Days after the feedback form is sent." },
+  { key: "accounts_file", label: "Accounts file follow-up", description: "Days after File Sent to Accounts before follow-up is due." },
+  { key: "send_file_to_accounts", label: "Send file to accounts", description: "Days after the final show date to create the Send file to accounts task." },
+];
 
 async function fetchSettings(): Promise<Settings> {
   const res = await fetch("/api/settings", { credentials: "include" });
@@ -298,6 +340,26 @@ export function SettingsPage() {
 
           {isAdmin && (
             <CollapsibleSection
+              id="checklist-intervals"
+              title="Check List Intervals"
+              description="How many days after each checklist trigger a follow-up task becomes due. Defaults match the previous hardcoded values."
+            >
+              <ChecklistIntervalsSection
+                intervals={data?.checklistIntervals ?? DEFAULT_CHECKLIST_INTERVALS}
+                meta={data?.checklistIntervalMeta ?? DEFAULT_CHECKLIST_INTERVAL_META}
+                defaults={data?.checklistIntervalDefaults ?? DEFAULT_CHECKLIST_INTERVALS}
+                onSaved={() => {
+                  setMsg("Checklist intervals saved.");
+                  setError(null);
+                  qc.invalidateQueries({ queryKey: ["settings"] });
+                }}
+                onError={(message) => setError(message)}
+              />
+            </CollapsibleSection>
+          )}
+
+          {isAdmin && (
+            <CollapsibleSection
               id="event-owners"
               title="Event Owners (Accounts)"
               description="Each event owner is a login. Adding one generates a one-time temporary password — share it with the owner securely. They will be prompted to choose their own password on first sign-in."
@@ -386,6 +448,115 @@ function ConfiguredBadge({ configured }: { configured: boolean }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-status-awaitingApproval/15 px-2.5 py-1 text-[11px] font-medium text-status-awaitingApproval etched">
       <span className="h-1.5 w-1.5 rounded-full bg-status-awaitingApproval" /> Not configured
     </span>
+  );
+}
+
+function ChecklistIntervalsSection({
+  intervals,
+  meta,
+  defaults,
+  onSaved,
+  onError,
+}: {
+  intervals: ChecklistIntervals;
+  meta: ChecklistIntervalMeta[];
+  defaults: ChecklistIntervals;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState<ChecklistIntervals>(intervals);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(intervals);
+  }, [intervals]);
+
+  const dirty = meta.some((item) => draft[item.key] !== intervals[item.key]);
+
+  const save = useMutation({
+    mutationFn: async (next: ChecklistIntervals) => {
+      const res = await fetch("/api/settings/checklist-intervals", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(next),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to save intervals");
+      return next;
+    },
+    onSuccess: () => {
+      setLocalError(null);
+      onSaved();
+    },
+    onError: (e: Error) => {
+      setLocalError(e.message);
+      onError(e.message);
+    },
+  });
+
+  function setDays(key: keyof ChecklistIntervals, raw: string) {
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n) || n < 0) return;
+    setDraft((prev) => ({ ...prev, [key]: Math.min(365, Math.floor(n)) }));
+  }
+
+  return (
+    <div className="space-y-4">
+      {localError && (
+        <div role="alert" className="rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">
+          {localError}
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {meta.map((item) => (
+          <label key={item.key} className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-sage etched">{item.label}</span>
+            <p className="mb-2 text-[11px] leading-snug text-ink-muted etched">{item.description}</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={365}
+                step={1}
+                value={draft[item.key]}
+                onChange={(e) => setDays(item.key, e.target.value)}
+                className="carved w-24 rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+              />
+              <span className="text-xs text-ink-muted etched">
+                days
+                {draft[item.key] !== defaults[item.key] ? (
+                  <span className="ml-1 text-ink-secondary">(default {defaults[item.key]})</span>
+                ) : null}
+              </span>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          disabled={save.isPending || !dirty}
+          onClick={() => save.mutate(draft)}
+          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+        >
+          {save.isPending ? "Saving…" : "Save intervals"}
+        </button>
+        <button
+          type="button"
+          disabled={save.isPending}
+          onClick={() => setDraft({ ...defaults })}
+          className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+        >
+          Reset to defaults
+        </button>
+      </div>
+      <p className="text-[11px] text-ink-muted etched">
+        Changes apply to newly generated tasks. Existing open tasks keep their current due dates.
+      </p>
+    </div>
   );
 }
 

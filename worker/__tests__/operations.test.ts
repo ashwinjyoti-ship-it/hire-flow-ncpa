@@ -204,6 +204,11 @@ describe("operational lifecycle readiness", () => {
             this.binds = values;
             return this;
           },
+          async first() {
+            // No custom checklist intervals stored → defaults (1 day after show).
+            if (sql.includes("FROM app_settings")) return null;
+            return null;
+          },
           async all() {
             if (sql.includes("cd.triggers_task IS NOT NULL")) return { results: [] };
             if (sql.includes("JOIN checklist_items ci ON ci.event_id = e.id")) {

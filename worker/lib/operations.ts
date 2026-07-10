@@ -1,5 +1,6 @@
 import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
+import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { makeId } from "./id";
 import { canConfirm, canTransition, STATUS_LABELS, type EventStatus } from "./state-machine";
 
@@ -626,8 +627,10 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
     return;
   }
   if (!rule?.rule) return;
+  const intervals = await getChecklistIntervals(db);
+  const dueAfterDays = dueAfterDaysForRule(intervals, rule.rule, Number(rule.due_after_days ?? 0));
   const baseDate = item.due_date ?? todayIso();
-  const dueDate = addDays(baseDate, Number(rule.due_after_days ?? 0));
+  const dueDate = addDays(baseDate, dueAfterDays);
   const idempotency = `checklist:${item.id}:${rule.rule}`;
   const now = new Date().toISOString();
 
@@ -714,6 +717,9 @@ export async function completeTasksForSourceRules(
 }
 
 async function createFileToAccountsReminders(db: D1Database, today: string, now: string): Promise<number> {
+  const intervals = await getChecklistIntervals(db);
+  const dueAfterDays = intervals.send_file_to_accounts;
+
   const { results } = await db.prepare(
     `SELECT e.id AS event_id,
             e.event_end_date,
@@ -738,7 +744,7 @@ async function createFileToAccountsReminders(db: D1Database, today: string, now:
   for (const event of results) {
     const finalShowDate = event.event_end_date ?? event.event_start_date;
     if (!finalShowDate) continue;
-    const dueDate = addDays(finalShowDate, 1);
+    const dueDate = addDays(finalShowDate, dueAfterDays);
     const inserted = await db.prepare(
       `INSERT OR IGNORE INTO tasks
        (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
