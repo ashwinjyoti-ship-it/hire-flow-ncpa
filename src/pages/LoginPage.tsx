@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { MarbleBackdrop } from "../components/MarbleBackdrop";
+import { BrandLogo } from "../components/BrandLogo";
 
 type Phase = "credentials" | "mfa";
 
@@ -84,11 +85,8 @@ export function LoginPage() {
       <MarbleBackdrop />
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-sage-btn text-sage-text carved-btn-sage">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path d="M3 10h18M8 2v4M16 2v4" strokeLinecap="round" />
-            </svg>
+          <div className="mx-auto mb-4 w-20">
+            <BrandLogo className="drop-shadow-[0_10px_20px_rgba(73,88,58,0.16)]" />
           </div>
           <h1 className="text-xl font-semibold text-ink-primary etched-deep">NCPA Venue for Hire</h1>
           <p className="mt-1 text-sm text-ink-muted etched">

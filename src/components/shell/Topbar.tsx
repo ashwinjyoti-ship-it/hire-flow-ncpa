@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, logout } from "../../lib/auth";
 import { describeAccess } from "../../../worker/lib/rbac";
 import { apiGet, apiPost } from "../../lib/api";
+import { BrandLogo } from "../BrandLogo";
 
 type NotificationRow = {
   id: string;
@@ -46,11 +47,8 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             </svg>
           </button>
           <Link to="/dashboard" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sage-btn text-sage-text carved-btn-sage">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path d="M3 10h18M8 2v4M16 2v4" strokeLinecap="round" />
-              </svg>
+            <div className="w-11 shrink-0">
+              <BrandLogo className="drop-shadow-[0_8px_16px_rgba(73,88,58,0.14)]" />
             </div>
             <div className="min-w-0 leading-tight">
               <div className="text-[13px] font-semibold uppercase tracking-wider2 text-sage etched">
