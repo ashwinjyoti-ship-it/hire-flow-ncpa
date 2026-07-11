@@ -81,21 +81,21 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-6">
+    <div className="flex min-h-screen items-center justify-center px-4 sm:px-6">
       <MarbleBackdrop />
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 w-20">
+          <div className="mx-auto mb-4 w-24 sm:w-32">
             <BrandLogo className="drop-shadow-[0_10px_20px_rgba(73,88,58,0.16)]" />
           </div>
-          <h1 className="text-xl font-semibold text-ink-primary etched-deep">NCPA Venue for Hire</h1>
+          <h1 className="text-lg font-semibold text-ink-primary etched-deep sm:text-xl">NCPA Venue for Hire</h1>
           <p className="mt-1 text-sm text-ink-muted etched">
             {phase === "credentials" ? "Sign in to the operations workspace" : "Enter your verification code"}
           </p>
         </div>
 
         {phase === "credentials" ? (
-          <form onSubmit={onLogin} className="carved-card rounded-2xl bg-marble-highlight/60 p-6 backdrop-blur-sm">
+          <form onSubmit={onLogin} className="carved-card rounded-2xl bg-marble-highlight/60 p-5 backdrop-blur-sm sm:p-6">
             {stateMessage && (
               <div role="status" className="mb-4 rounded-lg bg-sage/10 px-3 py-2 text-xs text-sage-text">
                 {stateMessage}
@@ -141,7 +141,7 @@ export function LoginPage() {
             </button>
           </form>
         ) : (
-          <form onSubmit={onMfa} className="carved-card rounded-2xl bg-marble-highlight/60 p-6 backdrop-blur-sm">
+          <form onSubmit={onMfa} className="carved-card rounded-2xl bg-marble-highlight/60 p-5 backdrop-blur-sm sm:p-6">
             <p className="mb-4 text-xs text-ink-secondary etched">
               Open your authenticator app (Google Authenticator, 1Password, etc.) and enter the 6-digit code.
             </p>

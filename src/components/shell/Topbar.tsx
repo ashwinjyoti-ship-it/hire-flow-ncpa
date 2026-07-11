@@ -33,9 +33,9 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
   });
 
   return (
-    <header className="carved-header sticky top-0 z-50 mx-auto w-full max-w-[1600px] rounded-b-2xl bg-marble-highlight/75 px-4 py-3 backdrop-blur-sm lg:relative lg:top-auto lg:mt-6 lg:rounded-2xl lg:bg-marble-highlight/60 lg:px-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
+    <header className="carved-header sticky top-0 z-50 mx-auto w-full max-w-[1600px] rounded-b-2xl bg-marble-highlight/75 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4 lg:relative lg:top-auto lg:mt-6 lg:rounded-2xl lg:bg-marble-highlight/60 lg:px-6">
+      <div className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onMenuToggle}
@@ -46,15 +46,15 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
               <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
             </svg>
           </button>
-          <Link to="/dashboard" className="flex min-w-0 items-center gap-3">
-            <div className="w-11 shrink-0">
+          <Link to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="w-14 shrink-0 sm:w-20">
               <BrandLogo className="drop-shadow-[0_8px_16px_rgba(73,88,58,0.14)]" />
             </div>
             <div className="min-w-0 leading-tight">
-              <div className="text-[13px] font-semibold uppercase tracking-wider2 text-sage etched">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sage etched sm:text-[13px] sm:tracking-wider2">
                 NCPA
               </div>
-              <div className="truncate text-sm font-semibold text-ink-primary etched-deep">
+              <div className="hidden truncate text-sm font-semibold text-ink-primary etched-deep sm:block">
                 Venue for Hire
               </div>
             </div>
@@ -69,7 +69,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
           />
         </div>
         {user ? (
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <div className="group relative">
               <button
                 type="button"
