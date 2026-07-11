@@ -238,12 +238,12 @@ function ChecklistProgress({ value }: { value: number | null }) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
     <div
-      className="min-w-[5.5rem] flex-1"
+      className="min-w-[7.5rem] flex-1"
       title={`Checklist ${pct}% complete`}
       aria-label={`Checklist ${pct}% complete`}
     >
       <div className="mb-0.5 flex items-center justify-end gap-2">
-        <span className="text-[10px] font-semibold tabular-nums text-sage-text etched">{pct}%</span>
+        <span className="text-[10px] font-semibold tabular-nums text-sage-text etched">{pct}% complete</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-marble-shadow/60">
         <div className="h-full rounded-full bg-sage-btn transition-[width] duration-300" style={{ width: `${pct}%` }} />
