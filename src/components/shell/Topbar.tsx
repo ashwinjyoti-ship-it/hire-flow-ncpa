@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, logout } from "../../lib/auth";
 import { describeAccess } from "../../../worker/lib/rbac";
@@ -19,7 +20,10 @@ type NotificationRow = {
 /** Top navigation bar with global search + user menu (carved-header depth). */
 export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
   const { user } = useAuth();
+  const location = useLocation();
   const qc = useQueryClient();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
   const { data } = useQuery({
     queryKey: ["notifications", "unread"],
     queryFn: () => apiGet<{ notifications: NotificationRow[]; unread: number }>("/notifications?unread=1"),
@@ -31,6 +35,31 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
     mutationFn: async () => apiPost("/notifications/read-all"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
+
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!notificationsRef.current?.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setNotificationsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [notificationsOpen]);
 
   return (
     <header className="carved-header sticky top-0 z-50 mx-auto w-full max-w-[1600px] rounded-b-2xl bg-marble-highlight/75 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4 lg:relative lg:top-auto lg:mt-6 lg:rounded-2xl lg:bg-marble-highlight/60 lg:px-6">
@@ -70,10 +99,13 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
         </div>
         {user ? (
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-            <div className="group relative">
+            <div ref={notificationsRef} className="relative">
               <button
                 type="button"
+                aria-expanded={notificationsOpen}
+                aria-controls="topbar-notifications"
                 aria-label="Notifications"
+                onClick={() => setNotificationsOpen((open) => !open)}
                 className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-ink-secondary"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -86,12 +118,19 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                   </span>
                 )}
               </button>
-              <div className="pointer-events-none absolute right-0 z-[70] mt-2 w-80 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
+              <div
+                id="topbar-notifications"
+                className={`absolute right-0 z-[70] mt-2 w-80 transition ${notificationsOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+              >
                 <div className="carved-card rounded-2xl bg-marble-highlight p-4 shadow-xl">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-sage etched">Notifications</h2>
                     {(data?.unread ?? 0) > 0 && (
-                      <button type="button" onClick={() => markAll.mutate()} className="text-xs text-sage-text underline">
+                      <button
+                        type="button"
+                        onClick={() => markAll.mutate()}
+                        className="text-xs text-sage-text underline"
+                      >
                         Mark read
                       </button>
                     )}
@@ -104,6 +143,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                         <Link
                           key={n.id}
                           to={n.related_event_id ? `/events/${n.related_event_id}` : "/tasks"}
+                          onClick={() => setNotificationsOpen(false)}
                           className="block rounded-xl bg-marble-shadow/30 px-3 py-2 text-xs hover:bg-marble-shadow/50"
                         >
                           <div className="font-semibold text-ink-primary etched-deep">{n.title}</div>
