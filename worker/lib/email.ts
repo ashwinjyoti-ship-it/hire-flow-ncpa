@@ -30,6 +30,34 @@ export async function sendTransactionalEmail(
   }
 }
 
+/**
+ * Send an HTML email immediately (used by the twice-daily brief digests,
+ * which need rich formatting the plain-text notification queue can't carry).
+ */
+export async function sendHtmlEmail(
+  env: Pick<Env, "DB" | "MAIL_FROM" | "RESEND_API_KEY">,
+  message: { to: string; subject: string; html: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const db = env.DB;
+  const apiKey = await getResendApiKey(db, env);
+  if (!apiKey) return { ok: false, error: "Resend is not configured." };
+  const from = await getMailFrom(db, env);
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: message.to, subject: message.subject, html: message.html }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, error: body.slice(0, 250) || `Resend rejected ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 type PendingEmail = {
   id: string;
   title: string;
