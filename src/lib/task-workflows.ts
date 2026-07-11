@@ -10,6 +10,7 @@ export type TaskLike = {
   event_end_date?: string | null;
   event_venues?: string | null;
   event_owner?: string | null;
+  event_overall_completion?: number | null;
   task_type: "automatic" | "manual";
   source_checklist_item_id?: string | null;
   source_module?: "operations" | "accounts" | null;
@@ -40,6 +41,7 @@ export type EventCommandCard = {
     endDate: string | null;
     venues: string | null;
     owner: string | null;
+    overallCompletion: number | null;
   };
   tasks: TaskLike[];
   workflowGroups: Array<TaskGroup<WorkflowFamily>>;
@@ -126,6 +128,7 @@ export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday())
           endDate: first.event_end_date ?? null,
           venues: first.event_venues ?? null,
           owner: first.event_owner ?? first.assignee_name ?? null,
+          overallCompletion: first.event_overall_completion ?? null,
         },
         tasks: sortedTasks,
         workflowGroups: groupTasksByWorkflowOrder(sortedTasks, CARD_WORKFLOW_ORDER, todayIso),
