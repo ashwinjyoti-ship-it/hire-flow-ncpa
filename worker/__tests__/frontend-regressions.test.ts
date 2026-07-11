@@ -217,6 +217,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("aria-expanded");
     expect(source).toContain("Expand");
     expect(source).toContain("Collapse");
+    expect(source).toContain("ChecklistProgress");
+    expect(source).toContain("overallCompletion");
   });
 
   it("keeps stale lifecycle tasks out of dashboard attention", () => {

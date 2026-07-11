@@ -26,6 +26,7 @@ function task(overrides: Partial<TaskLike> & Pick<TaskLike, "id" | "title">): Ta
     event_end_date: overrides.event_end_date ?? null,
     event_venues: overrides.event_venues ?? "JBT",
     event_owner: overrides.event_owner ?? "Aditi Rao",
+    event_overall_completion: overrides.event_overall_completion ?? null,
     task_type: overrides.task_type ?? "automatic",
     source_checklist_item_id: overrides.source_checklist_item_id ?? null,
     source_module: overrides.source_module ?? null,
@@ -61,6 +62,16 @@ describe("task workflow helpers", () => {
     ], today);
 
     expect(cards.map((card) => card.event.id)).toEqual(["ev_overdue", "ev_today", "ev_soon", "ev_later", "ev_high", "ev_nodate"]);
+  });
+
+  it("carries checklist completion onto event command cards", () => {
+    const cards = buildEventCommandCards([
+      task({ id: "a", title: "Work", event_id: "ev_a", event_overall_completion: 0.37 }),
+      task({ id: "b", title: "Other", event_id: "ev_b", event_overall_completion: null }),
+    ], today);
+
+    expect(cards.find((card) => card.event.id === "ev_a")?.event.overallCompletion).toBe(0.37);
+    expect(cards.find((card) => card.event.id === "ev_b")?.event.overallCompletion).toBeNull();
   });
 
   it("groups tasks by timing and workflow lane", () => {

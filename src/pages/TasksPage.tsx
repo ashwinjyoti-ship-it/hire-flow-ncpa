@@ -127,40 +127,16 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
         return (
           <article key={card.event.id ?? card.event.title} className={`carved-card overflow-hidden rounded-2xl border bg-marble-highlight/70 ${surface.card}`}>
             <div className={`border-l-4 ${surface.border} px-5 py-4`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    {card.event.status && <StatusBadge status={card.event.status as EventStatus} />}
-                    <span className="rounded-full bg-marble-highlight/70 px-2 py-0.5 text-[11px] font-semibold text-ink-secondary ring-1 ring-ink-muted/10 etched">
-                      {card.openTaskCount} open {card.openTaskCount === 1 ? "task" : "tasks"}
-                    </span>
-                  </div>
-                  <h3 className="truncate text-base font-semibold text-ink-primary etched-deep">
-                    {card.event.id ? <Link to={getEventOperationsLink(card.event.id)} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
-                  </h3>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
-                    {card.event.startDate && <span>{formatEventDate(card.event.startDate, card.event.endDate)}</span>}
-                    {card.event.venues && <span>{card.event.venues}</span>}
-                    {card.event.owner && <span>{card.event.owner}</span>}
-                  </div>
-                  {nextTask && (
-                    <div className="mt-3 rounded-lg bg-marble-highlight/70 px-3 py-2 ring-1 ring-ink-muted/10">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-sage-btn px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sage-text etched" aria-label="Recommended next task for this event">
-                          Do this next
-                          <span aria-hidden="true">→</span>
-                        </span>
-                        {uniqueUrgentLabels.map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
-                      </div>
-                      <Link to={getTaskWorkLink(nextTask)} className="mt-1 block truncate text-xs font-semibold text-ink-primary etched-deep hover:text-sage-text">
-                        {nextTask.title}
-                      </Link>
-                      <div className="mt-0.5 text-[11px] text-ink-muted etched">
-                        {workflowLabel(getWorkflowFamily(nextTask))}
-                      </div>
-                    </div>
-                  )}
+              <div className="mb-2 flex items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {card.event.status && <StatusBadge status={card.event.status as EventStatus} />}
+                  <span className="rounded-full bg-marble-highlight/70 px-2 py-0.5 text-[11px] font-semibold text-ink-secondary ring-1 ring-ink-muted/10 etched">
+                    {card.openTaskCount} open {card.openTaskCount === 1 ? "task" : "tasks"}
+                  </span>
                 </div>
+                {card.event.id && (
+                  <ChecklistProgress value={card.event.overallCompletion} />
+                )}
                 <button
                   type="button"
                   onClick={() => toggleCard(cardKey)}
@@ -170,6 +146,31 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
                   {isExpanded ? "Collapse" : "Expand"}
                 </button>
               </div>
+              <h3 className="truncate text-base font-semibold text-ink-primary etched-deep">
+                {card.event.id ? <Link to={getEventOperationsLink(card.event.id)} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
+              </h3>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
+                {card.event.startDate && <span>{formatEventDate(card.event.startDate, card.event.endDate)}</span>}
+                {card.event.venues && <span>{card.event.venues}</span>}
+                {card.event.owner && <span>{card.event.owner}</span>}
+              </div>
+              {nextTask && (
+                <div className="mt-3 rounded-lg bg-marble-highlight/70 px-3 py-2 ring-1 ring-ink-muted/10">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sage-btn px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sage-text etched" aria-label="Recommended next task for this event">
+                      Do this next
+                      <span aria-hidden="true">→</span>
+                    </span>
+                    {uniqueUrgentLabels.map((label) => <span key={label} className={urgencyClass(label)}>{label}</span>)}
+                  </div>
+                  <Link to={getTaskWorkLink(nextTask)} className="mt-1 block truncate text-xs font-semibold text-ink-primary etched-deep hover:text-sage-text">
+                    {nextTask.title}
+                  </Link>
+                  <div className="mt-0.5 text-[11px] text-ink-muted etched">
+                    {workflowLabel(getWorkflowFamily(nextTask))}
+                  </div>
+                </div>
+              )}
             </div>
             {isExpanded && (
               <div className="space-y-4 px-5 pb-5">
@@ -232,6 +233,24 @@ type TaskViewProps = {
   tasks: TaskRow[];
   today: string;
 };
+
+function ChecklistProgress({ value }: { value: number | null }) {
+  const pct = value != null ? Math.round(value * 100) : 0;
+  return (
+    <div
+      className="min-w-[5.5rem] flex-1"
+      title={`Checklist ${pct}% complete`}
+      aria-label={`Checklist ${pct}% complete`}
+    >
+      <div className="mb-0.5 flex items-center justify-end gap-2">
+        <span className="text-[10px] font-semibold tabular-nums text-sage-text etched">{pct}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-marble-shadow/60">
+        <div className="h-full rounded-full bg-sage-btn transition-[width] duration-300" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 function TaskMiniCard({ task, today }: TaskCardProps) {
   // Inside an event card the show date already heads the card, so the

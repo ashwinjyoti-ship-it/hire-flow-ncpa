@@ -42,6 +42,7 @@ taskRoutes.get("/", requireUser, async (c) => {
     `SELECT t.*, e.title AS event_title, e.status AS event_status,
             e.event_start_date AS event_start_date, e.event_end_date AS event_end_date,
             e.event_owner AS event_owner,
+            e.overall_completion AS event_overall_completion,
             o.name AS organisation_name,
             ci.module AS source_module, ci.field_key AS source_field_key, ci.label AS source_label,
             (SELECT GROUP_CONCAT(vb.venue, ', ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS event_venues,
