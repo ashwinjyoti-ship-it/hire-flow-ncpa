@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
+import { AnnouncementBanner } from "../components/AnnouncementBanner";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
@@ -67,6 +68,8 @@ export function DashboardPage() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle="All active lifecycle records and work needing attention" />
+
+      <AnnouncementBanner />
 
       {/* Summary cards */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">

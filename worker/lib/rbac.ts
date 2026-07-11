@@ -32,6 +32,7 @@ export type Permission =
   | "report.generate"
   | "report.view"
   | "analytics.view"
+  | "announcement.manage"
   | "user.manage"
   | "settings.manage"
   | "notification.rules.manage"
@@ -43,7 +44,7 @@ const GRANTS: Record<UserRole, Permission[]> = {
     "event.status.change", "event.cancel", "event.archive",
     "checklist.update", "task.create", "task.complete", "task.assign", "task.view.all",
     "document.upload", "document.delete", "conflict.override", "date.correct",
-    "report.generate", "report.view", "analytics.view",
+    "report.generate", "report.view", "analytics.view", "announcement.manage",
     "user.manage", "settings.manage", "notification.rules.manage", "audit.view",
   ],
   venue_manager: [
