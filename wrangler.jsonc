@@ -21,7 +21,7 @@
   ],
   "vars": {
     "APP_URL": "https://ncpa-hire.pages.dev",
-    "MAIL_FROM": "NCPA Venue Hire <noreply@ncpa-hire.pages.dev>",
+    "MAIL_FROM": "NCPA Venue Hire <onboarding@resend.dev>",
     "TZ": "Asia/Kolkata"
   }
 }

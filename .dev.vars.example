@@ -12,8 +12,10 @@ SESSION_SECRET=change-me-to-a-long-random-string-for-local-dev-only
 # Set via admin Settings UI in production, or here for local dev.
 RESEND_API_KEY=
 
-# Resend "from" address (a verified domain in Resend)
-MAIL_FROM=NCPA Venue Hire <noreply@example.com>
+# Resend "from" address. Until a domain is verified in Resend, use:
+#   NCPA Venue Hire <onboarding@resend.dev>
+# After verifying mail.ncpamumbai.com (or another domain), switch to that address.
+MAIL_FROM=NCPA Venue Hire <onboarding@resend.dev>
 
 # App URL (used for email links / audit)
 APP_URL=http://localhost:8788

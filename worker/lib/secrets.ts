@@ -30,6 +30,7 @@ export const settingsRoutes = new Hono<AuthEnv>();
 
 const SETTING_RESEND_KEY = "resend_api_key";
 const SETTING_MAIL_FROM = "mail_from";
+const SETTING_EMAIL_FALLBACK = "email_fallback";
 
 /** Resolve the effective Resend API key: runtime setting > env secret. */
 export async function getResendApiKey(db: D1Database, env: { RESEND_API_KEY?: string }): Promise<string | null> {
@@ -41,7 +42,29 @@ export async function getResendApiKey(db: D1Database, env: { RESEND_API_KEY?: st
 /** Resolve the effective "from" address. */
 export async function getMailFrom(db: D1Database, env: { MAIL_FROM?: string }): Promise<string> {
   const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(SETTING_MAIL_FROM).first<{ value: string | null }>();
-  return row?.value ?? env.MAIL_FROM ?? "NCPA Venue Hire <noreply@ncpa-hire.pages.dev>";
+  return row?.value ?? env.MAIL_FROM ?? "NCPA Venue Hire <onboarding@resend.dev>";
+}
+
+/** Admin inbox used when Resend cannot yet deliver to arbitrary recipients. */
+export async function getEmailFallback(db: D1Database): Promise<string | null> {
+  const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(SETTING_EMAIL_FALLBACK).first<{ value: string | null }>();
+  const value = row?.value?.trim();
+  return value || null;
+}
+
+type ResendDomainSummary = { id: string; name: string; status: string };
+
+async function listResendDomains(apiKey: string): Promise<ResendDomainSummary[]> {
+  try {
+    const res = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json().catch(() => ({}))) as { data?: ResendDomainSummary[] };
+    return data.data ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // GET / — non-secret view + configured flags.
@@ -49,15 +72,30 @@ settingsRoutes.get("/", requirePermission("settings.manage"), async (c) => {
   const db = c.env.DB;
   const apiKey = await getResendApiKey(db, c.env);
   const mailFrom = await getMailFrom(db, c.env);
+  const emailFallback = await getEmailFallback(db);
   const checklistIntervals = await getChecklistIntervals(db);
+  const domains = apiKey ? await listResendDomains(apiKey) : [];
+  const verifiedDomain = domains.find((d) => d.status === "verified" || d.status === "live");
+  const lastFailure = await db.prepare(
+    `SELECT detail, created_at FROM audit_logs
+     WHERE action IN ('auth.password_reset_email_failed', 'auth.password_reset_relayed')
+     ORDER BY created_at DESC LIMIT 1`
+  ).first<{ detail: string | null; created_at: string }>();
+
   return c.json({
     resend: {
       configured: Boolean(apiKey),
       // Show only the last 4 chars so the admin can confirm which key is set.
       keyHint: apiKey ? `••••${apiKey.slice(-4)}` : null,
       source: (await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(SETTING_RESEND_KEY).first()) ? "settings" : (c.env.RESEND_API_KEY ? "env" : "none"),
+      testingMode: Boolean(apiKey) && !verifiedDomain,
+      domains: domains.map((d) => ({ name: d.name, status: d.status })),
     },
     mailFrom,
+    emailFallback,
+    emailHealth: lastFailure
+      ? { lastErrorAt: lastFailure.created_at, lastError: lastFailure.detail }
+      : null,
     checklistIntervals,
     checklistIntervalMeta: CHECKLIST_INTERVAL_META,
     checklistIntervalDefaults: DEFAULT_CHECKLIST_INTERVALS,
@@ -89,31 +127,24 @@ const TestSchema = z.object({ to: z.string().email() });
 settingsRoutes.post("/resend/test", requirePermission("settings.manage"), async (c) => {
   const parsed = TestSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "Valid recipient email required" }, 400);
-  const db = c.env.DB;
-  const apiKey = await getResendApiKey(db, c.env);
+  const apiKey = await getResendApiKey(c.env.DB, c.env);
   if (!apiKey) return c.json({ error: "Resend not configured" }, 400);
-  const mailFrom = await getMailFrom(db, c.env);
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: mailFrom,
-        to: parsed.data.to,
-        subject: "NCPA Venue for Hire — test email",
-        text: "This is a test email confirming that Resend is correctly configured.",
-      }),
-    });
-    if (!res.ok) {
-      const body = (await res.text().catch(() => "")) as string;
-      return c.json({ error: `Resend rejected the test: ${res.status}`, detail: body.slice(0, 200) }, 502);
-    }
-    const data = (await res.json()) as { id?: string };
-    return c.json({ ok: true, messageId: data.id ?? "sent" });
-  } catch (err) {
-    return c.json({ error: "Failed to reach Resend", detail: (err as Error).message }, 502);
+  const { sendTransactionalEmail } = await import("./email");
+  const result = await sendTransactionalEmail(c.env, {
+    to: parsed.data.to,
+    subject: "NCPA Venue for Hire — test email",
+    text: "This is a test email confirming that Resend is correctly configured.",
+  });
+  if (!result.ok) {
+    return c.json({
+      error: result.testingMode
+        ? "Resend is in testing mode. Verify a domain at resend.com/domains, or send the test to your Resend account email."
+        : `Resend rejected the test`,
+      detail: result.error.slice(0, 200),
+    }, 502);
   }
+  return c.json({ ok: true, messageId: result.messageId ?? "sent" });
 });
 
 const MailFromSchema = z.object({ mailFrom: z.string().min(3) });
@@ -128,6 +159,27 @@ settingsRoutes.put("/mail-from", requirePermission("settings.manage"), async (c)
   void makeId;
   await audit({ db, actor: actorFrom(user), action: "settings.mail_from_updated", detail: { mailFrom: parsed.data.mailFrom } });
   return c.json({ ok: true, mailFrom: parsed.data.mailFrom });
+});
+
+const FallbackSchema = z.object({ email: z.union([z.string().email(), z.literal("")]) });
+settingsRoutes.put("/email-fallback", requirePermission("settings.manage"), async (c) => {
+  const parsed = FallbackSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "Valid email required (or empty to clear)" }, 400);
+  const db = c.env.DB;
+  const user = c.get("user")!;
+  const value = parsed.data.email.trim();
+  if (!value) {
+    await db.prepare("DELETE FROM app_settings WHERE key = ?").bind(SETTING_EMAIL_FALLBACK).run();
+  } else {
+    await db.prepare(
+      "INSERT OR REPLACE INTO app_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)"
+    ).bind(SETTING_EMAIL_FALLBACK, value.toLowerCase(), new Date().toISOString(), user.id).run();
+  }
+  await audit({
+    db, actor: actorFrom(user), action: "settings.email_fallback_updated",
+    detail: { emailFallback: value || null },
+  });
+  return c.json({ ok: true, emailFallback: value || null });
 });
 
 const ChecklistIntervalsSchema = z.object(

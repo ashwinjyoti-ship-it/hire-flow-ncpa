@@ -5,8 +5,16 @@ import { useAuth } from "../lib/auth";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
 
 type Settings = {
-  resend: { configured: boolean; keyHint: string | null; source: string };
+  resend: {
+    configured: boolean;
+    keyHint: string | null;
+    source: string;
+    testingMode?: boolean;
+    domains?: { name: string; status: string }[];
+  };
   mailFrom: string;
+  emailFallback?: string | null;
+  emailHealth?: { lastErrorAt: string; lastError: string | null } | null;
   checklistIntervals: ChecklistIntervals;
   checklistIntervalMeta: ChecklistIntervalMeta[];
   checklistIntervalDefaults: ChecklistIntervals;
@@ -119,6 +127,7 @@ export function SettingsPage() {
   const { data, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const [apiKey, setApiKey] = useState("");
   const [mailFrom, setMailFrom] = useState("");
+  const [emailFallback, setEmailFallback] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +137,8 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (data?.mailFrom) setMailFrom(data.mailFrom);
-  }, [data?.mailFrom]);
+    if (data?.emailFallback !== undefined) setEmailFallback(data.emailFallback ?? "");
+  }, [data?.mailFrom, data?.emailFallback]);
 
   const saveKey = useMutation({
     mutationFn: async (key: string) => {
@@ -200,6 +210,25 @@ export function SettingsPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const saveFallback = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await fetch("/api/settings/email-fallback", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to save");
+    },
+    onSuccess: () => {
+      setMsg("Fallback inbox saved. Password-reset emails will be relayed here until a domain is verified.");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const adminReset = useMutation({
     mutationFn: async (email: string) => apiPost<{ email: string; temporaryPassword: string }>("/auth/password/admin-reset", { email }),
     onSuccess: (data) => {
@@ -247,6 +276,28 @@ export function SettingsPage() {
               <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
                 <div className="min-w-0">
                   <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Resend API</h3>
+                  {data?.resend.testingMode && (
+                    <div role="status" className="mb-3 rounded-lg bg-status-tentative/15 px-3 py-2 text-xs text-ink-secondary">
+                      Resend is in testing mode (no verified sending domain). Password resets to addresses other than your Resend account email will be relayed to the fallback inbox below. Add DNS for <code className="font-mono">mail.ncpamumbai.com</code> at your registrar, then verify at{" "}
+                      <a href="https://resend.com/domains" target="_blank" rel="noreferrer" className="underline">resend.com/domains</a>.
+                    </div>
+                  )}
+                  {data?.resend.domains && data.resend.domains.length > 0 && (
+                    <p className="mb-3 text-xs text-ink-secondary etched">
+                      Domains:{" "}
+                      {data.resend.domains.map((d) => (
+                        <span key={d.name} className="mr-2 inline-block rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">
+                          {d.name} · {d.status}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {data?.emailHealth?.lastError && (
+                    <p className="mb-3 text-xs text-status-cancelled etched">
+                      Last delivery issue ({new Date(data.emailHealth.lastErrorAt).toLocaleString()}):{" "}
+                      <span className="break-all">{data.emailHealth.lastError}</span>
+                    </p>
+                  )}
                   {data?.resend.configured && (
                     <p className="mb-3 text-xs text-ink-secondary etched">
                       Current key: <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">{data.resend.keyHint}</code>{" "}
@@ -294,7 +345,7 @@ export function SettingsPage() {
                       type="text"
                       value={mailFrom}
                       onChange={(e) => setMailFrom(e.target.value)}
-                      placeholder="NCPA Venue Hire <noreply@example.com>"
+                      placeholder="NCPA Venue Hire <onboarding@resend.dev>"
                       className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
                     />
                   </label>
@@ -305,6 +356,26 @@ export function SettingsPage() {
                     className="carved-btn-sage mb-5 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
                   >
                     {saveMailFrom.isPending ? "Saving…" : "Save from address"}
+                  </button>
+
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">Fallback inbox (password-reset relay)</span>
+                    <input
+                      type="email"
+                      value={emailFallback}
+                      onChange={(e) => setEmailFallback(e.target.value)}
+                      placeholder="ashwinjyoti@gmail.com"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={saveFallback.isPending || emailFallback === (data?.emailFallback ?? "")}
+                    onClick={() => saveFallback.mutate(emailFallback.trim())}
+                    className="carved-btn-sage mb-5 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                  >
+                    {saveFallback.isPending ? "Saving…" : "Save fallback inbox"}
                   </button>
 
                   <label className="block">

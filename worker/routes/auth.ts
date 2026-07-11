@@ -20,7 +20,7 @@ import { createSession, revokeSession, revokeAllSessions, readSessionCookie, ses
 import { recordFailedLogin, recordSuccessfulLogin, isLocked } from "../lib/rate-limit";
 import { audit } from "../lib/audit";
 import { makeId, randomToken } from "../lib/id";
-import { sendTransactionalEmail } from "../lib/email";
+import { sendPasswordResetEmail } from "../lib/email";
 
 const PASSWORD_RESET_TTL_MINUTES = 30;
 const PasswordSchema = z.string().min(10, "Password must be at least 10 characters");
@@ -343,14 +343,23 @@ authRoutes.post("/password/forgot", async (c) => {
       ).bind(makeId("prt"), user.id, tokenHash, expiresAt, now.toISOString()).run();
 
       const link = `${c.env.APP_URL}/reset-password?token=${token}`;
-      const result = await sendTransactionalEmail(c.env, {
+      const text = `Hello ${user.name},\n\nUse the link below to reset your password. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes and can only be used once.\n\n${link}\n\nIf you didn't request this, you can ignore this email.`;
+      const result = await sendPasswordResetEmail(c.env, {
         to: user.email,
+        userName: user.name,
         subject: "Reset your NCPA Venue for Hire password",
-        text: `Hello ${user.name},\n\nUse the link below to reset your password. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes and can only be used once.\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+        text,
       });
       await audit({
-        db, action: result.ok ? "auth.password_reset_requested" : "auth.password_reset_email_failed",
-        targetType: "user", targetId: user.id, detail: result.ok ? undefined : { error: result.error },
+        db,
+        action: result.ok
+          ? (result.viaFallback ? "auth.password_reset_relayed" : "auth.password_reset_requested")
+          : "auth.password_reset_email_failed",
+        targetType: "user",
+        targetId: user.id,
+        detail: result.ok
+          ? (result.viaFallback ? { relayed: true } : undefined)
+          : { error: result.error, testingMode: result.testingMode ?? false },
         ipHint: ipHint(c.req.raw),
       });
     }
