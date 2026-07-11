@@ -219,6 +219,7 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Collapse");
     expect(source).toContain("ChecklistProgress");
     expect(source).toContain("overallCompletion");
+    expect(source).toContain("% complete");
   });
 
   it("keeps stale lifecycle tasks out of dashboard attention", () => {
