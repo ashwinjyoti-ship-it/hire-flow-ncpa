@@ -63,7 +63,7 @@ type PendingEmail = {
   title: string;
   body: string | null;
   recipient_id: string | null;
-  recipient_role: string | null;
+  recipient_permission: string | null;
   email: string | null;
 };
 
@@ -71,7 +71,7 @@ export async function dispatchPendingEmailNotifications(env: Pick<Env, "DB" | "M
   const db = env.DB;
   const apiKey = await getResendApiKey(db, env);
   const { results } = await db.prepare(
-    `SELECT n.id, n.title, n.body, n.recipient_id, n.recipient_role, u.email
+    `SELECT n.id, n.title, n.body, n.recipient_id, n.recipient_permission, u.email
      FROM notifications n
      LEFT JOIN users u ON u.id = n.recipient_id
      WHERE n.channel = 'email' AND COALESCE(n.email_status, 'pending') = 'pending'

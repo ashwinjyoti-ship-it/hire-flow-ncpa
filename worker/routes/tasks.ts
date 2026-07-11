@@ -33,7 +33,7 @@ taskRoutes.get("/", requireUser, async (c) => {
     where.push("t.event_id = ?");
     binds.push(event);
   }
-  if (mine === "1" || !can(user.role, "task.view.all")) {
+  if (mine === "1" || !can(user.permissions, "task.view.all")) {
     where.push("t.assignee_id = ?");
     binds.push(user.id);
   }
@@ -114,10 +114,10 @@ taskRoutes.patch("/:id", requireUser, async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
   const d = parsed.data;
 
-  if (d.assignee_id !== undefined && !can(user.role, "task.assign")) {
+  if (d.assignee_id !== undefined && !can(user.permissions, "task.assign")) {
     return c.json({ error: "Insufficient permissions", permission: "task.assign" }, 403);
   }
-  if (d.status && !can(user.role, "task.complete") && task.assignee_id !== user.id) {
+  if (d.status && !can(user.permissions, "task.complete") && task.assignee_id !== user.id) {
     return c.json({ error: "Insufficient permissions", permission: "task.complete" }, 403);
   }
 

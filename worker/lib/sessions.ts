@@ -2,8 +2,8 @@
  * Server-side session management. Sessions are opaque tokens stored in D1,
  * served via httpOnly + Secure + SameSite=Lax cookies. CSRF token paired per session.
  */
-import type { UserRole } from "../env";
 import { makeId, randomToken, timingSafeEqual } from "./id";
+import { permissionsFromRow, type Permission } from "./rbac";
 
 export const SESSION_COOKIE = "ncpa_session";
 export const SESSION_MAX_AGE_DAYS = 7;
@@ -37,23 +37,23 @@ export async function createSession(
 export async function resolveSession(
   db: D1Database,
   sessionId: string
-): Promise<{ userId: string; role: UserRole; email: string; name: string; csrfToken: string } | null> {
+): Promise<{ userId: string; permissions: Permission[]; email: string; name: string; csrfToken: string } | null> {
   const row = await db
     .prepare(
       `SELECT s.id, s.user_id, s.csrf_token, s.expires_at, s.revoked_at,
-              u.email, u.name, u.role, u.is_active
+              u.email, u.name, u.role, u.permissions, u.is_active
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.id = ?`
     )
     .bind(sessionId)
-    .first<SessionRow & { email: string; name: string; role: UserRole; is_active: number; revoked_at: string | null }>();
+    .first<SessionRow & { email: string; name: string; role: string | null; permissions: string | null; is_active: number; revoked_at: string | null }>();
   if (!row) return null;
   if (row.revoked_at) return null;
   if (row.is_active !== 1) return null;
   if (new Date(row.expires_at).getTime() < Date.now()) return null;
   return {
     userId: row.user_id,
-    role: row.role,
+    permissions: permissionsFromRow(row.permissions, row.role),
     email: row.email,
     name: row.name,
     csrfToken: row.csrf_token,

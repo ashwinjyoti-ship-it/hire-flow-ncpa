@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
-import { ROLE_LABELS } from "../lib/roles";
+import { describeAccess } from "../../worker/lib/rbac";
 import { apiPost } from "../lib/api";
 
 type MfaStatus = { enrolled: boolean; recoveryCodesRemaining?: number };
@@ -161,8 +161,8 @@ export function ProfilePage() {
               <dd className="font-medium text-ink-primary etched-deep">{user.email}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-ink-muted">Role</dt>
-              <dd className="font-medium text-ink-primary etched-deep">{ROLE_LABELS[user.role]}</dd>
+              <dt className="text-ink-muted">Access</dt>
+              <dd className="font-medium text-ink-primary etched-deep">{describeAccess(user.permissions)}</dd>
             </div>
           </dl>
         </section>

@@ -1,14 +1,30 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser } from "../middleware/auth";
+import type { AuthUser } from "../env";
 
 export const notificationRoutes = new Hono<AuthEnv>();
+
+/**
+ * A notification is addressed either to a specific user (recipient_id) or to
+ * whoever holds a permission (recipient_permission). Build the matching WHERE
+ * clause + binds for the current user.
+ */
+function recipientClause(user: AuthUser): { clause: string; binds: unknown[] } {
+  const perms = user.permissions;
+  if (!perms.length) return { clause: "(recipient_id = ?)", binds: [user.id] };
+  const placeholders = perms.map(() => "?").join(", ");
+  return {
+    clause: `(recipient_id = ? OR recipient_permission IN (${placeholders}))`,
+    binds: [user.id, ...perms],
+  };
+}
 
 notificationRoutes.get("/", requireUser, async (c) => {
   const user = c.get("user")!;
   const unreadOnly = c.req.query("unread") === "1";
-  const where = ["(n.recipient_id = ? OR n.recipient_role = ?)"];
-  const binds: unknown[] = [user.id, user.role];
+  const { clause, binds } = recipientClause(user);
+  const where = [clause.replace(/recipient_/g, "n.recipient_")];
   if (unreadOnly) where.push("n.is_read = 0");
 
   const { results } = await c.env.DB.prepare(
@@ -23,26 +39,26 @@ notificationRoutes.get("/", requireUser, async (c) => {
 
   const unread = await c.env.DB.prepare(
     `SELECT COUNT(*) AS count FROM notifications n
-     WHERE (n.recipient_id = ? OR n.recipient_role = ?) AND n.is_read = 0`
-  ).bind(user.id, user.role).first<{ count: number }>();
+     WHERE ${clause.replace(/recipient_/g, "n.recipient_")} AND n.is_read = 0`
+  ).bind(...binds).first<{ count: number }>();
 
   return c.json({ notifications: results, unread: unread?.count ?? 0 });
 });
 
 notificationRoutes.post("/:id/read", requireUser, async (c) => {
   const user = c.get("user")!;
+  const { clause, binds } = recipientClause(user);
   await c.env.DB.prepare(
-    `UPDATE notifications SET is_read = 1
-     WHERE id = ? AND (recipient_id = ? OR recipient_role = ?)`
-  ).bind(c.req.param("id"), user.id, user.role).run();
+    `UPDATE notifications SET is_read = 1 WHERE id = ? AND ${clause}`
+  ).bind(c.req.param("id"), ...binds).run();
   return c.json({ ok: true });
 });
 
 notificationRoutes.post("/read-all", requireUser, async (c) => {
   const user = c.get("user")!;
+  const { clause, binds } = recipientClause(user);
   await c.env.DB.prepare(
-    `UPDATE notifications SET is_read = 1
-     WHERE recipient_id = ? OR recipient_role = ?`
-  ).bind(user.id, user.role).run();
+    `UPDATE notifications SET is_read = 1 WHERE ${clause}`
+  ).bind(...binds).run();
   return c.json({ ok: true });
 });

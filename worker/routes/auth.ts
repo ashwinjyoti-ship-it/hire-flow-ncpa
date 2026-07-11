@@ -18,6 +18,7 @@ import { actorFrom, ipHint, requirePermission, requireUser } from "../middleware
 import { hashPassword, verifyPassword, generateTotpSecret, verifyTotp, totpUri, generateRecoveryCodes, hashRecoveryCode, verifyRecoveryCode, sha256Hex, generateTemporaryPassword } from "../lib/crypto";
 import { createSession, revokeSession, revokeAllSessions, readSessionCookie, sessionCookieHeader, clearSessionCookieHeader, SESSION_MAX_AGE_DAYS } from "../lib/sessions";
 import { recordFailedLogin, recordSuccessfulLogin, isLocked } from "../lib/rate-limit";
+import { permissionsFromRow, type Permission } from "../lib/rbac";
 import { audit } from "../lib/audit";
 import { makeId, randomToken } from "../lib/id";
 import { sendTransactionalEmail } from "../lib/email";
@@ -49,9 +50,9 @@ authRoutes.post("/login", async (c) => {
   const db = c.env.DB;
 
   const user = await db
-    .prepare("SELECT id, email, name, role, password_hash, totp_secret, is_active, must_change_password FROM users WHERE email = ?")
+    .prepare("SELECT id, email, name, role, permissions, password_hash, totp_secret, is_active, must_change_password FROM users WHERE email = ?")
     .bind(email.toLowerCase())
-    .first<{ id: string; email: string; name: string; role: string; password_hash: string; totp_secret: string | null; is_active: number; must_change_password: number }>();
+    .first<{ id: string; email: string; name: string; role: string | null; permissions: string | null; password_hash: string; totp_secret: string | null; is_active: number; must_change_password: number }>();
 
   if (!user || user.is_active !== 1) {
     // Don't reveal whether the email exists.
@@ -91,7 +92,7 @@ authRoutes.post("/login", async (c) => {
     action: "auth.login", targetType: "user", targetId: user.id, ipHint: ipHint(c.req.raw),
   });
   return c.json({
-    user: { id: user.id, email: user.email, name: user.name, role: user.role, organisation: null },
+    user: { id: user.id, email: user.email, name: user.name, permissions: permissionsFromRow(user.permissions, user.role), organisation: null },
     csrfToken: session.csrfToken,
     mustChangePassword: Boolean(user.must_change_password),
   });
@@ -108,11 +109,11 @@ authRoutes.post("/mfa", async (c) => {
 
   const session = await db
     .prepare(
-      `SELECT s.user_id, s.expires_at, s.revoked_at, u.totp_secret, u.recovery_codes, u.email, u.name, u.role, u.must_change_password
+      `SELECT s.user_id, s.expires_at, s.revoked_at, u.totp_secret, u.recovery_codes, u.email, u.name, u.role, u.permissions, u.must_change_password
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
     )
     .bind(sessionId)
-    .first<{ user_id: string; expires_at: string; revoked_at: string | null; totp_secret: string | null; recovery_codes: string | null; email: string; name: string; role: string; must_change_password: number }>();
+    .first<{ user_id: string; expires_at: string; revoked_at: string | null; totp_secret: string | null; recovery_codes: string | null; email: string; name: string; role: string | null; permissions: string | null; must_change_password: number }>();
 
   if (!session || session.revoked_at || new Date(session.expires_at).getTime() < Date.now()) {
     return c.json({ error: "Session expired" }, 401);
@@ -153,7 +154,7 @@ authRoutes.post("/mfa", async (c) => {
     action: "auth.login", detail: { mfa: true }, targetType: "user", targetId: session.user_id, ipHint: ipHint(c.req.raw),
   });
   return c.json({
-    user: { id: session.user_id, email: session.email, name: session.name, role: session.role, organisation: null },
+    user: { id: session.user_id, email: session.email, name: session.name, permissions: permissionsFromRow(session.permissions, session.role), organisation: null },
     mustChangePassword: Boolean(session.must_change_password),
   });
 });
@@ -416,15 +417,15 @@ authRoutes.post("/password/admin-reset", requirePermission("user.manage"), async
 /** Internal helper exported for bootstrap: create a user with a hashed password. */
 export async function createUser(
   db: D1Database,
-  input: { email: string; name: string; role: string; password: string; organisation?: string | null }
+  input: { email: string; name: string; permissions: Permission[]; password: string; organisation?: string | null }
 ): Promise<{ id: string }> {
   const id = makeId("user");
   const now = new Date().toISOString();
   await db.prepare(
-    `INSERT INTO users (id, email, name, role, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
+    `INSERT INTO users (id, email, name, permissions, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, 'scrypt', ?, 1, ?, ?)`
   ).bind(
-    id, input.email.toLowerCase(), input.name, input.role, input.organisation ?? null,
+    id, input.email.toLowerCase(), input.name, JSON.stringify(input.permissions), input.organisation ?? null,
     hashPassword(input.password), now, now, now
   ).run();
   return { id };

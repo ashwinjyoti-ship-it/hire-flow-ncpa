@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, logout } from "../../lib/auth";
-import { ROLE_LABELS } from "../../lib/roles";
+import { describeAccess } from "../../../worker/lib/rbac";
 import { apiGet, apiPost } from "../../lib/api";
 
 type NotificationRow = {
@@ -120,7 +120,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             </div>
             <div className="hidden text-right sm:block">
               <div className="text-sm font-medium text-ink-primary etched-deep">{user.name}</div>
-              <div className="text-[11px] text-sage etched">{ROLE_LABELS[user.role]}</div>
+              <div className="text-[11px] text-sage etched">{describeAccess(user.permissions)}</div>
             </div>
             <Link
               to="/profile"

@@ -60,15 +60,20 @@ async function main() {
   const now = new Date().toISOString();
   const esc = (s: string) => s.replace(/'/g, "''");
 
+  // The bootstrap account gets every permission (it must at least hold
+  // user.manage, or nobody can grant access to anyone else).
+  const { ALL_PERMISSIONS } = await import("../worker/lib/rbac");
+  const permissionsJson = JSON.stringify(ALL_PERMISSIONS);
+
   // Idempotent: update existing admin email, else insert.
   runSql(
-    `INSERT INTO users (id, email, name, role, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
-     VALUES ('${id}', '${esc(email.toLowerCase())}', '${esc(name)}', 'admin', '${esc(passwordHash)}', 'scrypt', '${now}', 1, '${now}', '${now}')
-     ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, role = 'admin', is_active = 1, updated_at = excluded.updated_at;`,
+    `INSERT INTO users (id, email, name, permissions, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
+     VALUES ('${id}', '${esc(email.toLowerCase())}', '${esc(name)}', '${permissionsJson}', '${esc(passwordHash)}', 'scrypt', '${now}', 1, '${now}', '${now}')
+     ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, permissions = excluded.permissions, is_active = 1, updated_at = excluded.updated_at;`,
     remote
   );
 
-  console.log(`\n✅ Admin created: ${email} (role: admin)`);
+  console.log(`\n✅ Admin created: ${email} (full access)`);
   console.log(`   Database: ${remote ? "PRODUCTION" : "local"} ncpa-hire-db`);
   console.log(`   Sign in at ${remote ? "https://ncpa-hire.pages.dev" : "http://localhost:5173"}/login\n`);
 }

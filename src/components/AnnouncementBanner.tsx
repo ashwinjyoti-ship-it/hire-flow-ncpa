@@ -33,7 +33,7 @@ const EXPIRY_OPTIONS = [
 export function AnnouncementBanner() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const canManage = can(user?.role ?? "viewer", "announcement.manage");
+  const canManage = can(user?.permissions, "announcement.manage");
 
   const { data } = useQuery({
     queryKey: ["announcement", "active"],

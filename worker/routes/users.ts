@@ -1,17 +1,21 @@
 /**
  * User (account) management routes — Phase 8a identity layer.
- *   GET    /users                       — list all accounts (admin only)
- *   POST   /users                       — create an owner account (+ handled_by option)
- *   PUT    /users/:id                   — edit name/email/role (syncs handled_by option)
+ *   GET    /users                       — list all accounts (user.manage; also
+ *                                         readable by event editors for the
+ *                                         Event Owner dropdown via GET /)
+ *   POST   /users                       — create an account (+ handled_by option)
+ *   PUT    /users/:id                   — edit name/email/permissions (syncs handled_by)
  *   POST   /users/:id/reset             — admin-forced password reset
  *   POST   /users/:id/deactivate        — soft-deactivate (user + handled_by option)
  *   POST   /users/:id/activate          — reactivate
  *
- * Design: the admin is the sole gatekeeper. Creating an event owner produces a
- * real login (no self-registration). Each new account gets a one-time
- * temporary password and must_change_password = 1 so the owner sets their own
- * on first sign-in. The admin can also edit their own account here, which is
- * what enables handing the admin role over to the client.
+ * Design: access is per-user permissions, not roles. Whoever holds
+ * `user.manage` is the gatekeeper: creating an account produces a real login
+ * (no self-registration) with an explicit permission list. Each new account
+ * gets a one-time temporary password and must_change_password = 1.
+ *
+ * Lock-out guard: the system refuses any edit or deactivation that would
+ * leave zero active accounts holding `user.manage`.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -21,40 +25,60 @@ import { audit } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { generateTemporaryPassword, hashPassword } from "../lib/crypto";
 import { revokeAllSessions } from "../lib/sessions";
+import { ALL_PERMISSIONS, LEGACY_ROLE_PERMISSIONS, normalisePermissions, permissionsFromRow, type Permission } from "../lib/rbac";
 import { createUser } from "./auth";
 
 export const userRoutes = new Hono<AuthEnv>();
 
-// Admin-only across the board. User management is a sensitive surface.
+// Gatekeeper-only across the board. User management is a sensitive surface.
 userRoutes.use("*", requirePermission("user.manage"));
 
-const ROLES = ["admin", "venue_manager", "coordinator", "viewer"] as const;
+const PermissionList = z.array(z.enum(ALL_PERMISSIONS as [Permission, ...Permission[]]));
+
+/**
+ * Count active accounts (other than `exceptId`) that hold user.manage — used
+ * to refuse changes that would lock everyone out of account management.
+ * Pre-0016 rows (permissions IS NULL) count via their legacy admin role.
+ */
+async function otherGatekeepers(db: D1Database, exceptId: string): Promise<number> {
+  const row = await db.prepare(
+    `SELECT COUNT(*) AS c FROM users
+     WHERE is_active = 1 AND id != ?
+       AND (permissions LIKE '%"user.manage"%' OR (permissions IS NULL AND role = 'admin'))`
+  ).bind(exceptId).first<{ c: number }>();
+  return row?.c ?? 0;
+}
 
 // ---- GET / — list all accounts ----
 userRoutes.get("/", async (c) => {
   const db = c.env.DB;
   const { results } = await db.prepare(
-    `SELECT id, email, name, role, organisation, is_active, must_change_password,
+    `SELECT id, email, name, role, permissions, organisation, is_active, must_change_password,
             totp_secret IS NOT NULL AS mfa_enrolled, created_at, updated_at
      FROM users ORDER BY is_active DESC, name`
-  ).all();
-  return c.json({ users: results ?? [] });
+  ).all<{ id: string; email: string; name: string; role: string | null; permissions: string | null } & Record<string, unknown>>();
+  const users = (results ?? []).map((u) => {
+    const { role, permissions, ...rest } = u;
+    return { ...rest, permissions: permissionsFromRow(permissions, role) };
+  });
+  return c.json({ users });
 });
 
-// ---- POST / — create an owner account ----
+// ---- POST / — create an account ----
 // Creates a users row AND a matching handled_by dropdown option atomically, so
-// the owner both has a login and appears in the Event Owner dropdown.
+// the person both has a login and appears in the Event Owner dropdown.
 const CreateBody = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email(),
-  role: z.enum(ROLES).default("venue_manager"),
+  permissions: PermissionList.default([...LEGACY_ROLE_PERMISSIONS.venue_manager!]),
   organisation: z.string().nullish(),
 });
 
 userRoutes.post("/", async (c) => {
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
-  const { name, email, role, organisation } = parsed.data;
+  const { name, email, organisation } = parsed.data;
+  const permissions = normalisePermissions(parsed.data.permissions);
   const db = c.env.DB;
   const admin = c.get("user")!;
   const now = new Date().toISOString();
@@ -70,7 +94,7 @@ userRoutes.post("/", async (c) => {
   if (dupOption) return c.json({ error: "An event owner with that name already exists" }, 409);
 
   const temporaryPassword = generateTemporaryPassword();
-  const userId = (await createUser(db, { email, name: name.trim(), role, password: temporaryPassword, organisation: organisation ?? null })).id;
+  const userId = (await createUser(db, { email, name: name.trim(), permissions, password: temporaryPassword, organisation: organisation ?? null })).id;
 
   // Force a password change on first sign-in (createUser doesn't set this).
   await db.prepare("UPDATE users SET must_change_password = 1, updated_at = ? WHERE id = ?").bind(now, userId).run();
@@ -87,21 +111,20 @@ userRoutes.post("/", async (c) => {
 
   await audit({
     db, actor: actorFrom(admin), action: "user.created", targetType: "user", targetId: userId,
-    detail: { email, role, handled_by_option_id: optionId }, ipHint: ipHint(c.req.raw),
+    detail: { email, permissions, handled_by_option_id: optionId }, ipHint: ipHint(c.req.raw),
   });
 
   // The temporary password is returned ONCE for the admin to hand over out-of-band.
-  return c.json({ id: userId, email, name: name.trim(), role, temporaryPassword }, 201);
+  return c.json({ id: userId, email, name: name.trim(), permissions, temporaryPassword }, 201);
 });
 
-// ---- PUT /:id — edit name/email/role ----
-// Renaming syncs the handled_by option so the dropdown stays consistent. The
-// admin may edit their own account here (including handing the admin role to
-// the client by editing another user into admin).
+// ---- PUT /:id — edit name/email/permissions ----
+// Renaming syncs the handled_by option so the dropdown stays consistent.
+// Handing over account management = granting user.manage to someone else.
 const UpdateBody = z.object({
   name: z.string().min(1).max(100).optional(),
   email: z.string().email().optional(),
-  role: z.enum(ROLES).optional(),
+  permissions: PermissionList.optional(),
   organisation: z.string().nullish(),
 });
 
@@ -114,11 +137,21 @@ userRoutes.put("/:id", async (c) => {
   const now = new Date().toISOString();
   const d = parsed.data;
 
-  const current = await db.prepare("SELECT name, email FROM users WHERE id = ?").bind(id).first<{ name: string; email: string }>();
+  const current = await db.prepare("SELECT name, email, role, permissions, is_active FROM users WHERE id = ?").bind(id)
+    .first<{ name: string; email: string; role: string | null; permissions: string | null; is_active: number }>();
   if (!current) return c.json({ error: "User not found" }, 404);
 
   const nextEmail = d.email ? d.email.toLowerCase() : current.email;
   const nextName = d.name ? d.name.trim() : current.name;
+  const nextPermissions = d.permissions ? normalisePermissions(d.permissions) : null;
+
+  // Lock-out guard: never let the last active user.manage holder lose it.
+  if (nextPermissions && !nextPermissions.includes("user.manage") && current.is_active === 1) {
+    const held = permissionsFromRow(current.permissions, current.role).includes("user.manage");
+    if (held && (await otherGatekeepers(db, id)) === 0) {
+      return c.json({ error: "At least one active account must keep the Manage team accounts permission." }, 422);
+    }
+  }
 
   if (d.email) {
     const clash = await db.prepare("SELECT id FROM users WHERE email = ? AND id != ?").bind(nextEmail, id).first();
@@ -126,9 +159,9 @@ userRoutes.put("/:id", async (c) => {
   }
 
   await db.prepare(
-    `UPDATE users SET name = ?, email = ?, role = COALESCE(?, role),
+    `UPDATE users SET name = ?, email = ?, permissions = COALESCE(?, permissions),
        organisation = COALESCE(?, organisation), updated_at = ? WHERE id = ?`
-  ).bind(nextName, nextEmail, d.role ?? null, d.organisation ?? null, now, id).run();
+  ).bind(nextName, nextEmail, nextPermissions ? JSON.stringify(nextPermissions) : null, d.organisation ?? null, now, id).run();
 
   // Keep the handled_by option label in sync with the user's name.
   if (d.name) {
@@ -139,7 +172,7 @@ userRoutes.put("/:id", async (c) => {
 
   await audit({
     db, actor: actorFrom(admin), action: "user.updated", targetType: "user", targetId: id,
-    detail: { name: nextName, email: nextEmail, role: d.role }, ipHint: ipHint(c.req.raw),
+    detail: { name: nextName, email: nextEmail, permissions: nextPermissions ?? undefined }, ipHint: ipHint(c.req.raw),
   });
   return c.json({ ok: true });
 });
@@ -184,12 +217,18 @@ async function toggleActive(c: Context<AuthEnv>, id: string, active: boolean) {
   const admin = c.get("user")!;
   const now = new Date().toISOString();
 
-  const target = await db.prepare("SELECT id, name FROM users WHERE id = ?").bind(id).first<{ id: string; name: string }>();
+  const target = await db.prepare("SELECT id, name, role, permissions FROM users WHERE id = ?").bind(id)
+    .first<{ id: string; name: string; role: string | null; permissions: string | null }>();
   if (!target) return c.json({ error: "User not found" }, 404);
 
   // Refuse to let the admin deactivate themselves (would lock the workspace out).
   if (!active && target.id === admin.id) {
     return c.json({ error: "You cannot deactivate your own account" }, 422);
+  }
+  // Lock-out guard: never deactivate the last active user.manage holder.
+  if (!active && permissionsFromRow(target.permissions, target.role).includes("user.manage")
+      && (await otherGatekeepers(db, target.id)) === 0) {
+    return c.json({ error: "This is the only active account that can manage team accounts — grant that permission to someone else first." }, 422);
   }
 
   await db.prepare("UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?").bind(active ? 1 : 0, now, target.id).run();

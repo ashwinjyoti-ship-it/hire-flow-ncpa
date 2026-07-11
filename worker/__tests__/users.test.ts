@@ -124,7 +124,9 @@ describe("User management (Phase 8a)", () => {
     const db = fakeDb((sql) => {
       const up = sql.toUpperCase();
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (up.includes("SELECT ID, NAME FROM USERS")) return { first: () => ({ id: "user_owner_farha", name: "Farha" }) };
+      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
+        return { first: () => ({ id: "user_owner_farha", name: "Farha", role: null, permissions: '["event.view","checklist.update"]' }) };
+      }
       if (up.startsWith("UPDATE USERS SET IS_ACTIVE")) return { run: () => { runs.push("users"); return { success: true }; } };
       if (up.startsWith("UPDATE DROPDOWN_OPTIONS SET IS_ACTIVE")) return { run: () => { runs.push("dropdown_options"); return { success: true }; } };
       if (up.includes("REVOK") || up.includes("SESSIONS")) return { run: () => ({ success: true }) };
@@ -147,7 +149,9 @@ describe("User management (Phase 8a)", () => {
   it("refuses to let an admin deactivate their own account", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (sql.toUpperCase().includes("SELECT ID, NAME FROM USERS")) return { first: () => ({ id: "user_admin", name: "Admin" }) };
+      if (sql.toUpperCase().includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
+        return { first: () => ({ id: "user_admin", name: "Admin", role: "admin", permissions: null }) };
+      }
       return {};
     });
 
@@ -161,6 +165,87 @@ describe("User management (Phase 8a)", () => {
     expect(res.status).toBe(422);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/own account/i);
+  });
+
+  it("refuses to deactivate the last active account-manager", async () => {
+    const db = fakeDb((sql) => {
+      const up = sql.toUpperCase();
+      if (sql.includes("FROM sessions")) return { first: adminSession };
+      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
+        return { first: () => ({ id: "user_other_admin", name: "Other Admin", role: null, permissions: '["user.manage","event.view"]' }) };
+      }
+      if (up.includes("COUNT(*)")) return { first: () => ({ c: 0 }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/users/user_other_admin/deactivate",
+      { method: "POST", headers: { Cookie: `${SESSION_COOKIE}=sess_admin` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/manage team accounts/i);
+  });
+
+  it("refuses to strip user.manage from the last active holder", async () => {
+    const db = fakeDb((sql) => {
+      const up = sql.toUpperCase();
+      if (sql.includes("FROM sessions")) return { first: adminSession };
+      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE FROM USERS")) {
+        return { first: () => ({ name: "Admin", email: "admin@example.com", role: null, permissions: '["user.manage","event.view"]', is_active: 1 }) };
+      }
+      if (up.includes("COUNT(*)")) return { first: () => ({ c: 0 }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/users/user_admin",
+      {
+        method: "PUT",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_admin`, "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: ["event.view", "report.view"] }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/at least one active account/i);
+  });
+
+  it("updates a user's permission list when another manager remains", async () => {
+    let savedPermissions: string | null = null;
+    const db = fakeDb((sql) => {
+      const up = sql.toUpperCase();
+      if (sql.includes("FROM sessions")) return { first: adminSession };
+      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE FROM USERS")) {
+        return { first: () => ({ name: "Priya", email: "priya@example.com", role: null, permissions: '["user.manage"]', is_active: 1 }) };
+      }
+      if (up.includes("COUNT(*)")) return { first: () => ({ c: 1 }) };
+      if (up.startsWith("UPDATE USERS SET NAME")) {
+        return { run: () => { savedPermissions = '["event.view","report.view"]'; return { success: true }; } };
+      }
+      if (up.startsWith("INSERT INTO AUDIT_LOGS")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/users/user_priya",
+      {
+        method: "PUT",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_admin`, "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: ["event.view", "report.view"] }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(savedPermissions).toBeTruthy();
   });
 
   it("blocks non-admins (403) from every /users route", async () => {

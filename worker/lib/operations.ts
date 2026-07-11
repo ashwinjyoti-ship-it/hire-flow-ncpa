@@ -664,7 +664,7 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   await createNotification(db, {
     idempotencyKey: `task-created:${idempotency}`,
     recipientId: assigneeId ?? undefined,
-    recipientRole: assigneeId ? undefined : "venue_manager",
+    recipientPermission: assigneeId ? undefined : "task.assign",
     title: "Follow-up task created",
     body: `${rule.title} for ${item.label}.`,
     relatedEventId: item.event_id,
@@ -859,7 +859,8 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
 export type CreateNotificationInput = {
   idempotencyKey: string;
   recipientId?: string | null;
-  recipientRole?: string | null;
+  /** Address everyone who holds this permission (instead of one user). */
+  recipientPermission?: string | null;
   title: string;
   body?: string | null;
   relatedEventId?: string | null;
@@ -870,14 +871,14 @@ export type CreateNotificationInput = {
 export async function createNotification(db: D1Database, input: CreateNotificationInput): Promise<void> {
   await db.prepare(
     `INSERT OR IGNORE INTO notifications
-     (id, idempotency_key, recipient_id, recipient_role, title, body, channel,
+     (id, idempotency_key, recipient_id, recipient_permission, title, body, channel,
       related_event_id, related_task_id, email_status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     makeId("ntf"),
     input.idempotencyKey,
     input.recipientId ?? null,
-    input.recipientRole ?? null,
+    input.recipientPermission ?? null,
     input.title,
     input.body ?? null,
     input.channel ?? "in_app",
@@ -917,7 +918,7 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
     await createNotification(db, {
       idempotencyKey: `task-due:${task.id}:${today}`,
       recipientId: task.assignee_id,
-      recipientRole: task.assignee_id ? null : "venue_manager",
+      recipientPermission: task.assignee_id ? null : "task.assign",
       title: "Task due",
       body: task.title,
       relatedEventId: task.event_id,
