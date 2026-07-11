@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { formatDate, formatDateTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
@@ -116,6 +116,14 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
     },
   });
 
+  const deleteReport = useMutation({
+    mutationFn: (id: string) => apiDelete<{ ok: boolean }>(`/reports/daily/${id}`),
+    onSuccess: (_res, id) => {
+      if (selectedId === id) setSelectedId(null);
+      qc.invalidateQueries({ queryKey: ["daily-reports"] });
+    },
+  });
+
   const report = detail?.report;
 
   return (
@@ -181,12 +189,12 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
           ) : (
             <ul className="max-h-96 space-y-1 overflow-y-auto scroll-slim">
               {(listData?.reports ?? []).map((r) => (
-                <li key={r.id}>
+                <li key={r.id} className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setSelectedId(r.id)}
                     className={
-                      "w-full rounded-xl px-3 py-2 text-left text-sm transition-colors " +
+                      "min-w-0 flex-1 rounded-xl px-3 py-2 text-left text-sm transition-colors " +
                       (selectedId === r.id ? "bg-sage-btn text-sage-text carved-btn-sage etched" : "text-ink-secondary hover:bg-marble-shadow/40")
                     }
                   >
@@ -199,6 +207,22 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
                       {r.generated_by_name ? ` · ${r.generated_by_name}` : " · automatic"}
                     </span>
                   </button>
+                  {canGenerate && (
+                    <button
+                      type="button"
+                      title="Delete this saved report"
+                      aria-label={`Delete ${TYPE_META[r.report_type ?? "daily"].label} of ${formatDate(r.report_date)}`}
+                      disabled={deleteReport.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete the ${TYPE_META[r.report_type ?? "daily"].label} of ${formatDate(r.report_date)}? This cannot be undone.`)) {
+                          deleteReport.mutate(r.id);
+                        }
+                      }}
+                      className="shrink-0 rounded-full px-2 py-1 text-sm text-ink-muted transition-colors hover:bg-status-cancelled/10 hover:text-status-cancelled disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

@@ -5,6 +5,7 @@
  *                          briefs) or 'daily' (legacy full-day snapshot).
  *   GET  /daily          — list saved reports (?date= filter)     (report.view)
  *   GET  /daily/:id      — one saved snapshot                     (report.view)
+ *   DELETE /daily/:id    — remove a saved snapshot from the list  (report.generate)
  *   GET  /daily/:id/xlsx — Excel export (SheetJS, built in-Worker) (report.view)
  *   GET  /daily/:id/pdf  — print-ready HTML document; the browser's
  *                          print-to-PDF produces the PDF (Workers have no
@@ -120,6 +121,28 @@ reportRoutes.get("/daily/:id", requirePermission("report.view"), async (c) => {
       content: report.parsed,
     },
   });
+});
+
+// DELETE /daily/:id — remove a saved snapshot. Snapshots are immutable while
+// they exist, but they can be removed from the list (e.g. an accidental manual
+// generation). The deletion is recorded in the audit log.
+reportRoutes.delete("/daily/:id", requirePermission("report.generate"), async (c) => {
+  const db = c.env.DB;
+  const user = c.get("user")!;
+  const id = c.req.param("id");
+  const row = await db.prepare(
+    "SELECT id, report_date, report_type FROM daily_reports WHERE id = ?"
+  ).bind(id).first<{ id: string; report_date: string; report_type: string | null }>();
+  if (!row) return c.json({ error: "Report not found" }, 404);
+
+  await db.prepare("DELETE FROM daily_reports WHERE id = ?").bind(id).run();
+  await audit({
+    db, actor: actorFrom(user), action: "report.deleted",
+    targetType: "daily_report", targetId: id,
+    detail: { reportDate: row.report_date, reportType: row.report_type ?? "daily" },
+    ipHint: ipHint(c.req.raw),
+  });
+  return c.json({ ok: true });
 });
 
 function briefWorkbook(content: BriefContent) {
