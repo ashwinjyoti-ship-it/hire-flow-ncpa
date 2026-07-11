@@ -4,9 +4,9 @@
  * The cron worker fires every 30 minutes; this job is catch-up-safe and
  * idempotent per (date, type): once IST time passes the configured send time
  * (07:30 / 18:30 by default), the first run that finds no auto-generated
- * snapshot for the day generates one, emails it to active Admins and Venue
- * Managers via Resend, and drops an in-app notification. Manual snapshots
- * (generated_by set) never suppress the automatic one.
+ * snapshot for the day generates one, emails it to every active account
+ * holding report.generate via Resend, and drops an in-app notification.
+ * Manual snapshots (generated_by set) never suppress the automatic one.
  */
 import type { Env } from "../env";
 import { makeId } from "./id";
@@ -15,6 +15,7 @@ import { buildBriefContent, getBriefSettings, type BriefType } from "./brief";
 import { briefTitle, renderBriefEmail } from "./brief-html";
 import { sendHtmlEmail } from "./email";
 import { createNotification } from "./operations";
+import { permissionsFromRow } from "./rbac";
 
 type BriefEnv = Pick<Env, "DB" | "MAIL_FROM" | "RESEND_API_KEY"> & { APP_URL?: string };
 
@@ -23,7 +24,8 @@ export function istNowHHMM(now: Date = new Date()): string {
   return new Date(now.getTime() + IST_OFFSET_MINUTES * 60_000).toISOString().slice(11, 16);
 }
 
-const BRIEF_RECIPIENT_ROLES = ["admin", "venue_manager"] as const;
+// Briefs are addressed to whoever holds the manager capability.
+const BRIEF_RECIPIENT_PERMISSION = "report.generate";
 
 export async function runBriefJobs(env: BriefEnv, now: Date = new Date()): Promise<{ generated: BriefType[] }> {
   const db = env.DB;
@@ -54,24 +56,24 @@ export async function runBriefJobs(env: BriefEnv, now: Date = new Date()): Promi
     ).bind(id, today, type, content.generated_at, JSON.stringify(content)).run();
     generated.push(type);
 
-    // In-app notification for the manager roles (idempotent per date+type+role).
+    // In-app notification for the managers (idempotent per date+type).
     const title = type === "morning" ? "Morning Brief is ready" : "Evening Debrief is ready";
-    for (const role of BRIEF_RECIPIENT_ROLES) {
-      await createNotification(db, {
-        idempotencyKey: `brief:${type}:${today}:${role}`,
-        recipientRole: role,
-        title,
-        body: `${briefTitle(content)} — open Reports to view it.`,
-      });
-    }
+    await createNotification(db, {
+      idempotencyKey: `brief:${type}:${today}`,
+      recipientPermission: BRIEF_RECIPIENT_PERMISSION,
+      title,
+      body: `${briefTitle(content)} — open Reports to view it.`,
+    });
 
-    // Email digest to every active Admin / Venue Manager.
+    // Email digest to every active account holding the manager permission.
     let emailNote = "email disabled";
     if (settings.email_enabled) {
-      const { results: recipients } = await db.prepare(
-        `SELECT email, name FROM users
-         WHERE is_active = 1 AND role IN ('admin','venue_manager') AND email IS NOT NULL`
-      ).all<{ email: string; name: string }>();
+      const { results: candidates } = await db.prepare(
+        `SELECT email, name, role, permissions FROM users
+         WHERE is_active = 1 AND email IS NOT NULL`
+      ).all<{ email: string; name: string; role: string | null; permissions: string | null }>();
+      const recipients = candidates.filter((u) =>
+        permissionsFromRow(u.permissions, u.role).includes(BRIEF_RECIPIENT_PERMISSION));
       const html = renderBriefEmail(content, env.APP_URL ?? "");
       const subject = `${type === "morning" ? "☀️" : "🌙"} ${briefTitle(content)} — NCPA Venue for Hire`;
       let sent = 0;

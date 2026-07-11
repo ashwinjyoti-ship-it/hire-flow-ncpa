@@ -398,7 +398,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   }
   // Override-gated transitions require Admin or Venue Manager.
   if (requiresOverride(from, to)) {
-    if (!can(user.role, "conflict.override")) {
+    if (!can(user.permissions, "conflict.override")) {
       return c.json({ error: "This transition requires Admin or Venue Manager permission" }, 403);
     }
     if (!parsed.data.reason) {

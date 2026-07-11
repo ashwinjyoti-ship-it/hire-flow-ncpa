@@ -235,8 +235,8 @@ export function EventDetailPage() {
   const e = data?.event;
   if (!e) return <div className="text-sm text-ink-muted">Event not found.</div>;
 
-  const canChangeStatus = can(user?.role ?? "viewer", "event.status.change");
-  const canUpdateChecklist = can(user?.role ?? "viewer", "checklist.update");
+  const canChangeStatus = can(user?.permissions, "event.status.change");
+  const canUpdateChecklist = can(user?.permissions, "checklist.update");
   const actions = checklistData?.lifecycle.actions ?? [];
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
@@ -263,12 +263,12 @@ export function EventDetailPage() {
         actions={
           <>
             <StatusBadge status={e.status} size="md" />
-            {can(user?.role ?? "viewer", "event.edit") && (
+            {can(user?.permissions, "event.edit") && (
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
               </Link>
             )}
-            {can(user?.role ?? "viewer", "event.archive") && (
+            {can(user?.permissions, "event.archive") && (
               <button
                 type="button"
                 onClick={() => {
@@ -404,8 +404,8 @@ export function EventDetailPage() {
         <DocumentsView
           eventId={id}
           documents={documentsData?.documents ?? []}
-          canUpload={can(user?.role ?? "viewer", "document.upload")}
-          canArchive={can(user?.role ?? "viewer", "document.delete")}
+          canUpload={can(user?.permissions, "document.upload")}
+          canArchive={can(user?.permissions, "document.delete")}
         />
       )}
       {tab === "venues" && <VenuesView bookings={data?.venue_bookings ?? []} />}
@@ -1179,7 +1179,7 @@ function LifecycleTrack({
     const token = current === "regret" ? "bg-status-regret/10 text-status-regret" : "bg-status-cancelled/10 text-status-cancelled";
     return (
       <div className={"carved-card mb-6 rounded-2xl px-5 py-3 text-sm font-semibold etched " + token}>
-        Event marked as {label}. Reopening requires Admin / Venue Manager override.
+        Event marked as {label}. Reopening requires conflict-override permission.
       </div>
     );
   }

@@ -21,6 +21,7 @@
  * dataset.
  */
 import { queryAll, SqlBatch, sqlStr, type SeedEnv } from "./d1-client";
+import { LEGACY_ROLE_PERMISSIONS } from "../../worker/lib/rbac";
 
 type EventType = "EE" | "FR" | "VFH" | "Free Event";
 type EventStatus = "enquiry" | "tentative" | "approved" | "confirmed" | "regret" | "cancelled";
@@ -336,13 +337,15 @@ function seedVenueLookups(batch: SqlBatch, timestamp: string): void {
 
 function seedDemoUsers(batch: SqlBatch, timestamp: string): void {
   DEMO_USERS.forEach((user) => {
+    // Demo accounts carry explicit permission lists (roles are legacy-only).
+    const permissions = JSON.stringify(LEGACY_ROLE_PERMISSIONS[user.role] ?? []);
     batch.add(
-      `INSERT INTO users (id, email, name, role, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
-       VALUES (${sqlStr(user.id)}, ${sqlStr(user.email)}, ${sqlStr(user.name)}, ${sqlStr(user.role)}, ${sqlStr(user.organisation)},
+      `INSERT INTO users (id, email, name, permissions, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
+       VALUES (${sqlStr(user.id)}, ${sqlStr(user.email)}, ${sqlStr(user.name)}, ${sqlStr(permissions)}, ${sqlStr(user.organisation)},
        ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)}, 1, ${sqlStr(timestamp)}, ${sqlStr(timestamp)})
        ON CONFLICT(email) DO UPDATE SET
          name = excluded.name,
-         role = excluded.role,
+         permissions = excluded.permissions,
          organisation = excluded.organisation,
          is_active = 1,
          updated_at = excluded.updated_at;`
@@ -527,8 +530,8 @@ function seedTasksForEvent(batch: SqlBatch, event: DemoEvent, timestamp: string)
          ${sqlStr(spec.assigneeId)}, ${sqlStr(spec.dueDate)}, ${sqlStr(spec.priority)}, ${sqlStr(spec.status)}, ${sqlStr(timestamp)}, ${sqlStr(timestamp)});`
       );
       batch.add(
-        `INSERT INTO notifications (id, idempotency_key, recipient_role, title, body, channel, related_event_id, related_task_id, is_read, created_at)
-         VALUES (${sqlStr(`demo_ntf_${event.id}_${spec.slug}`)}, ${sqlStr(`demo-task-${event.id}-${spec.slug}`)}, ${sqlStr(spec.slug === "accounts" ? "admin" : "venue_manager")},
+        `INSERT INTO notifications (id, idempotency_key, recipient_permission, title, body, channel, related_event_id, related_task_id, is_read, created_at)
+         VALUES (${sqlStr(`demo_ntf_${event.id}_${spec.slug}`)}, ${sqlStr(`demo-task-${event.id}-${spec.slug}`)}, ${sqlStr(spec.slug === "accounts" ? "user.manage" : "task.assign")},
          ${sqlStr(spec.status === "in_progress" ? "Task in progress" : "Demo task ready")}, ${sqlStr(`${spec.title}: ${event.title}`)}, 'in_app',
          ${sqlStr(event.id)}, ${sqlStr(taskId)}, ${spec.status === "completed" ? 1 : 0}, ${sqlStr(timestamp)});`
       );

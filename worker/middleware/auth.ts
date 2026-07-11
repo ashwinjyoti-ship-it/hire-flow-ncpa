@@ -3,7 +3,7 @@
  * Reads the session cookie, resolves the user, attaches to context variables.
  */
 import { createMiddleware } from "hono/factory";
-import type { Env, UserRole, AuthUser } from "../env";
+import type { Env, AuthUser } from "../env";
 import { readSessionCookie, resolveSession } from "../lib/sessions";
 import { can, type Permission } from "../lib/rbac";
 import type { AuditActor } from "../lib/audit";
@@ -29,7 +29,7 @@ export const attachUser = createMiddleware<AuthEnv>(async (c, next) => {
         id: session.userId,
         email: session.email,
         name: session.name,
-        role: session.role as UserRole,
+        permissions: session.permissions,
         organisation: null,
       };
     }
@@ -55,7 +55,7 @@ export function requirePermission(permission: Permission) {
     if (!user) {
       return c.json({ error: "Authentication required" }, 401);
     }
-    if (!can(user.role, permission)) {
+    if (!can(user.permissions, permission)) {
       return c.json({ error: "Insufficient permissions", permission }, 403);
     }
     await next();

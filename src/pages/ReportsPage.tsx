@@ -2,7 +2,7 @@
  * Reports & Analytics.
  *  - Morning Brief / Evening Debrief: the twice-daily operational briefs —
  *    attention-ordered (needs-your-decision first), generated automatically by
- *    the scheduler at 07:30 / 18:30 IST and emailed to Admins/Venue Managers,
+ *    the scheduler at 07:30 / 18:30 IST and emailed to report managers,
  *    and generatable on demand here. Immutable snapshots, like all reports.
  *  - Daily operational report (legacy full-day snapshot) is still available.
  *  - Analytics: the five requested areas over a date range, drawn with
@@ -62,7 +62,7 @@ type ReportDetail = {
 export function ReportsPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<"daily" | "analytics">("daily");
-  const canGenerate = can(user?.role ?? "viewer", "report.generate");
+  const canGenerate = can(user?.permissions, "report.generate");
 
   return (
     <div>
@@ -148,7 +148,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
               ))}
             </div>
             <p className="mb-3 text-[11px] text-ink-muted etched">
-              Briefs are also generated automatically at 07:30 (morning) and 18:30 (evening) IST and emailed to Admins and Venue Managers.
+              Briefs are also generated automatically at 07:30 (morning) and 18:30 (evening) IST and emailed to everyone who can generate reports.
             </p>
             <label className="block">
               <span className="text-xs font-semibold text-ink-secondary etched">Report date (IST)</span>

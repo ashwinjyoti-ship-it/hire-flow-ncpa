@@ -3,6 +3,8 @@
  * Declared consistently across wrangler.jsonc (Pages), scheduler/wrangler.jsonc,
  * and application code — per the spec's binding-naming requirement.
  */
+import type { Permission } from "./lib/rbac";
+
 export interface Env {
   // D1 binding (DB)
   DB: D1Database;
@@ -34,8 +36,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  /** Explicit permission keys — see worker/lib/rbac.ts. No roles. */
+  permissions: Permission[];
   organisation: string | null;
 }
-
-export type UserRole = "admin" | "venue_manager" | "coordinator" | "viewer";

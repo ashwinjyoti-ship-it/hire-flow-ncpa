@@ -175,7 +175,7 @@ export function CalendarPage() {
   const nowDate = new Date();
   const isCurrentMonth = cursor.getFullYear() === nowDate.getFullYear() && cursor.getMonth() === nowDate.getMonth();
 
-  const showCreate = can(user?.role ?? "viewer", "event.create");
+  const showCreate = can(user?.permissions, "event.create");
 
   return (
     <div>
