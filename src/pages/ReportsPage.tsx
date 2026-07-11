@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { formatDate, formatDateTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
@@ -116,6 +116,14 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
     },
   });
 
+  const deleteReport = useMutation({
+    mutationFn: (id: string) => apiDelete<{ ok: boolean }>(`/reports/daily/${id}`),
+    onSuccess: (_res, id) => {
+      if (selectedId === id) setSelectedId(null);
+      qc.invalidateQueries({ queryKey: ["daily-reports"] });
+    },
+  });
+
   const report = detail?.report;
 
   return (
@@ -181,12 +189,12 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
           ) : (
             <ul className="max-h-96 space-y-1 overflow-y-auto scroll-slim">
               {(listData?.reports ?? []).map((r) => (
-                <li key={r.id}>
+                <li key={r.id} className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setSelectedId(r.id)}
                     className={
-                      "w-full rounded-xl px-3 py-2 text-left text-sm transition-colors " +
+                      "min-w-0 flex-1 rounded-xl px-3 py-2 text-left text-sm transition-colors " +
                       (selectedId === r.id ? "bg-sage-btn text-sage-text carved-btn-sage etched" : "text-ink-secondary hover:bg-marble-shadow/40")
                     }
                   >
@@ -199,6 +207,22 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
                       {r.generated_by_name ? ` · ${r.generated_by_name}` : " · automatic"}
                     </span>
                   </button>
+                  {canGenerate && (
+                    <button
+                      type="button"
+                      title="Delete this saved report"
+                      aria-label={`Delete ${TYPE_META[r.report_type ?? "daily"].label} of ${formatDate(r.report_date)}`}
+                      disabled={deleteReport.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete the ${TYPE_META[r.report_type ?? "daily"].label} of ${formatDate(r.report_date)}? This cannot be undone.`)) {
+                          deleteReport.mutate(r.id);
+                        }
+                      }}
+                      className="shrink-0 rounded-full px-2 py-1 text-sm text-ink-muted transition-colors hover:bg-status-cancelled/10 hover:text-status-cancelled disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -404,13 +428,31 @@ function AllClear({ text }: { text: string }) {
   return <p className="text-sm font-medium text-status-confirmed etched">{text}</p>;
 }
 
+function PriorityBadge({ priority }: { priority: string }) {
+  const cls = priority === "high"
+    ? "bg-status-cancelled/15 text-status-cancelled"
+    : priority === "medium"
+      ? "bg-status-tentative/15 text-status-tentative"
+      : "bg-marble-shadow/60 text-ink-muted";
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${cls}`}>{priority}</span>;
+}
+
+function AssigneeCell({ name }: { name: string | null }) {
+  if (name) return <>{name}</>;
+  return <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-tentative">Unassigned</span>;
+}
+
+function OverdueDays({ days }: { days: number }) {
+  return <span className="font-semibold text-status-cancelled">{days}d</span>;
+}
+
 function briefTaskRows(tasks: ReportTask[], withAssignee = true): React.ReactNode[][] {
   return tasks.map((t) => [
     t.title,
-    t.priority,
+    <PriorityBadge key="p" priority={t.priority} />,
     t.due_date ? formatDate(t.due_date) : "—",
     <EventCell key="e" id={t.event_id} title={t.event_title} />,
-    ...(withAssignee ? [t.assignee_name ?? "Unassigned"] : []),
+    ...(withAssignee ? [<AssigneeCell key="a" name={t.assignee_name} />] : []),
   ]);
 }
 
@@ -557,17 +599,10 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
 
       <ReportSection title={`Overdue (${s.overdue.total})`}>
         {s.overdue.total === 0 ? <AllClear text="Nothing is overdue." /> : (
-          <>
-            <p className="mb-2 text-sm text-ink-secondary etched">
-              {s.overdue.buckets.filter((b) => b.count).map((b) => `${b.count} at ${b.label}`).join(" · ")}
-              {" — by owner: "}
-              {s.overdue.by_assignee.map((a) => `${a.assignee} ${a.count}`).join(" · ")}
-            </p>
-            <ReportTable
-              headers={["Task", "Priority", "Due", "Event", "Assignee", "Overdue"]}
-              rows={s.overdue.oldest.map((t) => [...briefTaskRows([t])[0]!, `${t.days_overdue}d`])}
-            />
-          </>
+          <ReportTable
+            headers={["Task", "Priority", "Due", "Event", "Assignee", "Overdue"]}
+            rows={s.overdue.oldest.map((t) => [...briefTaskRows([t])[0]!, <OverdueDays key="o" days={t.days_overdue} />])}
+          />
         )}
       </ReportSection>
 

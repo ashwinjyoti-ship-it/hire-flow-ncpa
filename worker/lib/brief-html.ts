@@ -74,13 +74,27 @@ function headlineStrip(cells: Array<{ label: string; value: string; tone?: "good
   return `<table cellspacing="0" cellpadding="0" style="font-family:Georgia,serif;"><tr>${tds}</tr></table>`;
 }
 
+function priorityBadge(priority: string): string {
+  const style = priority === "high"
+    ? "background:#f6e3df;color:#a4442e;"
+    : priority === "medium"
+      ? "background:#f9ecdd;color:#b06a2a;"
+      : "background:#f0eee8;color:#6b675f;";
+  return `<span style="display:inline-block;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;${style}">${esc(priority)}</span>`;
+}
+
+function assigneeCell(name: string | null): string {
+  if (name) return esc(name);
+  return `<span style="display:inline-block;border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;background:#faf0d9;color:#b06a2a;">Unassigned</span>`;
+}
+
 function taskRows(baseUrl: string, tasks: ReportTask[], extra?: (t: ReportTask) => string[]): string[][] {
   return tasks.map((t) => [
     esc(t.title),
-    esc(t.priority),
+    priorityBadge(t.priority),
     fmtDate(t.due_date),
     eventLink(baseUrl, t.event_id, t.event_title),
-    esc(t.assignee_name ?? "Unassigned"),
+    assigneeCell(t.assignee_name),
     ...(extra ? extra(t) : []),
   ]);
 }
@@ -93,7 +107,7 @@ function teamPlanSection(baseUrl: string, groups: AssigneeTasks[], emptyText: st
       const warn = g.assignee ? "" : ` <span style="${S.bad}">— needs an owner</span>`;
       return `<p style="margin:10px 0 4px;font-size:12px;font-weight:700;font-family:Georgia,serif;color:#2f2c27;">${esc(name)} (${g.tasks.length})${warn}</p>` +
         table(["Task", "Priority", "Due", "Event", ""], g.tasks.map((t) => [
-          esc(t.title), esc(t.priority), fmtDate(t.due_date), eventLink(baseUrl, t.event_id, t.event_title), esc(t.task_type),
+          esc(t.title), priorityBadge(t.priority), fmtDate(t.due_date), eventLink(baseUrl, t.event_id, t.event_title), esc(t.task_type),
         ]));
     })
     .join("");
@@ -164,11 +178,8 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
         ].join("");
 
   const overdueSummary = s.overdue.total
-    ? `<p style="font-size:12px;font-family:Georgia,serif;color:#2f2c27;margin:4px 0 8px;">${s.overdue.total} open tasks overdue — ` +
-      s.overdue.buckets.filter((b) => b.count).map((b) => `${b.count} at ${b.label}`).join(" · ") +
-      `. By owner: ${s.overdue.by_assignee.map((a) => `${esc(a.assignee)} ${a.count}`).join(" · ")}.</p>` +
-      table(["Task", "Priority", "Due", "Event", "Assignee", "Overdue"], taskRows(baseUrl, s.overdue.oldest, (t) => [
-        `${(t as ReportTask & { days_overdue: number }).days_overdue}d`,
+    ? table(["Task", "Priority", "Due", "Event", "Assignee", "Overdue"], taskRows(baseUrl, s.overdue.oldest, (t) => [
+        `<span style="${S.bad}font-weight:700;">${(t as ReportTask & { days_overdue: number }).days_overdue}d</span>`,
       ]))
     : `<p style="${S.good};font-size:13px;font-family:Georgia,serif;">Nothing is overdue.</p>`;
 

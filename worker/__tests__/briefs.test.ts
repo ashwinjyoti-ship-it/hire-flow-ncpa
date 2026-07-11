@@ -187,6 +187,31 @@ describe("brief routes", () => {
     expect(html).toContain("Evening Debrief");
     expect(html).toContain("Tomorrow preview");
   });
+
+  it("deletes a saved report for a venue manager", async () => {
+    let deleted = 0;
+    const db = briefsDb("venue_manager", (sql) => {
+      if (sql.startsWith("DELETE FROM daily_reports")) return { run: () => { deleted++; return { success: true }; } };
+      if (sql.includes("FROM daily_reports")) {
+        return { first: () => ({ id: "rep_b1", report_date: "2026-07-07", report_type: "morning" }) };
+      }
+      return {};
+    });
+    const { app, env } = appWith(db);
+    const res = await app.request("/reports/daily/rep_b1", { method: "DELETE", headers: cookie }, env);
+    expect(res.status).toBe(200);
+    expect(deleted).toBe(1);
+  });
+
+  it("refuses report deletion for a viewer and 404s on a missing report", async () => {
+    const { app: viewerApp, env: viewerEnv } = appWith(briefsDb("viewer"));
+    const forbidden = await viewerApp.request("/reports/daily/rep_b1", { method: "DELETE", headers: cookie }, viewerEnv);
+    expect(forbidden.status).toBe(403);
+
+    const { app: adminApp, env: adminEnv } = appWith(briefsDb("admin"));
+    const missing = await adminApp.request("/reports/daily/rep_missing", { method: "DELETE", headers: cookie }, adminEnv);
+    expect(missing.status).toBe(404);
+  });
 });
 
 describe("brief email renderer", () => {
