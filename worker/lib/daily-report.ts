@@ -12,7 +12,7 @@
  *   outstanding   — open tasks due on or before the date (overdue included)
  */
 
-const IST_OFFSET_MINUTES = 330;
+export const IST_OFFSET_MINUTES = 330;
 
 /** Today's date (yyyy-mm-dd) in Asia/Kolkata. */
 export function istToday(now: Date = new Date()): string {

@@ -19,6 +19,8 @@
     "crons": ["*/30 * * * *"]
   },
   "vars": {
-    "TZ": "Asia/Kolkata"
+    "TZ": "Asia/Kolkata",
+    // Base URL used for deep links inside the emailed briefs.
+    "APP_URL": "https://ncpa-hire.pages.dev"
   }
 }
