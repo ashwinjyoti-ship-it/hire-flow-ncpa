@@ -404,13 +404,31 @@ function AllClear({ text }: { text: string }) {
   return <p className="text-sm font-medium text-status-confirmed etched">{text}</p>;
 }
 
+function PriorityBadge({ priority }: { priority: string }) {
+  const cls = priority === "high"
+    ? "bg-status-cancelled/15 text-status-cancelled"
+    : priority === "medium"
+      ? "bg-status-tentative/15 text-status-tentative"
+      : "bg-marble-shadow/60 text-ink-muted";
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${cls}`}>{priority}</span>;
+}
+
+function AssigneeCell({ name }: { name: string | null }) {
+  if (name) return <>{name}</>;
+  return <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-tentative">Unassigned</span>;
+}
+
+function OverdueDays({ days }: { days: number }) {
+  return <span className="font-semibold text-status-cancelled">{days}d</span>;
+}
+
 function briefTaskRows(tasks: ReportTask[], withAssignee = true): React.ReactNode[][] {
   return tasks.map((t) => [
     t.title,
-    t.priority,
+    <PriorityBadge key="p" priority={t.priority} />,
     t.due_date ? formatDate(t.due_date) : "—",
     <EventCell key="e" id={t.event_id} title={t.event_title} />,
-    ...(withAssignee ? [t.assignee_name ?? "Unassigned"] : []),
+    ...(withAssignee ? [<AssigneeCell key="a" name={t.assignee_name} />] : []),
   ]);
 }
 
@@ -557,17 +575,10 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
 
       <ReportSection title={`Overdue (${s.overdue.total})`}>
         {s.overdue.total === 0 ? <AllClear text="Nothing is overdue." /> : (
-          <>
-            <p className="mb-2 text-sm text-ink-secondary etched">
-              {s.overdue.buckets.filter((b) => b.count).map((b) => `${b.count} at ${b.label}`).join(" · ")}
-              {" — by owner: "}
-              {s.overdue.by_assignee.map((a) => `${a.assignee} ${a.count}`).join(" · ")}
-            </p>
-            <ReportTable
-              headers={["Task", "Priority", "Due", "Event", "Assignee", "Overdue"]}
-              rows={s.overdue.oldest.map((t) => [...briefTaskRows([t])[0]!, `${t.days_overdue}d`])}
-            />
-          </>
+          <ReportTable
+            headers={["Task", "Priority", "Due", "Event", "Assignee", "Overdue"]}
+            rows={s.overdue.oldest.map((t) => [...briefTaskRows([t])[0]!, <OverdueDays key="o" days={t.days_overdue} />])}
+          />
         )}
       </ReportSection>
 
