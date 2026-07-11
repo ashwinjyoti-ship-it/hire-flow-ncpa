@@ -33,6 +33,23 @@ function fmtTime(start: string | null, end: string | null): string {
   return end ? `${start}–${end}` : start;
 }
 
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  })} · ${d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Kolkata",
+  })} IST`;
+}
+
 const S = {
   h2: "font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:#5d6b52;border-bottom:1px solid #cfcabf;padding-bottom:4px;margin:24px 0 8px;font-family:Georgia,serif;",
   table: "width:100%;border-collapse:collapse;font-size:12px;font-family:Georgia,serif;",
@@ -111,6 +128,286 @@ function teamPlanSection(baseUrl: string, groups: AssigneeTasks[], emptyText: st
         ]));
     })
     .join("");
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function emailNote(text: string, tone: "default" | "good" | "bad" = "default"): string {
+  const color = tone === "good" ? "#4a6741" : tone === "bad" ? "#a4442e" : "#544f47";
+  return `<p style="margin:0;font-size:14px;line-height:22px;color:${color};font-family:Arial,Helvetica,sans-serif;">${esc(text)}</p>`;
+}
+
+function emailSection(title: string, inner: string): string {
+  return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;margin-top:16px;background:#fffdf9;border:1px solid #e8e1d7;border-radius:16px;">
+    <tr>
+      <td style="padding:18px 18px 16px;">
+        <div style="margin:0 0 12px;font-size:15px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5d6b52;font-family:Georgia,serif;">${esc(title)}</div>
+        ${inner}
+      </td>
+    </tr>
+  </table>`;
+}
+
+function emailSubsection(title: string): string {
+  return `<div style="margin:16px 0 8px;font-size:14px;font-weight:700;color:#2f2c27;font-family:Arial,Helvetica,sans-serif;">${esc(title)}</div>`;
+}
+
+function emailMetricGrid(cells: Array<{ label: string; value: string; tone?: "good" | "bad" }>): string {
+  const rows = chunk(cells, 2).map((pair) => {
+    const cols = pair.map((c) => {
+      const color = c.tone === "good" ? "#4a6741" : c.tone === "bad" ? "#a4442e" : "#2f2c27";
+      return `<td style="width:50%;padding:0 8px 8px 0;vertical-align:top;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f6f1e8;border:1px solid #e4dccf;border-radius:14px;">
+          <tr><td style="padding:14px 14px 12px;">
+            <div style="font-size:24px;line-height:28px;font-weight:700;color:${color};font-family:Georgia,serif;">${esc(c.value)}</div>
+            <div style="margin-top:6px;font-size:11px;line-height:16px;letter-spacing:0.06em;text-transform:uppercase;color:#766f66;font-family:Arial,Helvetica,sans-serif;">${esc(c.label)}</div>
+          </td></tr>
+        </table>
+      </td>`;
+    }).join("");
+    const filler = pair.length === 1 ? `<td style="width:50%;padding:0 8px 8px 0;vertical-align:top;"></td>` : "";
+    return `<tr>${cols}${filler}</tr>`;
+  }).join("");
+  return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;"><tbody>${rows}</tbody></table>`;
+}
+
+function emailRecordList(headers: string[], rows: string[][], emptyText = "Nothing recorded"): string {
+  if (!rows.length) return emailNote(emptyText);
+  return rows.map((row) => {
+    const fields = headers.map((header, index) => {
+      const isLast = index === headers.length - 1;
+      return `<tr>
+        <td style="padding:${index === 0 ? "0" : "10px"} 0 ${isLast ? "0" : "0"};">
+          <div style="font-size:10px;line-height:14px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#8b8478;font-family:Arial,Helvetica,sans-serif;">${esc(header)}</div>
+          <div style="margin-top:3px;font-size:14px;line-height:21px;color:#2f2c27;font-family:Arial,Helvetica,sans-serif;word-break:break-word;">${row[index] || "—"}</div>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f9f6ef;border:1px solid #ece4d8;border-radius:14px;margin-top:10px;">
+      <tr>
+        <td style="padding:14px;">${fields}</td>
+      </tr>
+    </table>`;
+  }).join("");
+}
+
+function emailTeamPlan(baseUrl: string, groups: AssigneeTasks[], emptyText: string): string {
+  if (!groups.length) return emailNote(emptyText);
+  return groups.map((g) => {
+    const name = g.assignee ?? "Unassigned";
+    const title = g.assignee ? `${name} (${g.tasks.length})` : `${name} (${g.tasks.length}) — needs an owner`;
+    return `${emailSubsection(title)}${emailRecordList(
+      ["Task", "Priority", "Due", "Event", "Type"],
+      g.tasks.map((t) => [esc(t.title), priorityBadge(t.priority), fmtDate(t.due_date), eventLink(baseUrl, t.event_id, t.event_title), esc(t.task_type)]),
+    )}`;
+  }).join("");
+}
+
+function renderMorningEmail(s: MorningBriefContent, baseUrl: string): string {
+  const d = s.decisions;
+  const decisionsBlocks = [
+    d.approvals_pending.length
+      ? `${emailSubsection(`VFH approvals pending (${d.approvals_pending.length})`)}${emailRecordList(
+          ["Event", "Organisation", "Event date", "Approval"],
+          d.approvals_pending.map((a) => [
+            eventLink(baseUrl, a.event_id, a.event_title),
+            esc(a.organisation_name ?? "—"),
+            fmtDate(a.event_start_date),
+            esc(a.approval_status ?? "—"),
+          ]),
+        )}`
+      : "",
+    d.conflicts.length
+      ? `${emailSubsection(`Venue conflicts ahead (${d.conflicts.length})`)}${emailRecordList(
+          ["Date", "Venue", "Level", "Events"],
+          d.conflicts.map((c) => [
+            fmtDate(c.activity_date),
+            esc(c.venue),
+            c.level === "conflict" ? `<span style="${S.bad}font-weight:700;">Conflict</span>` : "Potential",
+            `${eventLink(baseUrl, c.a.event_id, c.a.event_title)} (${esc(statusLabel(c.a.status))}) · ${eventLink(baseUrl, c.b.event_id, c.b.event_title)} (${esc(statusLabel(c.b.status))})`,
+          ]),
+        )}`
+      : "",
+    d.unassigned_high_priority.length
+      ? `${emailSubsection(`High-priority tasks with no owner (${d.unassigned_high_priority.length})`)}${emailRecordList(
+          ["Task", "Priority", "Due", "Event", "Assignee"],
+          taskRows(baseUrl, d.unassigned_high_priority),
+        )}`
+      : "",
+    d.stale_enquiries.length
+      ? `${emailSubsection(`Enquiries gone quiet (${d.stale_enquiries.length})`)}${emailRecordList(
+          ["Enquiry", "Organisation", "Enquiry date", "Quiet for"],
+          d.stale_enquiries.map((e) => [
+            eventLink(baseUrl, e.event_id, e.event_title),
+            esc(e.organisation_name ?? "—"),
+            fmtDate(e.enquiry_date),
+            `${e.days_quiet} days`,
+          ]),
+        )}`
+      : "",
+  ].filter(Boolean).join("");
+
+  const r = s.risk_radar;
+  const riskBlocks = [
+    r.low_readiness.length
+      ? `${emailSubsection(`Events soon, checklist behind (${r.low_readiness.length})`)}${emailRecordList(
+          ["Event", "Starts", "In", "Ready", "Status"],
+          r.low_readiness.map((e) => [
+            eventLink(baseUrl, e.event_id, e.event_title),
+            fmtDate(e.event_start_date),
+            `${e.days_to_event}d`,
+            `<span style="${S.bad}font-weight:700;">${Math.round(e.overall_completion * 100)}%</span>`,
+            esc(statusLabel(e.status)),
+          ]),
+        )}`
+      : "",
+    r.blocked_items.length
+      ? `${emailSubsection(`Blocked checklist items (${r.blocked_items.length})`)}${emailRecordList(
+          ["Item", "Section", "Event"],
+          r.blocked_items.map((b) => [esc(b.label), esc(`${b.module} · ${b.section}`), eventLink(baseUrl, b.event_id, b.event_title)]),
+        )}`
+      : "",
+    r.overdue_instalments.length
+      ? `${emailSubsection(`Payment follow-ups overdue (${r.overdue_instalments.length})`)}${emailRecordList(
+          ["Task", "Priority", "Due", "Event", "Assignee"],
+          taskRows(baseUrl, r.overdue_instalments),
+        )}`
+      : "",
+    r.unsigned_confirmations.length
+      ? `${emailSubsection(`Confirmed events without a signed confirmation (${r.unsigned_confirmations.length})`)}${emailRecordList(
+          ["Event", "Organisation", "Starts", "Confirmation"],
+          r.unsigned_confirmations.map((e) => [
+            eventLink(baseUrl, e.event_id, e.event_title),
+            esc(e.organisation_name ?? "—"),
+            fmtDate(e.event_start_date),
+            esc((e.confirmation_status ?? "none").replace(/_/g, " ")),
+          ]),
+        )}`
+      : "",
+  ].filter(Boolean).join("");
+
+  return [
+    emailMetricGrid([
+      { label: "At the venues", value: String(s.headline.scheduled_today) },
+      { label: "Tasks due today", value: String(s.headline.tasks_due_today) },
+      { label: "Overdue", value: String(s.headline.overdue), tone: s.headline.overdue ? "bad" : "good" },
+      { label: "Need your decision", value: String(s.headline.decisions_needed), tone: s.headline.decisions_needed ? "bad" : "good" },
+      { label: "New enquiries yesterday", value: String(s.headline.new_enquiries_yesterday) },
+    ]),
+    emailSection("Needs your decision", decisionsBlocks || emailNote("Nothing needs your decision today.", "good")),
+    emailSection("Today at the venues", emailRecordList(
+      ["Venue", "Activity", "Time", "Event", "Organisation", "Status"],
+      s.today_schedule.map((e) => [
+        esc(e.venue),
+        esc(e.activity_type.replace(/_/g, " ")),
+        fmtTime(e.start_time, e.end_time),
+        eventLink(baseUrl, e.event_id, e.event_title),
+        esc(e.organisation_name ?? "—"),
+        esc(statusLabel(e.event_status)),
+      ]),
+      "No venue activity scheduled today.",
+    )),
+    emailSection("Team plan for today", emailTeamPlan(baseUrl, s.team_plan, "No tasks due today.")),
+    emailSection("Risk radar", riskBlocks || emailNote("No risks on the radar.", "good")),
+    emailSection("Overdue", s.overdue.total
+      ? emailRecordList(
+          ["Task", "Priority", "Due", "Event", "Assignee", "Overdue"],
+          taskRows(baseUrl, s.overdue.oldest, (t) => [`<span style="${S.bad}font-weight:700;">${(t as ReportTask & { days_overdue: number }).days_overdue}d</span>`]),
+        )
+      : emailNote("Nothing is overdue.", "good")),
+    emailSection("Yesterday in one line", emailNote(
+      `Yesterday: ${s.yesterday.completed} tasks completed · ${s.yesterday.new_enquiries} new enquiries · ${s.yesterday.confirmations} confirmations won.`,
+    )),
+  ].join("");
+}
+
+function renderEveningEmail(s: EveningBriefContent, baseUrl: string): string {
+  const sc = s.scoreboard;
+  const pct = Math.round(sc.completion_rate * 100);
+  const verdict = sc.due_today === 0
+    ? "No tasks were due today."
+    : `${sc.done_of_due} of ${sc.due_today} tasks due today were completed (${pct}%)${sc.still_open ? ` — ${sc.still_open} slipped.` : " — a clean sweep."}`;
+
+  const doneInner = s.done_by_person.length
+    ? s.done_by_person.map((p) => {
+        const rows: string[][] = [
+          ...p.tasks.map((t) => ["Task", esc(t.title), esc(t.event_title ?? "—"), esc(t.completion_note ?? "Completed")]),
+          ...p.checklist.map((c) => ["Checklist", esc(c.label), esc(c.event_title ?? "—"), esc(`${c.module} · ${c.section}`)]),
+        ];
+        return `${emailSubsection(`${p.person} (${rows.length})`)}${emailRecordList(["Type", "Item", "Event", "Detail"], rows)}`;
+      }).join("")
+    : emailNote("Nothing was completed today.");
+
+  const statusSummary = `Status movements (${s.new_today.status_changes.length}${s.new_today.confirmations ? ` — ${s.new_today.confirmations} confirmed` : ""})`;
+
+  return [
+    emailMetricGrid([
+      { label: "Due today", value: String(sc.due_today) },
+      { label: "Done of due", value: `${sc.done_of_due} (${pct}%)`, tone: sc.due_today && pct >= 80 ? "good" : sc.still_open ? "bad" : "good" },
+      { label: "Slipped", value: String(sc.still_open), tone: sc.still_open ? "bad" : "good" },
+      { label: "Done in total", value: String(sc.done_today_total) },
+      { label: "Checklist due / done", value: `${sc.checklist_done}/${sc.checklist_due}` },
+    ]),
+    emailSection("Plan vs done", emailNote(verdict, sc.still_open ? "bad" : "good")),
+    emailSection("What got done", doneInner),
+    emailSection("Slipped today", s.slipped.length
+      ? emailTeamPlan(baseUrl, s.slipped, "")
+      : emailNote("Nothing slipped — everything due today is done.", "good")),
+    emailSection("New today", [
+      emailSubsection(`Enquiries received (${s.new_today.enquiries.length})`),
+      emailRecordList(
+        ["Enquiry", "Organisation", "Source"],
+        s.new_today.enquiries.map((e) => [
+          eventLink(baseUrl, e.event_id, e.event_title),
+          esc(e.organisation_name ?? "—"),
+          esc(e.enquiry_source ?? "—"),
+        ]),
+        "No new enquiries today.",
+      ),
+      emailSubsection(statusSummary),
+      emailRecordList(
+        ["Event", "Change", "By", "Reason"],
+        s.new_today.status_changes.map((c) => [
+          eventLink(baseUrl, c.event_id, c.event_title),
+          `${esc(statusLabel(c.from_status))} → <b>${esc(statusLabel(c.to_status))}</b>`,
+          esc(c.changed_by_name ?? "—"),
+          esc(c.reason ?? "—"),
+        ]),
+        "No status changes today.",
+      ),
+    ].join("")),
+    emailSection("Tomorrow preview", [
+      emailNote(`${s.tomorrow.tasks_due} tasks due tomorrow.`),
+      emailRecordList(
+        ["Venue", "Activity", "Time", "Event", "Organisation"],
+        s.tomorrow.schedule.map((e) => [
+          esc(e.venue),
+          esc(e.activity_type.replace(/_/g, " ")),
+          fmtTime(e.start_time, e.end_time),
+          eventLink(baseUrl, e.event_id, e.event_title),
+          esc(e.organisation_name ?? "—"),
+        ]),
+        "No venue activity scheduled tomorrow.",
+      ),
+    ].join("")),
+    emailSection("7-day completion trend", emailRecordList(
+      ["Day", "Completion", "Done / due"],
+      s.trend.map((t) => {
+        const p = t.due ? Math.round((t.done / t.due) * 100) : null;
+        const color = p === null ? "#9a958a" : p >= 80 ? "#4a6741" : p >= 50 ? "#8a6d1f" : "#a4442e";
+        return [
+          new Date(`${t.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }),
+          p === null ? "—" : `<span style="color:${color};font-weight:700;">${p}%</span>`,
+          `${t.done}/${t.due}`,
+        ];
+      }),
+      "No completion trend available yet.",
+    )),
+  ].join("");
 }
 
 // ------------------------------------------------------------- Morning Brief
@@ -294,14 +591,42 @@ export function renderBriefBody(content: BriefContent, baseUrl: string): string 
 /** Full email document. */
 export function renderBriefEmail(content: BriefContent, baseUrl: string): string {
   const title = briefTitle(content);
+  const intro = content.brief_type === "morning"
+    ? "A concise start-of-day view of decisions, venue activity, and operational risks."
+    : "A clean end-of-day summary of completions, slippages, new activity, and tomorrow's outlook.";
+  const body = content.brief_type === "morning" ? renderMorningEmail(content, baseUrl) : renderEveningEmail(content, baseUrl);
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title></head>
-<body style="margin:0;padding:24px;background:#f4f1ea;">
-<div style="max-width:720px;margin:0 auto;background:#fbf9f4;border:1px solid #e0dcd2;border-radius:8px;padding:24px 28px;">
-<h1 style="font-size:20px;margin:0 0 2px;font-family:Georgia,serif;color:#2f2c27;">${content.brief_type === "morning" ? "☀️" : "🌙"} ${esc(title)}</h1>
-<p style="font-size:11px;color:#6b675f;margin:0 0 16px;font-family:Georgia,serif;">NCPA Venue for Hire · generated ${esc(content.generated_at)} · <a href="${esc(baseUrl)}/reports" style="${S.link}">open in the app</a></p>
-${renderBriefBody(content, baseUrl)}
-</div></body></html>`;
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(title)}</title></head>
+<body style="margin:0;padding:0;background:#f4f1ea;">
+  <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;background:#f4f1ea;">
+    <tr>
+      <td style="padding:20px 12px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;max-width:680px;margin:0 auto;border-collapse:separate;border-spacing:0;background:#fbf9f4;border:1px solid #e0dcd2;border-radius:18px;">
+          <tr>
+            <td style="padding:24px 18px 10px;">
+              <div style="font-size:12px;line-height:18px;letter-spacing:0.12em;text-transform:uppercase;color:#8b8478;font-family:Arial,Helvetica,sans-serif;">NCPA Venue for Hire</div>
+              <h1 style="margin:8px 0 0;font-size:28px;line-height:36px;font-family:Georgia,serif;color:#2f2c27;">${content.brief_type === "morning" ? "☀️" : "🌙"} ${esc(title)}</h1>
+              <p style="margin:8px 0 0;font-size:14px;line-height:22px;color:#5f5a52;font-family:Arial,Helvetica,sans-serif;">${esc(intro)}</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin-top:16px;">
+                <tr>
+                  <td style="font-size:12px;line-height:18px;color:#7a7368;font-family:Arial,Helvetica,sans-serif;vertical-align:middle;">Generated ${esc(fmtDateTime(content.generated_at))}</td>
+                  <td style="text-align:right;vertical-align:middle;">
+                    <a href="${esc(baseUrl)}/reports" style="display:inline-block;padding:10px 14px;border-radius:999px;background:#5d6b52;color:#ffffff;text-decoration:none;font-size:12px;font-weight:700;font-family:Arial,Helvetica,sans-serif;">Open report</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 18px 20px;">
+              ${body}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body></html>`;
 }
 
 /** Print-ready standalone document (GET /reports/daily/:id/pdf for briefs). */
