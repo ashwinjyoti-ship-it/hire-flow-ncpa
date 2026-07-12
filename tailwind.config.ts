@@ -111,13 +111,12 @@ export default {
       boxShadow: {
         // Inset-only depth system. No outer shadows except the 1px button shadow.
         carved: "inset 0 2px 5px rgba(90,88,82,0.20), inset 0 8px 16px rgba(90,88,82,0.08), inset 2px 0 6px rgba(90,88,82,0.09), inset 0 -1px 0 rgba(255,255,255,0.85), inset -1px 0 0 rgba(255,255,255,0.6)",
-        "carved-today": "inset 0 2px 5px rgba(90,88,82,0.18), inset 0 8px 16px rgba(90,88,82,0.08), inset 0 0 0 1.5px rgba(156,175,136,0.55), inset 0 -1px 0 rgba(255,255,255,0.85)",
+        "carved-today": "inset 0 2px 5px rgba(90,88,82,0.18), inset 0 8px 16px rgba(90,88,82,0.08), inset 0 0 0 1.5px rgba(184,92,56,0.45), inset 0 -1px 0 rgba(255,255,255,0.85)",
         "carved-card": "inset 0 2px 5px rgba(90,88,82,0.16), inset 0 -1px 0 rgba(255,255,255,0.9)",
         "carved-header": "inset 0 2px 5px rgba(90,88,82,0.16), inset 0 -1px 0 rgba(255,255,255,0.9)",
         "carved-btn": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(90,88,82,0.10)",
         "carved-btn-sage": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 2px rgba(110,125,95,0.14)",
         "carved-btn-terracotta": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 2px rgba(150,80,50,0.16)",
-        "sage-pip": "inset 0 1px 1px rgba(255,255,255,0.5), 0 1px 2px rgba(110,125,95,0.25)",
         "terracotta-pip": "inset 0 1px 1px rgba(255,255,255,0.5), 0 1px 2px rgba(150,80,50,0.28)",
         "evt-dot": "0 1px 1px rgba(90,88,82,0.18)",
       },
@@ -128,8 +127,10 @@ export default {
       backgroundImage: {
         "marble-stage":
           "radial-gradient(160% 130% at 18% -5%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 50%), linear-gradient(155deg, #FEFEFE 0%, #FAFAF8 55%, #F4F4F2 100%)",
-        "sage-today-wash":
-          "linear-gradient(180deg, rgba(140,157,120,0.16) 0%, rgba(140,157,120,0.05) 100%)",
+        // Kept deliberately faint (about half the old sage wash) so warm
+        // status chips inside today's cell stay the only saturated warm block.
+        "terracotta-today-wash":
+          "linear-gradient(180deg, rgba(184,92,56,0.07) 0%, rgba(184,92,56,0.03) 100%)",
         "sage-btn": "linear-gradient(180deg, #EEF2E7 0%, #DCE4CF 100%)",
         "sage-btn-hover": "linear-gradient(180deg, #F2F5EC 0%, #E1E8D6 100%)",
         "terracotta-btn": "linear-gradient(180deg, #F6E7DF 0%, #EDD5C8 100%)",

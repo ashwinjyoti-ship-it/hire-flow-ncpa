@@ -116,7 +116,7 @@ body {
 }
 .carved-today {
   box-shadow: inset 0 2px 5px rgba(90, 88, 82, 0.18),
-    inset 0 8px 16px rgba(90, 88, 82, 0.08), inset 0 0 0 1.5px rgba(156, 175, 136, 0.55),
+    inset 0 8px 16px rgba(90, 88, 82, 0.08), inset 0 0 0 1.5px rgba(184, 92, 56, 0.45),
     inset 0 -1px 0 rgba(255, 255, 255, 0.85);
 }
 .carved-card,
@@ -141,9 +141,6 @@ body {
 }
 .carved-muted {
   opacity: 0.62;
-}
-.sage-pip {
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5), 0 1px 2px rgba(110, 125, 95, 0.25);
 }
 .terracotta-pip {
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5), 0 1px 2px rgba(150, 80, 50, 0.28);
