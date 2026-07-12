@@ -114,7 +114,9 @@ describe("frontend regression guards", () => {
 
     expect(calendar).toContain("setSearchParams(next, { replace: true })");
     expect(calendar).toContain('next.set("view", view)');
-    expect(calendar).toContain('next.set("q", filters.q.trim())');
+    expect(calendar).toContain('searchParams.get("q") ?? ""');
+    expect(calendar).toContain("function setFilter");
+    expect(calendar).toContain("Clear search");
   });
 
   it("keeps calendar focused on activity and lifecycle views", () => {
@@ -124,7 +126,7 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("view=list");
     expect(calendar).not.toContain("EventsListView");
     expect(calendar).not.toContain('"venue", "lifecycle"');
-    expect(calendar).toContain('requestedView === "show" ? "show" : "lifecycle"');
+    expect(calendar).toContain('searchParams.get("view") === "show" ? "show" : "lifecycle"');
     expect(calendar).toContain('(["lifecycle", "show"] as const)');
     expect(calendar).not.toContain('"week"');
     expect(calendar).not.toContain('"day"');
@@ -133,16 +135,27 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("lifecycle");
   });
 
-  it("syncs calendar query params into the mounted calendar page without invalid dates", () => {
+  it("reads calendar filters from the URL and jumps to the matching month on search", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("useEffect");
     expect(calendar).toContain("function dateFromParam");
     expect(calendar).toContain("Number.isNaN(date.getTime())");
-    expect(calendar).toContain("setView(nextView)");
-    expect(calendar).toContain("setCursor(dateFromParam(nextFrom))");
-    expect(calendar).toContain("setFilters({");
+    expect(calendar).toContain("function setView(nextView: View)");
+    expect(calendar).toContain("dateFromParam(searchParams.get(\"from\"))");
     expect(calendar).toContain("searchParams.get(\"status\") ?? \"\"");
+    expect(calendar).toContain("URL is the single source of truth");
+    expect(calendar).toContain("/events?q=");
+    expect(calendar).toContain("params.set(\"from\", from)");
+  });
+
+  it("preserves the active calendar view when submitting topbar search", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("preferredCalendarView");
+    expect(source).toContain('navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`)');
+    expect(source).toContain('location.pathname === "/calendar"');
+    expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
   });
 
   it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {

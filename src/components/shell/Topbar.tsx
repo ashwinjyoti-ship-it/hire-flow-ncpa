@@ -238,7 +238,18 @@ function GlobalSearch() {
 
   useEffect(() => {
     setOpen(false);
-    setQuery("");
+    // Keep the input aligned with shareable page filters instead of wiping it on
+    // every URL change — that left calendar users unable to clear a search.
+    const urlQ = new URLSearchParams(location.search).get("q") ?? "";
+    if (
+      location.pathname === "/calendar" ||
+      location.pathname === "/organisations" ||
+      location.pathname === "/tasks"
+    ) {
+      setQuery(urlQ);
+    } else {
+      setQuery("");
+    }
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -257,25 +268,32 @@ function GlobalSearch() {
     };
   }, [open]);
 
+  function preferredCalendarView(): "show" | "lifecycle" {
+    if (location.pathname !== "/calendar") return "lifecycle";
+    return new URLSearchParams(location.search).get("view") === "show" ? "show" : "lifecycle";
+  }
+
   async function submitSearch() {
     const term = query.trim();
     if (!term) return;
+    const view = preferredCalendarView();
     try {
+      const statusQuery = view === "show" ? "&status=confirmed" : "";
       const [orgRes, eventRes] = await Promise.all([
         apiGet<{ organisations: SearchOrg[] }>(`/organisations?q=${encodeURIComponent(term)}`),
-        apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}`),
+        apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}${statusQuery}`),
       ]);
       const firstEvent = eventRes.events[0];
       if (firstEvent?.event_start_date) {
         const from = `${firstEvent.event_start_date.slice(0, 7)}-01`;
-        navigate(`/calendar?view=lifecycle&q=${encodeURIComponent(term)}&from=${from}`);
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`);
       } else if (orgRes.organisations.length > 0) {
         navigate(`/organisations?q=${encodeURIComponent(term)}`);
       } else {
-        navigate(`/calendar?view=lifecycle&q=${encodeURIComponent(term)}`);
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
       }
     } catch {
-      navigate(`/calendar?view=lifecycle&q=${encodeURIComponent(term)}`);
+      navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
     }
     setOpen(false);
   }
