@@ -240,7 +240,7 @@ export function CalendarPage() {
       <PageHeader
         title={view === "lifecycle" ? "Lifecycle Calendar" : "Show Calendar"}
         actions={showCreate ? (
-          <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
+          <Link to="/events/new" className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover">
             + New Event
           </Link>
         ) : null}
@@ -255,7 +255,7 @@ export function CalendarPage() {
               key={v}
               type="button"
               onClick={() => setView(v)}
-              className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
+              className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-muted hover:text-ink-secondary")}
             >
               {v === "show" ? "Show Calendar" : "Lifecycle"}
             </button>
@@ -313,7 +313,7 @@ export function CalendarPage() {
           <FilterSelect value={filters.type} onChange={(v) => setFilter("type", v)} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
           <FilterSelect value={filters.owner} onChange={(v) => setFilter("owner", v)} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
           <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
-            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
+            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-terracotta" />
             My events
           </label>
         </div>

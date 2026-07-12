@@ -146,7 +146,7 @@ export function OrganisationsPage() {
             <button
               type="button"
               onClick={() => show("Organisation creation isn't available yet.")}
-              className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched hover:bg-sage-btn-hover"
+              className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover"
             >
               + Add organisation
             </button>

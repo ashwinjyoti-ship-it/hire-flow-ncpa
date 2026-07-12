@@ -200,7 +200,7 @@ export function ProfilePage() {
                 type="button"
                 disabled={busy || !setupPassword}
                 onClick={beginSetup}
-                className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
               >
                 Begin MFA setup
               </button>
@@ -239,7 +239,7 @@ export function ProfilePage() {
                 type="button"
                 disabled={busy || confirmCode.length < 6}
                 onClick={confirmSetup}
-                className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
               >
                 {busy ? "Confirming…" : "Confirm & enable"}
               </button>
@@ -323,7 +323,7 @@ export function ProfilePage() {
             <button
               type="submit"
               disabled={pwBusy || !currentPassword || newPassword.length < 10}
-              className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {pwBusy ? "Changing…" : "Change password"}
             </button>

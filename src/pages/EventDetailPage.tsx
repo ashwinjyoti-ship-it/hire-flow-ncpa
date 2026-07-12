@@ -470,7 +470,7 @@ export function EventDetailPage() {
             onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (tab === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
+              (tab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
             }
           >
             {label}
@@ -563,7 +563,7 @@ export function EventDetailPage() {
                 type="checkbox"
                 checked={keepOrgDetails}
                 onChange={(ev) => setKeepOrgDetails(ev.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-sage"
+                className="mt-0.5 h-4 w-4 accent-terracotta"
               />
               <span>
                 <span className="block font-semibold text-ink-primary etched-deep">Keep organisation and POC details</span>
@@ -820,7 +820,7 @@ function LifecyclePanel({
             <button
               type="button"
               onClick={() => onChoose(nextAction.status)}
-              className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+              className="carved-btn-terracotta rounded-full bg-terracotta-btn px-4 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover"
             >
               Advance to {milestoneLabel(nextAction.status)}
             </button>
@@ -993,7 +993,7 @@ function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { i
           type="checkbox"
           defaultChecked={item.value === "true"}
           onChange={(ev) => onUpdate(item, ev.target.checked ? "true" : null, ev.target.checked ? "completed" : "not_started")}
-          className="mt-3 h-4 w-4 accent-sage"
+          className="mt-3 h-4 w-4 accent-terracotta"
         />
       ) : (
         <input
@@ -1453,7 +1453,7 @@ function LifecycleTrack({
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
                   (isCurrent
-                    ? "bg-sage-btn text-sage-text carved-btn-sage"
+                    ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
                     : isPast
                       ? "bg-sage/10 text-sage-text"
                       : "bg-marble-shadow/30 text-ink-muted")

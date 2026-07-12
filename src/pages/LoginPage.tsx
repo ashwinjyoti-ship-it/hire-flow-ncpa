@@ -135,7 +135,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {loading ? "Signing in…" : "Sign in"}
             </button>
@@ -166,7 +166,7 @@ export function LoginPage() {
                 type="checkbox"
                 checked={useRecovery}
                 onChange={(e) => setUseRecovery(e.target.checked)}
-                className="accent-sage"
+                className="accent-terracotta"
               />
               Use a recovery code instead
             </label>
@@ -178,7 +178,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {loading ? "Verifying…" : "Verify"}
             </button>
