@@ -80,10 +80,10 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
               <BrandLogo className="drop-shadow-[0_8px_16px_rgba(73,88,58,0.14)]" />
             </div>
             <div className="min-w-0 leading-tight">
-              <div className="text-[12px] font-semibold uppercase tracking-[0.2em] text-sage etched sm:text-[15px] sm:tracking-[0.24em]">
+              <div className="text-sm font-semibold uppercase tracking-[0.2em] text-sage etched sm:text-lg sm:tracking-[0.24em]">
                 NCPA
               </div>
-              <div className="hidden truncate text-sm font-semibold text-ink-primary etched-deep sm:block">
+              <div className="hidden truncate text-xs font-medium text-ink-secondary etched sm:block">
                 Venue for Hire
               </div>
             </div>
