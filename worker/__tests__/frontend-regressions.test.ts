@@ -152,10 +152,18 @@ describe("frontend regression guards", () => {
   it("preserves the active calendar view when submitting topbar search", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
-    expect(source).toContain("preferredCalendarView");
+    expect(source).toContain("const onCalendar = location.pathname === \"/calendar\"");
+    expect(source).toContain("const view = onCalendar ? calendarView : \"lifecycle\"");
     expect(source).toContain('navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`)');
-    expect(source).toContain('location.pathname === "/calendar"');
+    expect(source).toContain('View on ${calendarLabel}');
     expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
+  });
+
+  it("labels calendar page search for the active show or lifecycle view", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain('placeholder={view === "show" ? "Search show calendar…" : "Search lifecycle…"}');
+    expect(calendar).toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
   });
 
   it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {
