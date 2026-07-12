@@ -1,0 +1,29 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="sagebg" cx="38%" cy="30%" r="95%">
+      <stop offset="0%" stop-color="#A8B996"/>
+      <stop offset="100%" stop-color="#8FA079"/>
+    </radialGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FEFEFD"/>
+      <stop offset="100%" stop-color="#F4F4F1"/>
+    </linearGradient>
+  </defs>
+  <!-- Sage slab -->
+  <rect x="10" y="10" width="380" height="380" rx="44" fill="url(#sagebg)"/>
+  <rect x="10" y="10" width="380" height="380" rx="44" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="1.5"/>
+  <!-- Marble calendar page resting on the sage -->
+  <rect x="106" y="120" width="188" height="186" rx="42" fill="url(#page)"/>
+  <rect x="106" y="120" width="188" height="186" rx="42" fill="none" stroke="#5A6B45" stroke-opacity="0.18" stroke-width="1.5"/>
+  <!-- Binding posts, deep sage against the field -->
+  <path d="M 163 88 L 163 148" stroke="#5A6B45" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <path d="M 237 88 L 237 148" stroke="#5A6B45" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <!-- Ring holes / eyes -->
+  <circle cx="163" cy="150" r="10.5" fill="#5C5850"/>
+  <circle cx="237" cy="150" r="10.5" fill="#5C5850"/>
+  <!-- Header rule -->
+  <path d="M 136 192 L 264 192" stroke="#5A5852" stroke-opacity="0.13" stroke-width="3" stroke-linecap="round"/>
+  <!-- Checkmark smile -->
+  <path d="M 148 246 C 160 274 178 284 196 266 C 218 244 240 222 256 206"
+        fill="none" stroke="#8FA079" stroke-width="15" stroke-linecap="round"/>
+</svg>

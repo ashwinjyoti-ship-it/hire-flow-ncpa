@@ -85,7 +85,7 @@ export function LoginPage() {
       <MarbleBackdrop />
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 w-28 sm:w-36">
+          <div className="mx-auto mb-4 w-36 sm:w-44">
             <BrandLogo className="drop-shadow-[0_10px_20px_rgba(73,88,58,0.16)]" />
           </div>
           <h1 className="text-lg font-semibold text-ink-primary etched-deep sm:text-xl">NCPA Venue for Hire</h1>

@@ -76,7 +76,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             </svg>
           </button>
           <Link to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <div className="w-16 shrink-0 sm:w-24 lg:w-28">
+            <div className="w-20 shrink-0 sm:w-28 lg:w-32">
               <BrandLogo className="drop-shadow-[0_8px_16px_rgba(73,88,58,0.14)]" />
             </div>
             <div className="min-w-0 leading-tight">
