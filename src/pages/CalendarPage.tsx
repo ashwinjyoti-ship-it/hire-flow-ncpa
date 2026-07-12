@@ -546,7 +546,7 @@ function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate:
                 ) : (
                   <span />
                 )}
-                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-terracotta text-white terracotta-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-terracotta-btn text-terracotta-text terracotta-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>
               </div>
@@ -667,7 +667,7 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
           return (
             <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3 " + (isToday ? "carved-today bg-terracotta-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
               <div className="mb-2 flex justify-end">
-                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-terracotta text-white terracotta-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
+                <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-terracotta-btn text-terracotta-text terracotta-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>
               </div>
