@@ -127,7 +127,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                 aria-controls="topbar-notifications"
                 aria-label="Notifications"
                 onClick={() => setNotificationsOpen((open) => !open)}
-                className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-ink-secondary"
+                className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-terracotta-text"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" strokeLinecap="round" strokeLinejoin="round" />
