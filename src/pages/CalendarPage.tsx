@@ -171,6 +171,25 @@ export function CalendarPage() {
   const owners = lookups?.lookups.handled_by ?? [];
 
   const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const filterOptions = {
+    status: [
+      // Show Calendar shows confirmed events by default (see worker
+      // /calendar route). Lifecycle Calendar shows all lifecycle
+      // milestones, so its default reads "All statuses".
+      { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
+      ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
+    ],
+    venue: [{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))],
+    type: [
+      { value: "", label: "All types" },
+      { value: "EE", label: "EE" },
+      { value: "FR", label: "FR" },
+      { value: "VFH", label: "VFH" },
+      { value: "Free Event", label: "Free Event" },
+    ],
+    owner: [{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))],
+  };
+  const activeFilterCount = [filters.status, filters.venue, filters.type, filters.owner].filter(Boolean).length;
   // "This month" only when the viewed cursor is the actual current month/year.
   const nowDate = new Date();
   const isCurrentMonth = cursor.getFullYear() === nowDate.getFullYear() && cursor.getMonth() === nowDate.getMonth();
@@ -203,20 +222,20 @@ export function CalendarPage() {
               }}
               className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
             >
-              {v === "show" ? "Show Calendar" : "Lifecycle"}
+              {v === "show" ? "Show Calendar" : "Life Cycle"}
             </button>
           ))}
           </div>
         </div>
 
-        <div className="mx-auto flex items-center gap-3 rounded-full bg-marble-shadow/30 px-2 py-1">
-          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
-            <Chevron dir="left" />
-          </button>
+        <div className="mx-auto flex items-center gap-2 rounded-full bg-marble-shadow/30 px-2 py-1">
           <div className="min-w-[9rem] text-center">
             <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
             <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
           </div>
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
+            <Chevron dir="left" />
+          </button>
           <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Next month">
             <Chevron dir="right" />
           </button>
@@ -224,27 +243,24 @@ export function CalendarPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
-          <input
-            type="text"
-            value={filters.q}
-            onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-            placeholder="Search title, org…"
-            className="carved rounded-full bg-marble-shadow/40 px-3 py-1.5 text-xs text-ink-primary focus:outline-none"
-          />
-          <FilterSelect
-            value={filters.status}
-            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
-            options={[
-              // Show Calendar shows confirmed events by default (see worker
-              // /calendar route). Lifecycle Calendar shows all lifecycle
-              // milestones, so its default reads "All statuses".
-              { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
-              ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
-            ]}
-          />
-          <FilterSelect value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
-          <FilterSelect value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
-          <FilterSelect value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
+          <details className="group relative">
+            <summary className={"carved-btn-sage flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-sage-btn text-sage-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-sage-text">
+                  {activeFilterCount}
+                </span>
+              )}
+            </summary>
+            <div className="carved-card absolute right-0 z-20 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-marble-highlight/95 p-3 backdrop-blur-md">
+              <div className="space-y-2">
+                <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilters((f) => ({ ...f, status: v }))} options={filterOptions.status} />
+                <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={filterOptions.venue} />
+                <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={filterOptions.type} />
+                <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={filterOptions.owner} />
+              </div>
+            </div>
+          </details>
           <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
             <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
             My events
@@ -685,10 +701,13 @@ function Chevron({ dir }: { dir: "left" | "right" }) {
   );
 }
 
-function FilterSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="carved rounded-full bg-marble-shadow/40 px-3 py-1.5 text-xs text-ink-primary focus:outline-none">
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <label className="block">
+      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="carved w-full rounded-full bg-marble-shadow/40 px-3 py-2 text-xs text-ink-primary focus:outline-none">
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }
