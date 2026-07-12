@@ -426,15 +426,17 @@ export function buildMomDocument(input: MomEventInput, customNotes?: string | nu
 
 export function momMissingFieldsMessage(missing: MomMissingField[]): string {
   if (missing.length === 0) return "";
+  const first = missing[0]!;
   if (missing.length === 1) {
-    return `${missing[0].label} is not filled. Do you want to continue?`;
+    return `${first.label} is not filled. Do you want to continue?`;
   }
   if (missing.length === 2) {
-    return `${missing[0].label} and ${missing[1].label} are not filled. Do you want to continue?`;
+    const second = missing[1]!;
+    return `${first.label} and ${second.label} are not filled. Do you want to continue?`;
   }
   const head = missing.slice(0, -1).map((f) => f.label).join(", ");
-  const last = missing[missing.length - 1].label;
-  return `${head}, and ${last} are not filled. Do you want to continue?`;
+  const last = missing[missing.length - 1]!;
+  return `${head}, and ${last.label} are not filled. Do you want to continue?`;
 }
 
 export function buildMomHtml(documentText: string, title: string): string {

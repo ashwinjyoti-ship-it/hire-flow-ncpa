@@ -281,6 +281,7 @@ export function EventDetailPage() {
   const momDocument = buildMomDocument(momInput, momCustomNotes);
   const momAutoText = buildMomAutoText(momInput);
   const momFileBase = `MoM-${(e.title || "event").replace(/[^\w.-]+/g, "-").slice(0, 60)}`;
+  const momTitle = `Minutes of Meeting — ${e.title}`;
 
   function requestGenerateMom() {
     const missing = getMomMissingFields(momInput);
@@ -304,12 +305,12 @@ export function EventDetailPage() {
 
   function exportMomWord() {
     const body = `<pre style="font-family:Georgia,'Times New Roman',serif;white-space:pre-wrap;font-size:11pt">${escapeHtml(momDocument)}</pre>`;
-    downloadWordDoc(`${momFileBase}.doc`, `Minutes of Meeting — ${e.title}`, body);
+    downloadWordDoc(`${momFileBase}.doc`, momTitle, body);
     setExportMenuOpen(false);
   }
 
   function openMomPrintable(autoPrint: boolean) {
-    const html = buildMomHtml(momDocument, `Minutes of Meeting — ${e.title}`);
+    const html = buildMomHtml(momDocument, momTitle);
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
