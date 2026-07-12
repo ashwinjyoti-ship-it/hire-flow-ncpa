@@ -116,7 +116,8 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain('next.set("view", view)');
     expect(calendar).toContain('searchParams.get("q") ?? ""');
     expect(calendar).toContain("function setFilter");
-    expect(calendar).toContain("Clear search");
+    expect(calendar).toContain("Filter");
+    expect(calendar).toContain('onChange={(v) => setFilter("status", v)}');
   });
 
   it("keeps calendar focused on activity and lifecycle views", () => {
@@ -159,11 +160,15 @@ describe("frontend regression guards", () => {
     expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
   });
 
-  it("labels calendar page search for the active show or lifecycle view", () => {
+  it("keeps page-level calendar filters collapsed behind one filter menu", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
-    expect(calendar).toContain('placeholder={view === "show" ? "Search show calendar…" : "Search lifecycle…"}');
-    expect(calendar).toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
+    expect(calendar).toContain("<details");
+    expect(calendar).toContain("activeFilterCount");
+    expect(calendar).toContain('label="Status"');
+    expect(calendar).toContain('label="Venue"');
+    expect(calendar).not.toContain('placeholder={view === "show" ? "Search show calendar…" : "Search lifecycle…"}');
+    expect(calendar).not.toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
   });
 
   it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {
