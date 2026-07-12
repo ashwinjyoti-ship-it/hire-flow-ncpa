@@ -108,55 +108,59 @@ export function CalendarPage() {
   const { user } = useAuth();
   const { data: lookups } = useLookups();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedView = searchParams.get("view");
-  const initialView: View = requestedView === "show" ? "show" : "lifecycle";
-  const initialFrom = searchParams.get("from");
-  const [view, setView] = useState<View>(initialView);
-  const [cursor, setCursor] = useState(() => dateFromParam(initialFrom));
-  const [filters, setFilters] = useState({
+  const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
+  const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
+
+  // URL is the single source of truth — avoids the dual-state race that wiped `q`
+  // right after a topbar/global search navigation.
+  const view: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
+  const cursor = useMemo(() => dateFromParam(searchParams.get("from")), [searchParams]);
+  const filters = useMemo(() => ({
     status: searchParams.get("status") ?? "",
     venue: searchParams.get("venue") ?? "",
     type: searchParams.get("type") ?? "",
     owner: searchParams.get("owner") ?? "",
     q: searchParams.get("q") ?? "",
-  });
-  // Phase 8b: "My events" restricts the calendar to events owned by the
-  // signed-in user (event_owner_id = me). Applies to both calendar views.
-  const [mine, setMine] = useState(searchParams.get("mine") === "1");
-  const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
-  const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
+  }), [searchParams]);
+  const mine = searchParams.get("mine") === "1";
 
-  useEffect(() => {
-    const nextView: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
-    const nextFrom = searchParams.get("from");
-    setView(nextView);
-    setCursor(dateFromParam(nextFrom));
-    setFilters({
-      status: searchParams.get("status") ?? "",
-      venue: searchParams.get("venue") ?? "",
-      type: searchParams.get("type") ?? "",
-      owner: searchParams.get("owner") ?? "",
-      q: searchParams.get("q") ?? "",
-    });
-    setMine(searchParams.get("mine") === "1");
-    setSideEvent(null);
-    setLifecycleOverflow(null);
-  }, [searchParams]);
-
-  // Keep shareable deep links in sync when the user changes filters/view/month.
-  useEffect(() => {
-    const next = new URLSearchParams();
-    next.set("view", view);
-    next.set("from", isoDate(startOfMonth(cursor)));
-    if (filters.status) next.set("status", filters.status);
-    if (filters.venue) next.set("venue", filters.venue);
-    if (filters.type) next.set("type", filters.type);
-    if (filters.owner) next.set("owner", filters.owner);
-    if (filters.q.trim()) next.set("q", filters.q.trim());
-    if (mine) next.set("mine", "1");
+  function updateParams(mutator: (params: URLSearchParams) => void) {
+    const next = new URLSearchParams(searchParams);
+    if (!next.get("view")) next.set("view", view);
+    if (!next.get("from")) next.set("from", isoDate(startOfMonth(cursor)));
+    mutator(next);
+    if (!next.get("from")) next.set("from", isoDate(startOfMonth(cursor)));
     if (next.toString() === searchParams.toString()) return;
     setSearchParams(next, { replace: true });
-  }, [view, cursor, filters, mine, searchParams, setSearchParams]);
+  }
+
+  function setView(nextView: View) {
+    updateParams((params) => {
+      params.set("view", nextView);
+    });
+    setLifecycleOverflow(null);
+    setSideEvent(null);
+  }
+
+  function setCursor(nextCursor: Date) {
+    updateParams((params) => {
+      params.set("from", isoDate(startOfMonth(nextCursor)));
+    });
+  }
+
+  function setFilter<K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) {
+    updateParams((params) => {
+      if (value.trim()) params.set(key, value.trim());
+      else params.delete(key);
+    });
+  }
+
+  function setMine(next: boolean) {
+    updateParams((params) => {
+      if (next) params.set("mine", "1");
+      else params.delete("mine");
+    });
+  }
 
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
@@ -178,6 +182,47 @@ export function CalendarPage() {
     queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?${lifecycleQuery.toString()}`),
     enabled: view === "lifecycle",
   });
+
+  // When a search is active but the current month has no hits, jump to the month
+  // of the first matching event so Show/Lifecycle calendars actually show it.
+  useEffect(() => {
+    const term = filters.q.trim();
+    if (!term) return;
+    if (view === "lifecycle" ? lifecycleLoading : isLoading) return;
+    const localCount = view === "lifecycle" ? (lifecycleData?.entries.length ?? 0) : (data?.entries.length ?? 0);
+    if (localCount > 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const statusQuery =
+          view === "show"
+            ? `&status=${encodeURIComponent(filters.status || "confirmed")}`
+            : filters.status
+              ? `&status=${encodeURIComponent(filters.status)}`
+              : "";
+        const res = await apiGet<{ events: Array<{ event_start_date: string | null }> }>(
+          `/events?q=${encodeURIComponent(term)}${statusQuery}`
+        );
+        if (cancelled) return;
+        const firstDate = res.events.find((event) => event.event_start_date)?.event_start_date;
+        if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return;
+        const from = `${firstDate.slice(0, 7)}-01`;
+        if (searchParams.get("from") === from) return;
+        updateParams((params) => {
+          params.set("from", from);
+          params.set("q", term);
+        });
+      } catch {
+        // Keep the current month if the lookup fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // updateParams/searchParams intentionally omitted — we only react to search/result changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.q, view, data?.entries, lifecycleData?.entries, isLoading, lifecycleLoading]);
 
   const byDate = data?.byDate ?? {};
   const lifecycleByDate = lifecycleData?.byDate ?? {};
@@ -211,11 +256,7 @@ export function CalendarPage() {
             <button
               key={v}
               type="button"
-              onClick={() => {
-                setView(v);
-                setLifecycleOverflow(null);
-                setSideEvent(null);
-              }}
+              onClick={() => setView(v)}
               className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
             >
               {v === "show" ? "Show Calendar" : "Lifecycle"}
@@ -239,16 +280,29 @@ export function CalendarPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
-          <input
-            type="text"
-            value={filters.q}
-            onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-            placeholder="Search title, org…"
-            className="carved rounded-full bg-marble-shadow/40 px-3 py-1.5 text-xs text-ink-primary focus:outline-none"
-          />
+          <div className="relative">
+            <input
+              type="search"
+              value={filters.q}
+              onChange={(e) => setFilter("q", e.target.value)}
+              placeholder="Search title, org…"
+              aria-label="Search calendar"
+              className="carved rounded-full bg-marble-shadow/40 py-1.5 pl-3 pr-8 text-xs text-ink-primary focus:outline-none"
+            />
+            {filters.q ? (
+              <button
+                type="button"
+                onClick={() => setFilter("q", "")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink-secondary"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
           <FilterSelect
             value={filters.status}
-            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+            onChange={(v) => setFilter("status", v)}
             options={[
               // Show Calendar shows confirmed events by default (see worker
               // /calendar route). Lifecycle Calendar shows all lifecycle
@@ -257,9 +311,9 @@ export function CalendarPage() {
               ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
             ]}
           />
-          <FilterSelect value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
-          <FilterSelect value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
-          <FilterSelect value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
+          <FilterSelect value={filters.venue} onChange={(v) => setFilter("venue", v)} options={[{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))]} />
+          <FilterSelect value={filters.type} onChange={(v) => setFilter("type", v)} options={[{ value: "", label: "All types" }, { value: "EE", label: "EE" }, { value: "FR", label: "FR" }, { value: "VFH", label: "VFH" }, { value: "Free Event", label: "Free Event" }]} />
+          <FilterSelect value={filters.owner} onChange={(v) => setFilter("owner", v)} options={[{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))]} />
           <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
             <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
             My events
