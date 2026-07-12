@@ -85,7 +85,7 @@ export function LoginPage() {
       <MarbleBackdrop />
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 w-28 sm:w-36">
+          <div className="mx-auto mb-4 w-36 sm:w-44">
             <BrandLogo className="drop-shadow-[0_10px_20px_rgba(73,88,58,0.16)]" />
           </div>
           <h1 className="text-lg font-semibold text-ink-primary etched-deep sm:text-xl">NCPA Venue for Hire</h1>
@@ -135,7 +135,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {loading ? "Signing in…" : "Sign in"}
             </button>
@@ -166,7 +166,7 @@ export function LoginPage() {
                 type="checkbox"
                 checked={useRecovery}
                 onChange={(e) => setUseRecovery(e.target.checked)}
-                className="accent-sage"
+                className="accent-terracotta"
               />
               Use a recovery code instead
             </label>
@@ -178,7 +178,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {loading ? "Verifying…" : "Verify"}
             </button>

@@ -64,7 +64,7 @@ export function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="carved-btn-sage w-full rounded-full bg-sage-btn py-2.5 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                className="carved-btn-terracotta w-full rounded-full bg-terracotta-btn py-2.5 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
               >
                 {loading ? "Sending…" : "Send reset link"}
               </button>

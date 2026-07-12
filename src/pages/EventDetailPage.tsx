@@ -12,6 +12,16 @@ import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
+import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
+import {
+  buildMomAutoText,
+  buildMomDocument,
+  buildMomHtml,
+  getMomMissingFields,
+  momMissingFieldsMessage,
+  type MomEventInput,
+} from "../lib/mom";
+import { downloadWordDoc, escapeHtml } from "../lib/export";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -23,15 +33,22 @@ type DetailResponse = {
     event_end_date: string | null;
     organisation_name: string | null;
     event_owner: string | null;
+    program_officer: string | null;
     description: string | null;
     notes: string | null;
+    requirements: Record<string, unknown> | string | null;
     approval_status: string | null;
     confirmation_status: string | null;
     overall_completion: number | null;
     ops_completion: number | null;
     accounts_completion: number | null;
   };
-  venue_bookings: Array<Record<string, unknown> & { schedule_entries: unknown[] }>;
+  venue_bookings: Array<Record<string, unknown> & {
+    venue?: string | null;
+    number_of_shows?: number | null;
+    notes?: string | null;
+    schedule_entries: unknown[];
+  }>;
   activity: Array<Record<string, unknown>>;
 };
 
@@ -118,6 +135,11 @@ export function EventDetailPage() {
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [deleteModal, setDeleteModal] = useState(false);
+  const [momOpen, setMomOpen] = useState(false);
+  const [momCustomNotes, setMomCustomNotes] = useState("");
+  const [momMissingPrompt, setMomMissingPrompt] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
 
@@ -240,6 +262,72 @@ export function EventDetailPage() {
   const actions = checklistData?.lifecycle.actions ?? [];
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
+  const momInput: MomEventInput = {
+    title: e.title,
+    description: e.description,
+    event_type: e.event_type,
+    organisation_name: e.organisation_name,
+    program_officer: e.program_officer,
+    event_start_date: e.event_start_date,
+    event_end_date: e.event_end_date,
+    requirements: e.requirements,
+    venue_bookings: (data?.venue_bookings ?? []).map((vb) => ({
+      venue: vb.venue ?? null,
+      number_of_shows: vb.number_of_shows ?? null,
+      notes: vb.notes ?? null,
+      schedule_entries: (vb.schedule_entries ?? []) as NonNullable<MomEventInput["venue_bookings"]>[number]["schedule_entries"],
+    })),
+  };
+  const momDocument = buildMomDocument(momInput, momCustomNotes);
+  const momAutoText = buildMomAutoText(momInput);
+  const momFileBase = `MoM-${(e.title || "event").replace(/[^\w.-]+/g, "-").slice(0, 60)}`;
+  const momTitle = `Minutes of Meeting — ${e.title}`;
+
+  function requestGenerateMom() {
+    const missing = getMomMissingFields(momInput);
+    if (missing.length > 0) {
+      setMomMissingPrompt(momMissingFieldsMessage(missing));
+      return;
+    }
+    setMomOpen(true);
+  }
+
+  async function copyMomText() {
+    try {
+      await navigator.clipboard.writeText(momDocument);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 2000);
+    } catch {
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 2500);
+    }
+  }
+
+  function exportMomWord() {
+    const body = `<pre style="font-family:Georgia,'Times New Roman',serif;white-space:pre-wrap;font-size:11pt">${escapeHtml(momDocument)}</pre>`;
+    downloadWordDoc(`${momFileBase}.doc`, momTitle, body);
+    setExportMenuOpen(false);
+  }
+
+  function openMomPrintable(autoPrint: boolean) {
+    const html = buildMomHtml(momDocument, momTitle);
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (!win) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    if (autoPrint) {
+      win.addEventListener("load", () => {
+        win.focus();
+        win.print();
+      });
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setExportMenuOpen(false);
+  }
+
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
     selectTab(target.tab, target.fieldKey);
   }
@@ -299,11 +387,60 @@ export function EventDetailPage() {
         canChangeStatus={canChangeStatus}
         canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
+        onGenerateMom={requestGenerateMom}
         onChoose={(status) => {
           setStatusModal(status);
           setReason("");
         }}
       />
+
+      {momOpen && (
+        <MomPanel
+          autoText={momAutoText}
+          customNotes={momCustomNotes}
+          onCustomNotesChange={setMomCustomNotes}
+          copyStatus={copyStatus}
+          exportMenuOpen={exportMenuOpen}
+          onToggleExport={() => setExportMenuOpen((open) => !open)}
+          onCopy={copyMomText}
+          onExportWord={exportMomWord}
+          onExportPdf={() => openMomPrintable(false)}
+          onPrint={() => openMomPrintable(true)}
+          onClose={() => {
+            setMomOpen(false);
+            setExportMenuOpen(false);
+          }}
+          onRegenerate={requestGenerateMom}
+        />
+      )}
+
+      {momMissingPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/30 p-4" role="dialog" aria-modal="true" aria-labelledby="mom-missing-title">
+          <div className="w-full max-w-md rounded-2xl bg-marble-highlight p-6 shadow-xl">
+            <h2 id="mom-missing-title" className="text-sm font-semibold uppercase tracking-wider text-sage etched">Generate MoM</h2>
+            <p className="mt-3 text-sm text-ink-secondary etched">{momMissingPrompt}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMomMissingPrompt(null)}
+                className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMomMissingPrompt(null);
+                  setMomOpen(true);
+                }}
+                className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {transition.error && (
         <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">
@@ -333,7 +470,7 @@ export function EventDetailPage() {
             onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (tab === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
+              (tab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
             }
           >
             {label}
@@ -361,6 +498,7 @@ export function EventDetailPage() {
       {tab === "operations" && (
         <ChecklistModuleView
           sections={checklistData?.checklist.operations ?? {}}
+          finalShowDate={e.event_end_date ?? e.event_start_date}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
@@ -371,6 +509,7 @@ export function EventDetailPage() {
       {tab === "accounts" && (
         <ChecklistModuleView
           sections={checklistData?.checklist.accounts ?? {}}
+          finalShowDate={null}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
@@ -424,7 +563,7 @@ export function EventDetailPage() {
                 type="checkbox"
                 checked={keepOrgDetails}
                 onChange={(ev) => setKeepOrgDetails(ev.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-sage"
+                className="mt-0.5 h-4 w-4 accent-terracotta"
               />
               <span>
                 <span className="block font-semibold text-ink-primary etched-deep">Keep organisation and POC details</span>
@@ -497,6 +636,100 @@ export function EventDetailPage() {
   );
 }
 
+function MomPanel({
+  autoText,
+  customNotes,
+  onCustomNotesChange,
+  copyStatus,
+  exportMenuOpen,
+  onToggleExport,
+  onCopy,
+  onExportWord,
+  onExportPdf,
+  onPrint,
+  onClose,
+  onRegenerate,
+}: {
+  autoText: string;
+  customNotes: string;
+  onCustomNotesChange: (value: string) => void;
+  copyStatus: "idle" | "copied" | "failed";
+  exportMenuOpen: boolean;
+  onToggleExport: () => void;
+  onCopy: () => void;
+  onExportWord: () => void;
+  onExportPdf: () => void;
+  onPrint: () => void;
+  onClose: () => void;
+  onRegenerate: () => void;
+}) {
+  return (
+    <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Minutes of Meeting</h2>
+          <p className="mt-1 text-xs text-ink-muted etched">
+            Auto-filled through Program Officer. Add Technical Officer and any other undecided items below.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onRegenerate} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
+            Refresh from event
+          </button>
+          <button type="button" onClick={onClose} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
+            Close
+          </button>
+        </div>
+      </div>
+
+      <label className="mb-4 block">
+        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Generated MoM</span>
+        <textarea
+          readOnly
+          value={autoText}
+          rows={18}
+          className="carved input font-serif text-sm leading-relaxed"
+        />
+      </label>
+
+      <label className="mb-4 block">
+        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Customised information</span>
+        <textarea
+          value={customNotes}
+          onChange={(e) => onCustomNotesChange(e.target.value)}
+          rows={5}
+          placeholder={"Technical Officer: Name – phone\nInterval duration, unloading notes, foyer specifics, or any other MoM wording…"}
+          className="carved input text-sm"
+        />
+      </label>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onCopy} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched">
+          {copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy Text"}
+        </button>
+        <div className="relative">
+          <button type="button" onClick={onToggleExport} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
+            Export
+          </button>
+          {exportMenuOpen && (
+            <div className="absolute left-0 z-10 mt-2 min-w-36 rounded-xl bg-marble-highlight p-2 shadow-lg">
+              <button type="button" onClick={onExportPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
+                PDF
+              </button>
+              <button type="button" onClick={onExportWord} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
+                Word
+              </button>
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={onPrint} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
+          Print
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function LifecyclePanel({
   event,
   actions,
@@ -504,6 +737,7 @@ function LifecyclePanel({
   canChangeStatus,
   canShowStatusActions,
   onOpenBlocker,
+  onGenerateMom,
   onChoose,
 }: {
   event: DetailResponse["event"];
@@ -512,6 +746,7 @@ function LifecyclePanel({
   canChangeStatus: boolean;
   canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
+  onGenerateMom: () => void;
   onChoose: (status: EventStatus) => void;
 }) {
   const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
@@ -549,9 +784,18 @@ function LifecyclePanel({
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs md:min-w-80">
-          <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
-          <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
+        <div className="flex flex-col items-stretch gap-3 md:items-end">
+          <button
+            type="button"
+            onClick={onGenerateMom}
+            className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+          >
+            Generate MoM
+          </button>
+          <div className="grid grid-cols-2 gap-2 text-xs md:min-w-80">
+            <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
+            <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
+          </div>
         </div>
       </div>
 
@@ -576,7 +820,7 @@ function LifecyclePanel({
             <button
               type="button"
               onClick={() => onChoose(nextAction.status)}
-              className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+              className="carved-btn-terracotta rounded-full bg-terracotta-btn px-4 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover"
             >
               Advance to {milestoneLabel(nextAction.status)}
             </button>
@@ -639,12 +883,14 @@ function ChecklistModuleView({
   canEdit,
   isSaving,
   focusedFieldKey,
+  finalShowDate,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
   canEdit: boolean;
   isSaving: boolean;
   focusedFieldKey: string | null;
+  finalShowDate: string | null;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -669,7 +915,7 @@ function ChecklistModuleView({
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {visibleItems.map((item) => (
-                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
+                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
               ))}
             </div>
           </section>
@@ -698,10 +944,10 @@ function isFieldVisible(item: ChecklistItem, valueByKey: Map<string, string | nu
   return actual.toLowerCase() === expected.toLowerCase();
 }
 
-function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
+function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60";
-  const canManuallyToggleStatus = item.field_type !== "dropdown" && item.field_type !== "status";
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   return (
     <label
@@ -747,7 +993,7 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
           type="checkbox"
           defaultChecked={item.value === "true"}
           onChange={(ev) => onUpdate(item, ev.target.checked ? "true" : null, ev.target.checked ? "completed" : "not_started")}
-          className="mt-3 h-4 w-4 accent-sage"
+          className="mt-3 h-4 w-4 accent-terracotta"
         />
       ) : (
         <input
@@ -755,9 +1001,18 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
           type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
           lang={item.field_type === "date" ? "en-GB" : undefined}
           defaultValue={item.value ?? ""}
+          aria-invalid={Boolean(validationError)}
+          aria-describedby={validationError ? `checklist-error-${item.id}` : undefined}
+          onChange={() => validationError && setValidationError(null)}
           onBlur={(ev) => {
             const next = ev.currentTarget.value || null;
             if (next === (item.value ?? null)) return;
+            const warning = item.field_type === "date" ? getPostShowDateWarning(item.field_key, next, finalShowDate) : null;
+            if (warning) {
+              setValidationError(warning);
+              ev.currentTarget.value = item.value ?? "";
+              return;
+            }
             if (item.field_type === "date" && item.value && next) {
               const correctionReason = window.prompt("Reason for changing this date?");
               if (!correctionReason?.trim()) {
@@ -772,16 +1027,10 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
           className={baseClass}
         />
       )}
-      {!item.is_computed && canEdit && canManuallyToggleStatus && (item.status === "in_progress" || item.status === "completed") && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() => onUpdate(item, item.value, item.status === "completed" ? "in_progress" : "completed")}
-            className="carved-btn rounded-full bg-neutral-btn px-3 py-1 text-[11px] font-medium text-ink-secondary etched"
-          >
-            {item.status === "completed" ? "Reopen" : "Mark complete"}
-          </button>
-        </div>
+      {validationError && (
+        <span id={`checklist-error-${item.id}`} role="alert" className="mt-2 block text-xs font-medium text-red-700">
+          {validationError}
+        </span>
       )}
     </label>
   );
@@ -1204,7 +1453,7 @@ function LifecycleTrack({
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
                   (isCurrent
-                    ? "bg-sage-btn text-sage-text carved-btn-sage"
+                    ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
                     : isPast
                       ? "bg-sage/10 text-sage-text"
                       : "bg-marble-shadow/30 text-ink-muted")

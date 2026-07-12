@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, logout } from "../../lib/auth";
 import { describeAccess } from "../../../worker/lib/rbac";
 import { apiGet, apiPost } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
+import { formatDate } from "../../lib/use-lookups";
 
 type NotificationRow = {
   id: string;
@@ -16,6 +17,31 @@ type NotificationRow = {
   task_title: string | null;
   created_at: string;
 };
+
+type SearchOrg = {
+  id: string;
+  name: string;
+  org_type: string | null;
+  event_count: number;
+};
+
+type SearchEvent = {
+  id: string;
+  title: string;
+  organisation_name: string | null;
+  event_start_date: string | null;
+  status: string;
+  venues: string | null;
+};
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 /** Top navigation bar with global search + user menu (carved-header depth). */
 export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
@@ -38,7 +64,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
 
   useEffect(() => {
     setNotificationsOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -76,26 +102,21 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             </svg>
           </button>
           <Link to="/dashboard" className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <div className="w-16 shrink-0 sm:w-24 lg:w-28">
+            <div className="w-20 shrink-0 sm:w-28 lg:w-32">
               <BrandLogo className="drop-shadow-[0_8px_16px_rgba(73,88,58,0.14)]" />
             </div>
             <div className="min-w-0 leading-tight">
-              <div className="text-[12px] font-semibold uppercase tracking-[0.2em] text-sage etched sm:text-[15px] sm:tracking-[0.24em]">
+              <div className="text-sm font-semibold uppercase tracking-[0.2em] text-sage etched sm:text-lg sm:tracking-[0.24em]">
                 NCPA
               </div>
-              <div className="hidden truncate text-sm font-semibold text-ink-primary etched-deep sm:block">
+              <div className="hidden truncate text-xs font-medium text-ink-secondary etched sm:block">
                 Venue for Hire
               </div>
             </div>
           </Link>
         </div>
-        <div className="hidden flex-1 items-center justify-center md:flex">
-          <input
-            type="search"
-            placeholder="Search events, organisations, venues…"
-            aria-label="Global search"
-            className="carved w-full max-w-md rounded-xl bg-marble-shadow/40 px-4 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none"
-          />
+        <div className="hidden min-w-0 flex-[1.4] items-center justify-center md:flex">
+          <GlobalSearch />
         </div>
         {user ? (
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
@@ -106,7 +127,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                 aria-controls="topbar-notifications"
                 aria-label="Notifications"
                 onClick={() => setNotificationsOpen((open) => !open)}
-                className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-ink-secondary"
+                className="carved-btn relative flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-terracotta-text"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" strokeLinecap="round" strokeLinejoin="round" />
@@ -163,7 +184,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             <Link
               to="/profile"
               aria-label="Profile and security"
-              className="carved-btn flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-sage-text"
+              className="carved-btn flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-terracotta-text"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
@@ -183,6 +204,214 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
           </div>
         ) : null}
       </div>
+      <div className="mt-3 md:hidden">
+        <GlobalSearch />
+      </div>
     </header>
+  );
+}
+
+function GlobalSearch() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const debounced = useDebouncedValue(query.trim(), 250);
+  const ready = debounced.length >= 2;
+  const onCalendar = location.pathname === "/calendar";
+  const calendarView: "show" | "lifecycle" =
+    onCalendar && new URLSearchParams(location.search).get("view") === "show" ? "show" : "lifecycle";
+  const calendarLabel = calendarView === "show" ? "Show calendar" : "Lifecycle calendar";
+
+  const { data: orgData, isFetching: orgsLoading } = useQuery({
+    queryKey: ["global-search-orgs", debounced],
+    queryFn: () => apiGet<{ organisations: SearchOrg[] }>(`/organisations?q=${encodeURIComponent(debounced)}`),
+    enabled: ready,
+  });
+  const eventStatusQuery = onCalendar && calendarView === "show" ? "&status=confirmed" : "";
+  const { data: eventData, isFetching: eventsLoading } = useQuery({
+    queryKey: ["global-search-events", debounced, eventStatusQuery],
+    queryFn: () => apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(debounced)}${eventStatusQuery}`),
+    enabled: ready,
+  });
+
+  const organisations = (orgData?.organisations ?? []).slice(0, 5);
+  const events = (eventData?.events ?? []).slice(0, 6);
+  const loading = ready && (orgsLoading || eventsLoading);
+  const hasResults = organisations.length > 0 || events.length > 0;
+
+  useEffect(() => {
+    setOpen(false);
+    // Keep the input aligned with shareable page filters instead of wiping it on
+    // every URL change — that left calendar users unable to clear a search.
+    const urlQ = new URLSearchParams(location.search).get("q") ?? "";
+    if (
+      location.pathname === "/calendar" ||
+      location.pathname === "/organisations" ||
+      location.pathname === "/tasks"
+    ) {
+      setQuery(urlQ);
+    } else {
+      setQuery("");
+    }
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  async function submitSearch() {
+    const term = query.trim();
+    if (!term) return;
+    // When already on a calendar view, stay on that exact view (Show vs Lifecycle).
+    const view = onCalendar ? calendarView : "lifecycle";
+    try {
+      const statusQuery = view === "show" ? "&status=confirmed" : "";
+      const [orgRes, eventRes] = await Promise.all([
+        apiGet<{ organisations: SearchOrg[] }>(`/organisations?q=${encodeURIComponent(term)}`),
+        apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}${statusQuery}`),
+      ]);
+      const firstEvent = eventRes.events[0];
+      if (firstEvent?.event_start_date) {
+        const from = `${firstEvent.event_start_date.slice(0, 7)}-01`;
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`);
+      } else if (onCalendar) {
+        // Stay on the active calendar even if only an org name matched.
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+      } else if (orgRes.organisations.length > 0) {
+        navigate(`/organisations?q=${encodeURIComponent(term)}`);
+      } else {
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+      }
+    } catch {
+      navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+    }
+    setOpen(false);
+  }
+
+  return (
+    <div ref={rootRef} className="relative w-full max-w-md">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitSearch();
+        }}
+      >
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={onCalendar ? `Search ${calendarLabel.toLowerCase()}…` : "Search events, organisations…"}
+          aria-label={onCalendar ? `Search ${calendarLabel}` : "Global search"}
+          aria-expanded={open && ready}
+          aria-controls="topbar-global-search-results"
+          className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none"
+        />
+      </form>
+      {open && ready && (
+        <div
+          id="topbar-global-search-results"
+          className="absolute left-0 right-0 z-[70] mt-2 overflow-hidden rounded-2xl bg-marble-highlight shadow-xl"
+        >
+          <div className="max-h-96 overflow-auto p-3">
+            {loading && !hasResults ? (
+              <p className="px-2 py-3 text-xs text-ink-muted etched">Searching…</p>
+            ) : !hasResults ? (
+              <p className="px-2 py-3 text-xs text-ink-muted etched">No matches for “{debounced}”.</p>
+            ) : (
+              <div className="space-y-3">
+                {organisations.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-sage etched">Organisations</h3>
+                    <ul className="space-y-1">
+                      {organisations.map((org) => (
+                        <li key={org.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onCalendar) {
+                                navigate(`/calendar?view=${calendarView}&q=${encodeURIComponent(org.name)}`);
+                              } else {
+                                navigate(`/organisations?q=${encodeURIComponent(org.name)}`);
+                              }
+                              setOpen(false);
+                            }}
+                            className="w-full rounded-xl px-3 py-2 text-left hover:bg-marble-shadow/40"
+                          >
+                            <div className="text-sm font-medium text-ink-primary etched-deep">{org.name}</div>
+                            <div className="text-[11px] text-ink-muted etched">
+                              {[org.org_type, `${org.event_count} event${org.event_count === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {events.length > 0 && (
+                  <div>
+                    <h3 className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-sage etched">Events</h3>
+                    <ul className="space-y-1">
+                      {events.map((event) => (
+                        <li key={event.id}>
+                          <Link
+                            to={`/events/${event.id}`}
+                            onClick={() => setOpen(false)}
+                            className="block rounded-xl px-3 py-2 hover:bg-marble-shadow/40"
+                          >
+                            <div className="text-sm font-medium text-ink-primary etched-deep">{event.title}</div>
+                            <div className="text-[11px] text-ink-muted etched">
+                              {[event.organisation_name, formatDate(event.event_start_date), event.venues].filter(Boolean).join(" · ")}
+                            </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-ink-muted/10 px-3 py-2">
+            {!onCalendar && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigate(`/organisations?q=${encodeURIComponent(debounced)}`);
+                  setOpen(false);
+                }}
+                className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
+              >
+                View organisations
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={submitSearch}
+              className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
+            >
+              {onCalendar ? `View on ${calendarLabel}` : "View on calendar"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

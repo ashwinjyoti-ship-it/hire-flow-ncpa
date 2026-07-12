@@ -107,41 +107,60 @@ function calendarCellsForMonth(cursor: Date): MonthCell[] {
 export function CalendarPage() {
   const { user } = useAuth();
   const { data: lookups } = useLookups();
-  const [searchParams] = useSearchParams();
-  const requestedView = searchParams.get("view");
-  const initialView: View = requestedView === "show" ? "show" : "lifecycle";
-  const initialFrom = searchParams.get("from");
-  const [view, setView] = useState<View>(initialView);
-  const [cursor, setCursor] = useState(() => dateFromParam(initialFrom));
-  const [filters, setFilters] = useState({
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
+  const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
+
+  // URL is the single source of truth — avoids the dual-state race that wiped `q`
+  // right after a topbar/global search navigation.
+  const view: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
+  const cursor = useMemo(() => dateFromParam(searchParams.get("from")), [searchParams]);
+  const filters = useMemo(() => ({
     status: searchParams.get("status") ?? "",
     venue: searchParams.get("venue") ?? "",
     type: searchParams.get("type") ?? "",
     owner: searchParams.get("owner") ?? "",
     q: searchParams.get("q") ?? "",
-  });
-  // Phase 8b: "My events" restricts the calendar to events owned by the
-  // signed-in user (event_owner_id = me). Applies to both calendar views.
-  const [mine, setMine] = useState(searchParams.get("mine") === "1");
-  const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
-  const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
+  }), [searchParams]);
+  const mine = searchParams.get("mine") === "1";
 
-  useEffect(() => {
-    const nextView: View = searchParams.get("view") === "show" ? "show" : "lifecycle";
-    const nextFrom = searchParams.get("from");
-    setView(nextView);
-    setCursor(dateFromParam(nextFrom));
-    setFilters({
-      status: searchParams.get("status") ?? "",
-      venue: searchParams.get("venue") ?? "",
-      type: searchParams.get("type") ?? "",
-      owner: searchParams.get("owner") ?? "",
-      q: searchParams.get("q") ?? "",
+  function updateParams(mutator: (params: URLSearchParams) => void) {
+    const next = new URLSearchParams(searchParams);
+    if (!next.get("view")) next.set("view", view);
+    if (!next.get("from")) next.set("from", isoDate(startOfMonth(cursor)));
+    mutator(next);
+    if (!next.get("from")) next.set("from", isoDate(startOfMonth(cursor)));
+    if (next.toString() === searchParams.toString()) return;
+    setSearchParams(next, { replace: true });
+  }
+
+  function setView(nextView: View) {
+    updateParams((params) => {
+      params.set("view", nextView);
     });
-    setMine(searchParams.get("mine") === "1");
-    setSideEvent(null);
     setLifecycleOverflow(null);
-  }, [searchParams]);
+    setSideEvent(null);
+  }
+
+  function setCursor(nextCursor: Date) {
+    updateParams((params) => {
+      params.set("from", isoDate(startOfMonth(nextCursor)));
+    });
+  }
+
+  function setFilter<K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) {
+    updateParams((params) => {
+      if (value.trim()) params.set(key, value.trim());
+      else params.delete(key);
+    });
+  }
+
+  function setMine(next: boolean) {
+    updateParams((params) => {
+      if (next) params.set("mine", "1");
+      else params.delete("mine");
+    });
+  }
 
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
@@ -163,6 +182,45 @@ export function CalendarPage() {
     queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?${lifecycleQuery.toString()}`),
     enabled: view === "lifecycle",
   });
+
+  // When a search is active but the current month has no hits, jump to the month
+  // of the first matching event so Show/Lifecycle calendars actually show it.
+  useEffect(() => {
+    const term = filters.q.trim();
+    if (!term) return;
+    if (view === "lifecycle" ? lifecycleLoading : isLoading) return;
+    const localCount = view === "lifecycle" ? (lifecycleData?.entries.length ?? 0) : (data?.entries.length ?? 0);
+    if (localCount > 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const statusQuery =
+          view === "show"
+            ? `&status=${encodeURIComponent(filters.status || "confirmed")}`
+            : filters.status
+              ? `&status=${encodeURIComponent(filters.status)}`
+              : "";
+        const res = await apiGet<{ events: Array<{ event_start_date: string | null }> }>(
+          `/events?q=${encodeURIComponent(term)}${statusQuery}`
+        );
+        if (cancelled) return;
+        const firstDate = res.events.find((event) => event.event_start_date)?.event_start_date;
+        if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return;
+        const from = `${firstDate.slice(0, 7)}-01`;
+        if (searchParams.get("from") === from) return;
+        updateParams((params) => {
+          params.set("from", from);
+          params.set("q", term);
+        });
+      } catch {
+        // Keep the current month if the lookup fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.q, filters.status, view, data?.entries, lifecycleData?.entries, isLoading, lifecycleLoading, searchParams, setSearchParams, cursor]);
 
   const byDate = data?.byDate ?? {};
   const lifecycleByDate = lifecycleData?.byDate ?? {};
@@ -201,7 +259,7 @@ export function CalendarPage() {
       <PageHeader
         title={view === "lifecycle" ? "Lifecycle Calendar" : "Show Calendar"}
         actions={showCreate ? (
-          <Link to="/events/new" className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">
+          <Link to="/events/new" className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover">
             + New Event
           </Link>
         ) : null}
@@ -215,12 +273,8 @@ export function CalendarPage() {
             <button
               key={v}
               type="button"
-              onClick={() => {
-                setView(v);
-                setLifecycleOverflow(null);
-                setSideEvent(null);
-              }}
-              className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-muted hover:text-ink-secondary")}
+              onClick={() => setView(v)}
+              className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-muted hover:text-ink-secondary")}
             >
               {v === "show" ? "Show Calendar" : "Life Cycle"}
             </button>
@@ -244,25 +298,25 @@ export function CalendarPage() {
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
           <details className="group relative">
-            <summary className={"carved-btn-sage flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-sage-btn text-sage-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
+            <summary className={"carved-btn-terracotta flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-terracotta-btn text-terracotta-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
               Filter
               {activeFilterCount > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-sage-text">
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-terracotta-text">
                   {activeFilterCount}
                 </span>
               )}
             </summary>
             <div className="carved-card absolute right-0 z-20 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-marble-highlight/95 p-3 backdrop-blur-md">
               <div className="space-y-2">
-                <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilters((f) => ({ ...f, status: v }))} options={filterOptions.status} />
-                <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilters((f) => ({ ...f, venue: v }))} options={filterOptions.venue} />
-                <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilters((f) => ({ ...f, type: v }))} options={filterOptions.type} />
-                <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilters((f) => ({ ...f, owner: v }))} options={filterOptions.owner} />
+                <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilter("status", v)} options={filterOptions.status} />
+                <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilter("venue", v)} options={filterOptions.venue} />
+                <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilter("type", v)} options={filterOptions.type} />
+                <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilter("owner", v)} options={filterOptions.owner} />
               </div>
             </div>
           </details>
           <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
-            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-sage" />
+            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-terracotta" />
             My events
           </label>
         </div>

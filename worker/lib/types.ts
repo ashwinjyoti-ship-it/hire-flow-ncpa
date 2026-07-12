@@ -4,6 +4,13 @@
  */
 import { z } from "zod";
 
+export const IsoDate = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, "Enter a valid calendar date");
+
 // ---- Organisations ----
 export const OrganisationInput = z.object({
   name: z.string().min(1),
@@ -32,8 +39,9 @@ export type ContactInputT = z.infer<typeof ContactInput>;
 export const ACTIVITY_TYPES = ["setup", "rehearsal", "show", "dismantling", "technical_meeting"] as const;
 
 export const ScheduleEntryInput = z.object({
+  id: z.string().optional(),
   activity_type: z.enum(ACTIVITY_TYPES),
-  activity_date: z.string().min(1),
+  activity_date: IsoDate,
   start_time: z.string().nullish(),
   end_time: z.string().nullish(),
   // AC timing sub-windows (rental duration/day = with_ac + without_ac).
@@ -52,6 +60,7 @@ export type ScheduleEntryInputT = z.infer<typeof ScheduleEntryInput>;
 // enum. Cancellation is an event-level concept (events.status -> 'cancelled'),
 // not a venue-level dropdown. Existing rows / DB schema still allow the value.
 export const VenueBookingInput = z.object({
+  id: z.string().optional(),
   venue: z.string().min(1),
   booking_status: z.enum(["tentative", "confirmed"]).default("tentative"),
   number_of_shows: z.number().int().min(1).default(1),
@@ -75,8 +84,8 @@ export const EventInput = z.object({
   // auto-route to this user and "My events" filters on it. event_owner (text)
   // is kept as a denormalised display label.
   event_owner_id: z.string().nullish(),
-  event_start_date: z.string().nullish(),
-  event_end_date: z.string().nullish(),
+  event_start_date: IsoDate.nullish(),
+  event_end_date: IsoDate.nullish(),
   enquiry_source: z.string().nullish(),
   priority: z.enum(["high", "medium", "low"]).default("medium"),
   requirements: z.record(z.unknown()).nullish(),

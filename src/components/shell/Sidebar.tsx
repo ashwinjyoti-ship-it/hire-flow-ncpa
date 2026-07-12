@@ -79,7 +79,7 @@ function SidebarCard({ onNavigate }: { onNavigate?: () => void }) {
                 clsx(
                   "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-sage-btn text-sage-text carved-btn-sage etched"
+                    ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta etched"
                     : "text-ink-secondary hover:bg-marble-shadow/40"
                 )
               }
@@ -111,7 +111,7 @@ function TabletRail({ onNavigate }: { onNavigate?: () => void }) {
                 clsx(
                   "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-center text-[10px] font-semibold leading-tight transition-colors",
                   isActive
-                    ? "bg-sage-btn text-sage-text carved-btn-sage etched"
+                    ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta etched"
                     : "text-ink-secondary hover:bg-marble-shadow/40"
                 )
               }

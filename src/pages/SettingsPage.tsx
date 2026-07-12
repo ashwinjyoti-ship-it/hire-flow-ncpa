@@ -271,7 +271,7 @@ export function SettingsPage() {
                       type="button"
                       disabled={saveKey.isPending || apiKey.length < 10}
                       onClick={() => saveKey.mutate(apiKey)}
-                      className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                      className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
                     >
                       {saveKey.isPending ? "Saving…" : "Save key"}
                     </button>
@@ -304,7 +304,7 @@ export function SettingsPage() {
                     type="button"
                     disabled={saveMailFrom.isPending || !mailFrom.trim() || mailFrom === data?.mailFrom}
                     onClick={() => saveMailFrom.mutate(mailFrom.trim())}
-                    className="carved-btn-sage mb-5 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                    className="carved-btn-terracotta mb-5 rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
                   >
                     {saveMailFrom.isPending ? "Saving…" : "Save from address"}
                   </button>
@@ -427,7 +427,7 @@ export function SettingsPage() {
                     type="button"
                     disabled={adminReset.isPending || !resetEmail.trim()}
                     onClick={() => adminReset.mutate(resetEmail.trim())}
-                    className="carved-btn-sage shrink-0 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                    className="carved-btn-terracotta shrink-0 rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
                   >
                     {adminReset.isPending ? "Resetting…" : "Reset password"}
                   </button>
@@ -542,7 +542,7 @@ function ChecklistIntervalsSection({
           type="button"
           disabled={save.isPending || !dirty}
           onClick={() => save.mutate(draft)}
-          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+          className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
         >
           {save.isPending ? "Saving…" : "Save intervals"}
         </button>
@@ -724,7 +724,7 @@ function PermissionEditor({ value, onChange }: { value: Permission[]; onChange: 
             onClick={() => onChange([...preset.permissions])}
             className={
               "rounded-full px-2.5 py-0.5 text-[11px] font-medium etched " +
-              (describeAccess(value) === preset.label ? "bg-sage-btn text-sage-text carved-btn-sage" : "bg-marble-shadow/50 text-ink-secondary hover:bg-marble-shadow/70")
+              (describeAccess(value) === preset.label ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "bg-marble-shadow/50 text-ink-secondary hover:bg-marble-shadow/70")
             }
           >
             {preset.label}
@@ -849,7 +849,7 @@ function EventOwnersSection() {
             type="button"
             disabled={create.isPending || !newName.trim() || !newEmail.trim() || newPermissions.length === 0}
             onClick={() => create.mutate({ name: newName.trim(), email: newEmail.trim().toLowerCase(), permissions: newPermissions })}
-            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-xs font-semibold text-sage-text etched disabled:opacity-60"
+            className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-xs font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
           >
             {create.isPending ? "Creating…" : "+ Add person"}
           </button>

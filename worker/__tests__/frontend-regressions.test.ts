@@ -25,6 +25,17 @@ describe("frontend regression guards", () => {
     expect(source).toContain("if (isEdit && (existingLoading || !hydrated))");
   });
 
+  it("persists venue and schedule edits instead of stripping them from the update payload", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const routes = readFileSync(resolve(root, "worker/routes/events.ts"), "utf8");
+
+    expect(source).toContain("await apiPut(`/events/${id}`, payload)");
+    expect(source).not.toContain("venue_bookings: _vb");
+    expect(routes).toContain("venueBookingSyncStatements");
+    expect(routes).toContain("db.batch([updateEvent, ...venueWrites])");
+    expect(routes).toContain("UPDATE schedule_entries");
+  });
+
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
     const source = readFileSync(resolve(root, "src/pages/ProfilePage.tsx"), "utf8");
 
@@ -64,6 +75,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Lifecycle note");
   });
 
+  it("warns on post-show operational dates without generic reopen controls", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("getPostShowDateWarning");
+    expect(source).toContain('role="alert"');
+    expect(source).not.toContain('item.status === "completed" ? "Reopen"');
+  });
+
   it("shows event type on the detail page with normalized fallback formatting", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
@@ -80,6 +99,26 @@ describe("frontend regression guards", () => {
     expect(source).toContain("z-[70]");
   });
 
+  it("wires the topbar global search to organisations and events", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("function GlobalSearch");
+    expect(source).toContain("/organisations?q=");
+    expect(source).toContain("/events?q=");
+    expect(source).toContain("View on calendar");
+    expect(source).toContain("submitSearch");
+  });
+
+  it("persists calendar filters into the URL for shareable deep links", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("setSearchParams(next, { replace: true })");
+    expect(calendar).toContain('next.set("view", view)');
+    expect(calendar).toContain('searchParams.get("q") ?? ""');
+    expect(calendar).toContain("function setFilter");
+    expect(calendar).toContain("Clear search");
+  });
+
   it("keeps calendar focused on activity and lifecycle views", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
@@ -87,7 +126,7 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("view=list");
     expect(calendar).not.toContain("EventsListView");
     expect(calendar).not.toContain('"venue", "lifecycle"');
-    expect(calendar).toContain('requestedView === "show" ? "show" : "lifecycle"');
+    expect(calendar).toContain('searchParams.get("view") === "show" ? "show" : "lifecycle"');
     expect(calendar).toContain('(["lifecycle", "show"] as const)');
     expect(calendar).not.toContain('"week"');
     expect(calendar).not.toContain('"day"');
@@ -96,16 +135,35 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("lifecycle");
   });
 
-  it("syncs calendar query params into the mounted calendar page without invalid dates", () => {
+  it("reads calendar filters from the URL and jumps to the matching month on search", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("useEffect");
     expect(calendar).toContain("function dateFromParam");
     expect(calendar).toContain("Number.isNaN(date.getTime())");
-    expect(calendar).toContain("setView(nextView)");
-    expect(calendar).toContain("setCursor(dateFromParam(nextFrom))");
-    expect(calendar).toContain("setFilters({");
+    expect(calendar).toContain("function setView(nextView: View)");
+    expect(calendar).toContain("dateFromParam(searchParams.get(\"from\"))");
     expect(calendar).toContain("searchParams.get(\"status\") ?? \"\"");
+    expect(calendar).toContain("URL is the single source of truth");
+    expect(calendar).toContain("/events?q=");
+    expect(calendar).toContain("params.set(\"from\", from)");
+  });
+
+  it("preserves the active calendar view when submitting topbar search", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("const onCalendar = location.pathname === \"/calendar\"");
+    expect(source).toContain("const view = onCalendar ? calendarView : \"lifecycle\"");
+    expect(source).toContain('navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`)');
+    expect(source).toContain('View on ${calendarLabel}');
+    expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
+  });
+
+  it("labels calendar page search for the active show or lifecycle view", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain('placeholder={view === "show" ? "Search show calendar…" : "Search lifecycle…"}');
+    expect(calendar).toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
   });
 
   it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {
@@ -360,5 +418,28 @@ describe("frontend regression guards", () => {
     expect(css).toContain("appearance: none");
     expect(css).toContain("border: 1px solid rgba(90, 88, 82, 0.16)");
     expect(eventForm).not.toContain("<style>{`.carved.input");
+  });
+
+  it("keeps MoM-related event form fields for stage setup, interval, and officer contact", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain('Field label="Stage Setup"');
+    expect(eventForm).toContain('setReq("stage_setup"');
+    expect(eventForm).toContain('Field label="Program Officer Contact"');
+    expect(eventForm).toContain('setReq("program_officer_phone"');
+    expect(eventForm).toContain('Field label="Interval (conditional)"');
+    expect(eventForm).toContain('setReq("interval"');
+    expect(eventForm).toContain('Field label="Digital Standee — notes"');
+    expect(eventForm).toContain('Field label="Car Display — notes"');
+  });
+
+  it("exposes Generate MoM on the event lifecycle panel", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(detail).toContain("Generate MoM");
+    expect(detail).toContain("onGenerateMom");
+    expect(detail).toContain("buildMomDocument");
+    expect(detail).toContain("Customised information");
+    expect(detail).toContain("Copy Text");
   });
 });
