@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { getEventStatusSurface } from "../lib/event-status-surface";
@@ -34,7 +34,7 @@ const VIEW_LABELS: Record<TaskView, string> = {
 export function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseView(searchParams.get("view"));
-  const [mine, setMine] = useState(false);
+  const mine = searchParams.get("mine") === "1";
   const today = useMemo(() => isoTodayInIndia(), []);
 
   const { data, isLoading, error } = useQuery({
@@ -50,6 +50,13 @@ export function TasksPage() {
   function selectView(next: TaskView) {
     const params = new URLSearchParams(searchParams);
     params.set("view", next);
+    setSearchParams(params, { replace: true });
+  }
+
+  function toggleMine(next: boolean) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("mine", "1");
+    else params.delete("mine");
     setSearchParams(params, { replace: true });
   }
 
@@ -76,7 +83,7 @@ export function TasksPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2 md:ml-auto">
             <label className="inline-flex items-center gap-2 px-2 text-xs font-medium text-ink-secondary etched">
-              <input type="checkbox" checked={mine} onChange={(ev) => setMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
+              <input type="checkbox" checked={mine} onChange={(ev) => toggleMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
               My tasks
             </label>
           </div>

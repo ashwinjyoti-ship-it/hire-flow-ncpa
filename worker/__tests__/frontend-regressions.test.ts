@@ -99,6 +99,24 @@ describe("frontend regression guards", () => {
     expect(source).toContain("z-[70]");
   });
 
+  it("wires the topbar global search to organisations and events", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("function GlobalSearch");
+    expect(source).toContain("/organisations?q=");
+    expect(source).toContain("/events?q=");
+    expect(source).toContain("View on calendar");
+    expect(source).toContain("submitSearch");
+  });
+
+  it("persists calendar filters into the URL for shareable deep links", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("setSearchParams(next, { replace: true })");
+    expect(calendar).toContain('next.set("view", view)');
+    expect(calendar).toContain('next.set("q", filters.q.trim())');
+  });
+
   it("keeps calendar focused on activity and lifecycle views", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");

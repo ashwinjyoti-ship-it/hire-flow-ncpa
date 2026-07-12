@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet } from "../lib/api";
 import { recencyBucket } from "../lib/dates";
@@ -24,8 +25,12 @@ function bucketMatches(count: number, bucket: string): boolean {
 }
 
 export function OrganisationsPage() {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [showAll, setShowAll] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...EMPTY_FILTERS,
+    q: searchParams.get("q") ?? "",
+  }));
+  const [showAll, setShowAll] = useState(() => Boolean(searchParams.get("q")?.trim()));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { toast, show } = useToast();
 
@@ -36,6 +41,21 @@ export function OrganisationsPage() {
   });
   const orgs = data?.organisations ?? [];
   const total = data?.total ?? orgs.length;
+
+  useEffect(() => {
+    const urlQ = searchParams.get("q") ?? "";
+    setFilters((f) => (f.q === urlQ ? f : { ...f, q: urlQ }));
+    if (urlQ.trim()) setShowAll(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const trimmed = filters.q.trim();
+    if (trimmed) next.set("q", trimmed);
+    else next.delete("q");
+    if (next.toString() === searchParams.toString()) return;
+    setSearchParams(next, { replace: true });
+  }, [filters.q, searchParams, setSearchParams]);
 
   // Facet counts computed once per dataset (ignore active filters so the rail
   // shows stable totals, the way the spec's example "(87)" implies).
@@ -120,7 +140,7 @@ export function OrganisationsPage() {
               type="search"
               value={filters.q}
               onChange={(e) => patchFilters({ q: e.target.value })}
-              placeholder="Search organisations, contacts, events…"
+              placeholder="Search organisations or contacts…"
               className="carved w-64 rounded-full bg-marble-shadow/40 px-4 py-2 text-sm text-ink-primary focus:outline-none"
             />
             <button
