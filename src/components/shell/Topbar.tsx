@@ -219,15 +219,20 @@ function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const debounced = useDebouncedValue(query.trim(), 250);
   const ready = debounced.length >= 2;
+  const onCalendar = location.pathname === "/calendar";
+  const calendarView: "show" | "lifecycle" =
+    onCalendar && new URLSearchParams(location.search).get("view") === "show" ? "show" : "lifecycle";
+  const calendarLabel = calendarView === "show" ? "Show calendar" : "Lifecycle calendar";
 
   const { data: orgData, isFetching: orgsLoading } = useQuery({
     queryKey: ["global-search-orgs", debounced],
     queryFn: () => apiGet<{ organisations: SearchOrg[] }>(`/organisations?q=${encodeURIComponent(debounced)}`),
     enabled: ready,
   });
+  const eventStatusQuery = onCalendar && calendarView === "show" ? "&status=confirmed" : "";
   const { data: eventData, isFetching: eventsLoading } = useQuery({
-    queryKey: ["global-search-events", debounced],
-    queryFn: () => apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(debounced)}`),
+    queryKey: ["global-search-events", debounced, eventStatusQuery],
+    queryFn: () => apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(debounced)}${eventStatusQuery}`),
     enabled: ready,
   });
 
@@ -268,15 +273,11 @@ function GlobalSearch() {
     };
   }, [open]);
 
-  function preferredCalendarView(): "show" | "lifecycle" {
-    if (location.pathname !== "/calendar") return "lifecycle";
-    return new URLSearchParams(location.search).get("view") === "show" ? "show" : "lifecycle";
-  }
-
   async function submitSearch() {
     const term = query.trim();
     if (!term) return;
-    const view = preferredCalendarView();
+    // When already on a calendar view, stay on that exact view (Show vs Lifecycle).
+    const view = onCalendar ? calendarView : "lifecycle";
     try {
       const statusQuery = view === "show" ? "&status=confirmed" : "";
       const [orgRes, eventRes] = await Promise.all([
@@ -287,6 +288,9 @@ function GlobalSearch() {
       if (firstEvent?.event_start_date) {
         const from = `${firstEvent.event_start_date.slice(0, 7)}-01`;
         navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`);
+      } else if (onCalendar) {
+        // Stay on the active calendar even if only an org name matched.
+        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
       } else if (orgRes.organisations.length > 0) {
         navigate(`/organisations?q=${encodeURIComponent(term)}`);
       } else {
@@ -314,8 +318,8 @@ function GlobalSearch() {
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Search events, organisations…"
-          aria-label="Global search"
+          placeholder={onCalendar ? `Search ${calendarLabel.toLowerCase()}…` : "Search events, organisations…"}
+          aria-label={onCalendar ? `Search ${calendarLabel}` : "Global search"}
           aria-expanded={open && ready}
           aria-controls="topbar-global-search-results"
           className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none"
@@ -342,7 +346,11 @@ function GlobalSearch() {
                           <button
                             type="button"
                             onClick={() => {
-                              navigate(`/organisations?q=${encodeURIComponent(org.name)}`);
+                              if (onCalendar) {
+                                navigate(`/calendar?view=${calendarView}&q=${encodeURIComponent(org.name)}`);
+                              } else {
+                                navigate(`/organisations?q=${encodeURIComponent(org.name)}`);
+                              }
                               setOpen(false);
                             }}
                             className="w-full rounded-xl px-3 py-2 text-left hover:bg-marble-shadow/40"
@@ -382,22 +390,24 @@ function GlobalSearch() {
             )}
           </div>
           <div className="flex flex-wrap gap-2 border-t border-ink-muted/10 px-3 py-2">
-            <button
-              type="button"
-              onClick={() => {
-                navigate(`/organisations?q=${encodeURIComponent(debounced)}`);
-                setOpen(false);
-              }}
-              className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
-            >
-              View organisations
-            </button>
+            {!onCalendar && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigate(`/organisations?q=${encodeURIComponent(debounced)}`);
+                  setOpen(false);
+                }}
+                className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
+              >
+                View organisations
+              </button>
+            )}
             <button
               type="button"
               onClick={submitSearch}
               className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
             >
-              View on calendar
+              {onCalendar ? `View on ${calendarLabel}` : "View on calendar"}
             </button>
           </div>
         </div>
