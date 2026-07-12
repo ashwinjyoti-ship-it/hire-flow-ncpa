@@ -1,33 +1,59 @@
 -- Normalize legacy DD-Mmm-YYYY dates so reminders, analytics, and reports all
 -- compare the same ISO YYYY-MM-DD values used by the application.
+-- Avoid stacked GLOB character classes — D1 rejects them with
+-- "LIKE or GLOB pattern too complex" (SQLITE_ERROR 7500).
 UPDATE events SET event_start_date = substr(event_start_date, 8, 4) || '-' ||
   CASE lower(substr(event_start_date, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(event_start_date, 1, 2)
-WHERE event_start_date GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(event_start_date) = 11
+  AND substr(event_start_date, 3, 1) = '-'
+  AND substr(event_start_date, 7, 1) = '-'
+  AND CAST(substr(event_start_date, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(event_start_date, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(event_start_date, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 UPDATE events SET event_end_date = substr(event_end_date, 8, 4) || '-' ||
   CASE lower(substr(event_end_date, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(event_end_date, 1, 2)
-WHERE event_end_date GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(event_end_date) = 11
+  AND substr(event_end_date, 3, 1) = '-'
+  AND substr(event_end_date, 7, 1) = '-'
+  AND CAST(substr(event_end_date, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(event_end_date, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(event_end_date, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 UPDATE schedule_entries SET activity_date = substr(activity_date, 8, 4) || '-' ||
   CASE lower(substr(activity_date, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(activity_date, 1, 2)
-WHERE activity_date GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(activity_date) = 11
+  AND substr(activity_date, 3, 1) = '-'
+  AND substr(activity_date, 7, 1) = '-'
+  AND CAST(substr(activity_date, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(activity_date, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(activity_date, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 UPDATE checklist_items SET value = substr(value, 8, 4) || '-' ||
   CASE lower(substr(value, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(value, 1, 2)
-WHERE value GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(value) = 11
+  AND substr(value, 3, 1) = '-'
+  AND substr(value, 7, 1) = '-'
+  AND CAST(substr(value, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(value, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(value, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 UPDATE checklist_items SET due_date = substr(due_date, 8, 4) || '-' ||
   CASE lower(substr(due_date, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(due_date, 1, 2)
-WHERE due_date GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(due_date) = 11
+  AND substr(due_date, 3, 1) = '-'
+  AND substr(due_date, 7, 1) = '-'
+  AND CAST(substr(due_date, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(due_date, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(due_date, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 UPDATE tasks SET due_date = substr(due_date, 8, 4) || '-' ||
   CASE lower(substr(due_date, 4, 3)) WHEN 'jan' THEN '01' WHEN 'feb' THEN '02' WHEN 'mar' THEN '03' WHEN 'apr' THEN '04' WHEN 'may' THEN '05' WHEN 'jun' THEN '06' WHEN 'jul' THEN '07' WHEN 'aug' THEN '08' WHEN 'sep' THEN '09' WHEN 'oct' THEN '10' WHEN 'nov' THEN '11' WHEN 'dec' THEN '12' END || '-' || substr(due_date, 1, 2)
-WHERE due_date GLOB '[0-9][0-9]-[A-Za-z][A-Za-z][A-Za-z]-[0-9][0-9][0-9][0-9]'
+WHERE length(due_date) = 11
+  AND substr(due_date, 3, 1) = '-'
+  AND substr(due_date, 7, 1) = '-'
+  AND CAST(substr(due_date, 1, 2) AS INTEGER) BETWEEN 1 AND 31
+  AND CAST(substr(due_date, 8, 4) AS INTEGER) BETWEEN 1900 AND 2100
   AND lower(substr(due_date, 4, 3)) IN ('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec');
 
 -- A scheduled future date is in progress; it becomes complete once reached.
