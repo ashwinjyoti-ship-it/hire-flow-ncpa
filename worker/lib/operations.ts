@@ -1,6 +1,7 @@
 import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
+import { getPostShowDateWarning } from "./checklist-date-policy";
 import { makeId } from "./id";
 import { canConfirm, canTransition, STATUS_LABELS, type EventStatus } from "./state-machine";
 
@@ -249,6 +250,15 @@ export async function updateChecklistItem(args: {
   const completedBy = status === "completed" ? current.completed_by ?? user.id : null;
   const dueDate = current.field_type === "date" ? value : current.due_date;
 
+  if (current.module === "operations" && current.field_type === "date" && value) {
+    const event = await db.prepare(
+      "SELECT event_start_date, event_end_date FROM events WHERE id = ?"
+    ).bind(current.event_id).first<{ event_start_date: string | null; event_end_date: string | null }>();
+    const finalShowDate = event?.event_end_date ?? event?.event_start_date ?? null;
+    const warning = getPostShowDateWarning(current.field_key, value, finalShowDate);
+    if (warning) throw new Error(warning);
+  }
+
   await db.prepare(
     `UPDATE checklist_items
      SET value = ?, status = ?, due_date = ?, completed_at = ?, completed_by = ?,
@@ -268,7 +278,7 @@ export async function updateChecklistItem(args: {
   // JSON so the Add/Edit Event form reflects Operations-tab changes. No-op for
   // non-requirement fields (and for req_sound, which is form->checklist only).
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
-  await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status }, user.id);
+  await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
   await recalculateEventCompletion(db, current.event_id);
   await eventActivity(db, current.event_id, "checklist_updated", user.id, {
@@ -642,10 +652,13 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   const assigneeId = ownerRow?.event_owner_id ?? null;
 
   await db.prepare(
-    `INSERT OR IGNORE INTO tasks
+    `INSERT INTO tasks
      (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
       idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', ?, ?, ?)
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       due_date = excluded.due_date,
+       updated_at = excluded.updated_at`
   ).bind(
     makeId("task"),
     rule.title,
@@ -679,6 +692,7 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
   if (fieldKey === "confirmation_signed_received" && v === "yes") rules.push("confirmation_letter");
   if (fieldKey === "onstage_received_from_client" && v) rules.push("onstage");
   if (fieldKey === "feedback_received" && v) rules.push("feedback");
+  if (fieldKey === "minutes_of_meeting" && v === "yes") rules.push("technical_meeting");
   if (fieldKey === "file_sent_to_accounts" && v) rules.push("send_file_to_accounts");
   if (fieldKey === "final_file_received" && v === "yes") rules.push("accounts_file");
   // Instalment follow-up tasks close out once payment is completed (the team

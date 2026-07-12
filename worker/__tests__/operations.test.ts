@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, runOperationalJobs, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, runOperationalJobs, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -244,6 +244,58 @@ describe("operational lifecycle readiness", () => {
     expect(inserts[0]?.binds).toContain("ev_after_show");
     expect(inserts[0]?.binds).toContain("cli_file_sent");
     expect(inserts[0]?.binds).toContain("2026-07-07");
+  });
+});
+
+describe("checklist task date synchronization", () => {
+  it("updates an existing automatic task to the current source date", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("SELECT event_owner_id")) return { event_owner_id: null };
+            return null;
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    const item = {
+      id: "cli_technical",
+      event_id: "ev_foundation_day",
+      definition_id: "def_technical",
+      module: "operations",
+      section: "Technical Meeting & Minutes",
+      field_key: "technical_meeting_date",
+      label: "Technical Meeting Date",
+      status: "completed",
+      value: "2026-06-09",
+      due_date: "2026-06-09",
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "date",
+      options: null,
+      is_computed: 0,
+      triggers_task: JSON.stringify({ rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0 }),
+      visibility_rule: null,
+      sort_order: 0,
+    } satisfies ChecklistItemRow;
+
+    await maybeCreateTaskForChecklistItem(db, item, "user_1");
+
+    const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
+    expect(taskWrite?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
+    expect(taskWrite?.binds).toContain("2026-06-09");
   });
 });
 

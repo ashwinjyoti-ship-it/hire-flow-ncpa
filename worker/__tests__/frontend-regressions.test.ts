@@ -64,6 +64,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Lifecycle note");
   });
 
+  it("warns on post-show operational dates without generic reopen controls", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain("getPostShowDateWarning");
+    expect(source).toContain('role="alert"');
+    expect(source).not.toContain('item.status === "completed" ? "Reopen"');
+  });
+
   it("shows event type on the detail page with normalized fallback formatting", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 

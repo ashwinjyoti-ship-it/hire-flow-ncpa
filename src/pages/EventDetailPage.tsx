@@ -12,6 +12,7 @@ import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
+import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -361,6 +362,7 @@ export function EventDetailPage() {
       {tab === "operations" && (
         <ChecklistModuleView
           sections={checklistData?.checklist.operations ?? {}}
+          finalShowDate={e.event_end_date ?? e.event_start_date}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
@@ -371,6 +373,7 @@ export function EventDetailPage() {
       {tab === "accounts" && (
         <ChecklistModuleView
           sections={checklistData?.checklist.accounts ?? {}}
+          finalShowDate={null}
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
@@ -639,12 +642,14 @@ function ChecklistModuleView({
   canEdit,
   isSaving,
   focusedFieldKey,
+  finalShowDate,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
   canEdit: boolean;
   isSaving: boolean;
   focusedFieldKey: string | null;
+  finalShowDate: string | null;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -669,7 +674,7 @@ function ChecklistModuleView({
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {visibleItems.map((item) => (
-                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} onUpdate={onUpdate} />
+                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
               ))}
             </div>
           </section>
@@ -698,10 +703,10 @@ function isFieldVisible(item: ChecklistItem, valueByKey: Map<string, string | nu
   return actual.toLowerCase() === expected.toLowerCase();
 }
 
-function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
+function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60";
-  const canManuallyToggleStatus = item.field_type !== "dropdown" && item.field_type !== "status";
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   return (
     <label
@@ -755,9 +760,18 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
           type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
           lang={item.field_type === "date" ? "en-GB" : undefined}
           defaultValue={item.value ?? ""}
+          aria-invalid={Boolean(validationError)}
+          aria-describedby={validationError ? `checklist-error-${item.id}` : undefined}
+          onChange={() => validationError && setValidationError(null)}
           onBlur={(ev) => {
             const next = ev.currentTarget.value || null;
             if (next === (item.value ?? null)) return;
+            const warning = item.field_type === "date" ? getPostShowDateWarning(item.field_key, next, finalShowDate) : null;
+            if (warning) {
+              setValidationError(warning);
+              ev.currentTarget.value = item.value ?? "";
+              return;
+            }
             if (item.field_type === "date" && item.value && next) {
               const correctionReason = window.prompt("Reason for changing this date?");
               if (!correctionReason?.trim()) {
@@ -772,16 +786,10 @@ function ChecklistField({ item, focused, canEdit, onUpdate }: { item: ChecklistI
           className={baseClass}
         />
       )}
-      {!item.is_computed && canEdit && canManuallyToggleStatus && (item.status === "in_progress" || item.status === "completed") && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() => onUpdate(item, item.value, item.status === "completed" ? "in_progress" : "completed")}
-            className="carved-btn rounded-full bg-neutral-btn px-3 py-1 text-[11px] font-medium text-ink-secondary etched"
-          >
-            {item.status === "completed" ? "Reopen" : "Mark complete"}
-          </button>
-        </div>
+      {validationError && (
+        <span id={`checklist-error-${item.id}`} role="alert" className="mt-2 block text-xs font-medium text-red-700">
+          {validationError}
+        </span>
       )}
     </label>
   );
