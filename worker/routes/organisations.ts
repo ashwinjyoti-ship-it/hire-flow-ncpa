@@ -39,8 +39,16 @@ organisationRoutes.get("/", requireUser, async (c) => {
   const binds: unknown[] = [];
   let where = "";
   if (q) {
-    where = ` AND LOWER(o.name) LIKE ?`;
-    binds.push(`%${q.toLowerCase()}%`);
+    where = ` AND (
+      LOWER(o.name) LIKE ?
+      OR EXISTS (
+        SELECT 1 FROM contacts c
+        WHERE c.organisation_id = o.id
+          AND LOWER(COALESCE(c.name, '')) LIKE ?
+      )
+    )`;
+    const like = `%${q.toLowerCase()}%`;
+    binds.push(like, like);
   }
   const groupOrder = ` GROUP BY LOWER(TRIM(o.name)) ORDER BY MIN(o.name) LIMIT 200`;
   const { results } = await c.env.DB.prepare(sql + where + groupOrder).bind(...binds).all();

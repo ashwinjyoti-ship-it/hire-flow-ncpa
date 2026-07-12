@@ -107,7 +107,7 @@ function calendarCellsForMonth(cursor: Date): MonthCell[] {
 export function CalendarPage() {
   const { user } = useAuth();
   const { data: lookups } = useLookups();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get("view");
   const initialView: View = requestedView === "show" ? "show" : "lifecycle";
   const initialFrom = searchParams.get("from");
@@ -142,6 +142,21 @@ export function CalendarPage() {
     setSideEvent(null);
     setLifecycleOverflow(null);
   }, [searchParams]);
+
+  // Keep shareable deep links in sync when the user changes filters/view/month.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    next.set("view", view);
+    next.set("from", isoDate(startOfMonth(cursor)));
+    if (filters.status) next.set("status", filters.status);
+    if (filters.venue) next.set("venue", filters.venue);
+    if (filters.type) next.set("type", filters.type);
+    if (filters.owner) next.set("owner", filters.owner);
+    if (filters.q.trim()) next.set("q", filters.q.trim());
+    if (mine) next.set("mine", "1");
+    if (next.toString() === searchParams.toString()) return;
+    setSearchParams(next, { replace: true });
+  }, [view, cursor, filters, mine, searchParams, setSearchParams]);
 
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
