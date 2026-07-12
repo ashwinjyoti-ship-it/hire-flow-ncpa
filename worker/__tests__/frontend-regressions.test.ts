@@ -380,4 +380,27 @@ describe("frontend regression guards", () => {
     expect(css).toContain("border: 1px solid rgba(90, 88, 82, 0.16)");
     expect(eventForm).not.toContain("<style>{`.carved.input");
   });
+
+  it("keeps MoM-related event form fields for stage setup, interval, and officer contact", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(eventForm).toContain('Field label="Stage Setup"');
+    expect(eventForm).toContain('setReq("stage_setup"');
+    expect(eventForm).toContain('Field label="Program Officer Contact"');
+    expect(eventForm).toContain('setReq("program_officer_phone"');
+    expect(eventForm).toContain('Field label="Interval (conditional)"');
+    expect(eventForm).toContain('setReq("interval"');
+    expect(eventForm).toContain('Field label="Digital Standee — notes"');
+    expect(eventForm).toContain('Field label="Car Display — notes"');
+  });
+
+  it("exposes Generate MoM on the event lifecycle panel", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(detail).toContain("Generate MoM");
+    expect(detail).toContain("onGenerateMom");
+    expect(detail).toContain("buildMomDocument");
+    expect(detail).toContain("Customised information");
+    expect(detail).toContain("Copy Text");
+  });
 });
