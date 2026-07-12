@@ -25,7 +25,7 @@ export default {
           btnHoverLight: "#FFFFFF",
           btnHoverDark: "#F5F5F3",
         },
-        // Sage accent family (the ONLY chromatic accent)
+        // Sage accent family (primary chromatic accent)
         sage: {
           DEFAULT: "#9CAF88",
           dark: "#8FA079",
@@ -37,6 +37,18 @@ export default {
           btnDark: "#DCE4CF",
           btnHoverLight: "#F2F5EC",
           btnHoverDark: "#E1E8D6",
+        },
+        // Deep Terracotta — the single warm accent. Reserved for primary
+        // CTAs, active/selected states, key icons, and small highlights.
+        // Never for status or priority indicators (those keep `status.*`).
+        terracotta: {
+          DEFAULT: "#B85C38",
+          dark: "#A64F2E",
+          text: "#96482B",
+          btnLight: "#F6E7DF",
+          btnDark: "#EDD5C8",
+          btnHoverLight: "#F9EDE7",
+          btnHoverDark: "#F1DCD1",
         },
         // Text hierarchy
         ink: {
@@ -104,7 +116,9 @@ export default {
         "carved-header": "inset 0 2px 5px rgba(90,88,82,0.16), inset 0 -1px 0 rgba(255,255,255,0.9)",
         "carved-btn": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(90,88,82,0.10)",
         "carved-btn-sage": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 2px rgba(110,125,95,0.14)",
+        "carved-btn-terracotta": "0 1px 2px rgba(90,88,82,0.16), inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 2px rgba(150,80,50,0.16)",
         "sage-pip": "inset 0 1px 1px rgba(255,255,255,0.5), 0 1px 2px rgba(110,125,95,0.25)",
+        "terracotta-pip": "inset 0 1px 1px rgba(255,255,255,0.5), 0 1px 2px rgba(150,80,50,0.28)",
         "evt-dot": "0 1px 1px rgba(90,88,82,0.18)",
       },
       textColor: {
@@ -118,6 +132,8 @@ export default {
           "linear-gradient(180deg, rgba(140,157,120,0.16) 0%, rgba(140,157,120,0.05) 100%)",
         "sage-btn": "linear-gradient(180deg, #EEF2E7 0%, #DCE4CF 100%)",
         "sage-btn-hover": "linear-gradient(180deg, #F2F5EC 0%, #E1E8D6 100%)",
+        "terracotta-btn": "linear-gradient(180deg, #F6E7DF 0%, #EDD5C8 100%)",
+        "terracotta-btn-hover": "linear-gradient(180deg, #F9EDE7 0%, #F1DCD1 100%)",
         "neutral-btn": "linear-gradient(180deg, #FCFCFB 0%, #F1F1EF 100%)",
         "neutral-btn-hover": "linear-gradient(180deg, #FFFFFF 0%, #F5F5F3 100%)",
       },

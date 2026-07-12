@@ -495,7 +495,7 @@ export function EventEditPage() {
             type="button"
             onClick={() => setStep(i)}
             aria-current={i === step ? "step" : undefined}
-            className={"flex min-h-10 flex-1 items-center justify-center rounded-full px-2 py-1.5 text-center text-xs font-medium leading-tight etched md:px-3 " + (i === step ? "bg-sage-btn text-sage-text carved-btn-sage" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
+            className={"flex min-h-10 flex-1 items-center justify-center rounded-full px-2 py-1.5 text-center text-xs font-medium leading-tight etched md:px-3 " + (i === step ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : i < step ? "bg-sage/10 text-sage-text" : "bg-marble-shadow/40 text-ink-muted")}
           >
             <span className="hidden lg:inline">{i + 1}. {label}</span>
             <span className="lg:hidden">{i + 1}. {STEP_SHORT_LABELS[i]}</span>
@@ -1130,7 +1130,7 @@ function FormNavigation({
           type="button"
           onClick={onSave}
           disabled={isSaving || !canSave}
-          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+          className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
         >
           {isSaving ? "Saving..." : isEdit ? "Save changes" : "Create event"}
         </button>

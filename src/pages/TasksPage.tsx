@@ -74,7 +74,7 @@ export function TasksPage() {
                 onClick={() => selectView(option)}
                 className={
                   "rounded-full px-4 py-1.5 text-xs font-semibold etched " +
-                  (view === option ? "carved-btn-sage bg-sage-btn text-sage-text" : "text-ink-muted hover:text-ink-secondary")
+                  (view === option ? "carved-btn-terracotta bg-terracotta-btn text-terracotta-text" : "text-ink-muted hover:text-ink-secondary")
                 }
               >
                 {VIEW_LABELS[option]}
@@ -83,7 +83,7 @@ export function TasksPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2 md:ml-auto">
             <label className="inline-flex items-center gap-2 px-2 text-xs font-medium text-ink-secondary etched">
-              <input type="checkbox" checked={mine} onChange={(ev) => toggleMine(ev.target.checked)} className="h-4 w-4 accent-sage" />
+              <input type="checkbox" checked={mine} onChange={(ev) => toggleMine(ev.target.checked)} className="h-4 w-4 accent-terracotta" />
               My tasks
             </label>
           </div>
@@ -164,7 +164,7 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
               {nextTask && (
                 <div className="mt-3 rounded-lg bg-marble-highlight/70 px-3 py-2 ring-1 ring-ink-muted/10">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-sage-btn px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sage-text etched" aria-label="Recommended next task for this event">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-terracotta-btn px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-terracotta-text etched" aria-label="Recommended next task for this event">
                       Do this next
                       <span aria-hidden="true">→</span>
                     </span>

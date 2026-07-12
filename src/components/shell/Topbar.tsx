@@ -184,7 +184,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
             <Link
               to="/profile"
               aria-label="Profile and security"
-              className="carved-btn flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-sage-text"
+              className="carved-btn flex h-9 w-9 items-center justify-center rounded-full bg-neutral-btn text-terracotta-text"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" strokeLinecap="round" strokeLinejoin="round" />

@@ -75,7 +75,7 @@ export function ReportsPage() {
             onClick={() => setTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (tab === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
+              (tab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
             }
           >
             {label}
@@ -140,7 +140,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
                   onClick={() => setReportType(key)}
                   className={
                     "rounded-full px-3 py-1 text-xs font-medium etched " +
-                    (reportType === key ? "bg-sage-btn text-sage-text carved-btn-sage" : "text-ink-secondary hover:bg-marble-shadow/40")
+                    (reportType === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
                   }
                 >
                   {TYPE_META[key].icon} {TYPE_META[key].label}
@@ -174,7 +174,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
               type="button"
               disabled={!date || generate.isPending}
               onClick={() => generate.mutate()}
-              className="carved-btn-sage mt-3 w-full rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+              className="carved-btn-terracotta mt-3 w-full rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
             >
               {generate.isPending ? "Generating..." : "Generate snapshot"}
             </button>
@@ -195,7 +195,7 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
                     onClick={() => setSelectedId(r.id)}
                     className={
                       "min-w-0 flex-1 rounded-xl px-3 py-2 text-left text-sm transition-colors " +
-                      (selectedId === r.id ? "bg-sage-btn text-sage-text carved-btn-sage etched" : "text-ink-secondary hover:bg-marble-shadow/40")
+                      (selectedId === r.id ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta etched" : "text-ink-secondary hover:bg-marble-shadow/40")
                     }
                   >
                     <span className="font-medium">
