@@ -11,7 +11,9 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser, requirePermission, actorFrom, ipHint } from "../middleware/auth";
-import { EventInput, StatusTransitionInput } from "../lib/types";
+import { EventInput, StatusTransitionInput, type VenueBookingInputT } from "../lib/types";
+import { getEventDateIssues } from "../lib/event-date-policy";
+import { getPostShowDateWarning } from "../lib/checklist-date-policy";
 import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
@@ -19,18 +21,130 @@ import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
 import {
   blockersForTransition,
-  completeTasksForSourceRules,
   ensureChecklistForEvent,
   getChecklistItems,
   getEventLifecycle,
+  reconcileFileToAccountsReminderForEvent,
+  reconcileTasksForLifecycleTransition,
   syncAdditionalRequirementsChecklist,
+  syncAutomaticTaskOwnerForEvent,
   syncEventReferenceChecklist,
-  taskRulesCompletedByLifecycleTransition,
   updateChecklistItem,
 } from "../lib/operations";
 import { z } from "zod";
 
 export const eventRoutes = new Hono<AuthEnv>();
+
+async function venueBookingSyncStatements(db: D1Database, eventId: string, bookings: VenueBookingInputT[], now: string): Promise<D1PreparedStatement[]> {
+  const writes: D1PreparedStatement[] = [];
+  const { results: existingBookings } = await db.prepare(
+    "SELECT id FROM venue_bookings WHERE event_id = ?"
+  ).bind(eventId).all<{ id: string }>();
+  const existingBookingIds = new Set(existingBookings.map((row) => row.id));
+  const keptBookingIds = new Set<string>();
+
+  for (const [bookingIndex, booking] of bookings.entries()) {
+    if (booking.id && !existingBookingIds.has(booking.id)) throw new Error("Venue booking does not belong to this event");
+    const bookingId = booking.id ?? makeId("vb");
+    keptBookingIds.add(bookingId);
+
+    if (booking.id) {
+      writes.push(db.prepare(
+        `UPDATE venue_bookings
+         SET venue = ?, booking_status = ?, number_of_shows = ?, requirements = ?, notes = ?, sort_order = ?, updated_at = ?
+         WHERE id = ? AND event_id = ?`
+      ).bind(
+        booking.venue, booking.booking_status, booking.number_of_shows,
+        booking.requirements ? JSON.stringify(booking.requirements) : null,
+        booking.notes ?? null, bookingIndex + 1, now, bookingId, eventId
+      ));
+    } else {
+      writes.push(db.prepare(
+        `INSERT INTO venue_bookings (id, event_id, venue, booking_status, number_of_shows,
+           requirements, notes, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        bookingId, eventId, booking.venue, booking.booking_status, booking.number_of_shows,
+        booking.requirements ? JSON.stringify(booking.requirements) : null,
+        booking.notes ?? null, bookingIndex + 1, now, now
+      ));
+    }
+
+    const { results: existingSchedules } = await db.prepare(
+      "SELECT id FROM schedule_entries WHERE venue_booking_id = ? AND event_id = ?"
+    ).bind(bookingId, eventId).all<{ id: string }>();
+    const existingScheduleIds = new Set(existingSchedules.map((row) => row.id));
+    const keptScheduleIds = new Set<string>();
+
+    for (const [scheduleIndex, schedule] of booking.schedule_entries.entries()) {
+      if (schedule.id && !existingScheduleIds.has(schedule.id)) throw new Error("Schedule entry does not belong to this venue booking");
+      const scheduleId = schedule.id ?? makeId("se");
+      keptScheduleIds.add(scheduleId);
+      if (schedule.id) {
+        writes.push(db.prepare(
+          `UPDATE schedule_entries
+           SET activity_type = ?, activity_date = ?, start_time = ?, end_time = ?,
+               with_ac_start = ?, with_ac_end = ?, with_ac_minutes = ?,
+               without_ac_start = ?, without_ac_end = ?, without_ac_minutes = ?,
+               notes = ?, sort_order = ?
+           WHERE id = ? AND venue_booking_id = ? AND event_id = ?`
+        ).bind(
+          schedule.activity_type, schedule.activity_date, schedule.start_time ?? null, schedule.end_time ?? null,
+          schedule.with_ac_start ?? null, schedule.with_ac_end ?? null, schedule.with_ac_minutes ?? null,
+          schedule.without_ac_start ?? null, schedule.without_ac_end ?? null, schedule.without_ac_minutes ?? null,
+          schedule.notes ?? null, scheduleIndex + 1, scheduleId, bookingId, eventId
+        ));
+      } else {
+        writes.push(db.prepare(
+          `INSERT INTO schedule_entries (id, venue_booking_id, event_id, activity_type, activity_date,
+             start_time, end_time, with_ac_start, with_ac_end, with_ac_minutes,
+             without_ac_start, without_ac_end, without_ac_minutes, notes, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          scheduleId, bookingId, eventId, schedule.activity_type, schedule.activity_date,
+          schedule.start_time ?? null, schedule.end_time ?? null,
+          schedule.with_ac_start ?? null, schedule.with_ac_end ?? null, schedule.with_ac_minutes ?? null,
+          schedule.without_ac_start ?? null, schedule.without_ac_end ?? null, schedule.without_ac_minutes ?? null,
+          schedule.notes ?? null, scheduleIndex + 1, now
+        ));
+      }
+    }
+
+    for (const scheduleId of existingScheduleIds) {
+      if (!keptScheduleIds.has(scheduleId)) {
+        writes.push(db.prepare("DELETE FROM schedule_entries WHERE id = ? AND event_id = ?").bind(scheduleId, eventId));
+      }
+    }
+  }
+
+  for (const bookingId of existingBookingIds) {
+    if (keptBookingIds.has(bookingId)) continue;
+    writes.push(db.prepare("UPDATE tasks SET venue_booking_id = NULL, updated_at = ? WHERE venue_booking_id = ?").bind(now, bookingId));
+    writes.push(db.prepare("UPDATE documents SET venue_booking_id = NULL WHERE venue_booking_id = ?").bind(bookingId));
+    writes.push(db.prepare("DELETE FROM schedule_entries WHERE venue_booking_id = ? AND event_id = ?").bind(bookingId, eventId));
+    writes.push(db.prepare("DELETE FROM venue_bookings WHERE id = ? AND event_id = ?").bind(bookingId, eventId));
+  }
+  return writes;
+}
+
+async function postShowChecklistIssue(db: D1Database, eventId: string, finalShowDate: string | null): Promise<string | null> {
+  if (!finalShowDate) return null;
+  const { results } = await db.prepare(
+    `SELECT ci.field_key, ci.value
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ? AND ci.module = 'operations' AND cd.field_type = 'date' AND ci.value IS NOT NULL`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+  for (const row of results) {
+    const warning = getPostShowDateWarning(row.field_key, row.value, finalShowDate);
+    if (warning) return warning;
+  }
+  return null;
+}
+
+function nextValueFrom(current: Record<string, unknown>, patch: Record<string, unknown>, key: string): unknown {
+  return patch[key] !== undefined ? patch[key] : current[key];
+}
 
 function importedMonthSql(raw: string): string {
   return `CASE lower(substr(${raw}, 4, 3))
@@ -218,6 +332,11 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   const now = new Date().toISOString();
   const d = parsed.data;
 
+  if (!d.event_start_date) return c.json({ error: "Event start date is required", field: "event_start_date" }, 422);
+
+  const dateIssue = getEventDateIssues(d)[0];
+  if (dateIssue) return c.json({ error: dateIssue.message, field: dateIssue.path }, 422);
+
   const duplicates = await findLikelyDuplicateEvents(db, {
     orgId: d.organisation_id,
     title: d.title,
@@ -231,7 +350,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
     }, 409);
   }
 
-  await db.prepare(
+  const insertEvent = db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
        event_type, program_officer, event_owner, event_owner_id,
        event_start_date, event_end_date, status, form_status, approval_status, confirmation_status,
@@ -250,47 +369,21 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
     d.enquiry_source ?? null, d.priority,
     d.requirements ? JSON.stringify(d.requirements) : null,
     d.notes ?? null, user.id, now, now
-  ).run();
+  );
 
   // Initial status history entry.
-  await db.prepare(
+  const insertHistory = db.prepare(
     `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason)
      VALUES (?, ?, NULL, 'enquiry', ?, ?, ?)`
-  ).bind(makeId("sh"), id, user.id, now, "Event created").run();
+  ).bind(makeId("sh"), id, user.id, now, "Event created");
 
-  // Nested venue bookings + schedule entries.
-  let vbOrder = 0;
-  for (const vb of d.venue_bookings) {
-    vbOrder++;
-    const vbId = makeId("vb");
-    await db.prepare(
-      `INSERT INTO venue_bookings (id, event_id, venue, booking_status, number_of_shows,
-         requirements, notes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      vbId, id, vb.venue, vb.booking_status, vb.number_of_shows,
-      vb.requirements ? JSON.stringify(vb.requirements) : null,
-      vb.notes ?? null, vbOrder, now, now
-    ).run();
-    let seOrder = 0;
-    for (const se of vb.schedule_entries) {
-      seOrder++;
-      await db.prepare(
-        `INSERT INTO schedule_entries (id, venue_booking_id, event_id, activity_type, activity_date,
-           start_time, end_time,
-           with_ac_start, with_ac_end, with_ac_minutes,
-           without_ac_start, without_ac_end, without_ac_minutes,
-           notes, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        makeId("se"), vbId, id, se.activity_type, se.activity_date,
-        se.start_time ?? null, se.end_time ?? null,
-        se.with_ac_start ?? null, se.with_ac_end ?? null, se.with_ac_minutes ?? null,
-        se.without_ac_start ?? null, se.without_ac_end ?? null, se.without_ac_minutes ?? null,
-        se.notes ?? null, seOrder, now
-      ).run();
-    }
-  }
+  const createBookings = d.venue_bookings.map((booking) => ({
+    ...booking,
+    id: undefined,
+    schedule_entries: booking.schedule_entries.map((schedule) => ({ ...schedule, id: undefined })),
+  }));
+  const venueWrites = await venueBookingSyncStatements(db, id, createBookings, now);
+  await db.batch([insertEvent, insertHistory, ...venueWrites]);
 
   await audit({ db, actor: actorFrom(user), action: "event.created", targetType: "event", targetId: id, detail: { title: d.title } });
   await eventActivity(db, id, "created", actorFrom(user).id, { title: d.title });
@@ -312,25 +405,78 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   const d = parsed.data;
   const now = new Date().toISOString();
 
-  await db.prepare(
-    `UPDATE events SET title = COALESCE(?, title), description = COALESCE(?, description),
-       organisation_id = COALESCE(?, organisation_id), primary_contact_id = COALESCE(?, primary_contact_id),
-       event_type = COALESCE(?, event_type),
-       program_officer = COALESCE(?, program_officer),
-       event_owner = COALESCE(?, event_owner), event_owner_id = COALESCE(?, event_owner_id),
-       event_start_date = COALESCE(?, event_start_date), event_end_date = COALESCE(?, event_end_date),
-       enquiry_source = COALESCE(?, enquiry_source), priority = COALESCE(?, priority),
-       requirements = COALESCE(?, requirements), notes = COALESCE(?, notes),
+  const current = await db.prepare("SELECT * FROM events WHERE id = ? AND is_archived = 0").bind(id).first<Record<string, unknown>>();
+  if (!current) return c.json({ error: "Not found" }, 404);
+  const validationBookings = d.venue_bookings !== undefined
+    ? d.venue_bookings
+    : [{ schedule_entries: (await db.prepare(
+        "SELECT activity_type, activity_date FROM schedule_entries WHERE event_id = ?"
+      ).bind(id).all<{ activity_type: string; activity_date: string }>()).results }];
+  const merged = {
+    ...current,
+    ...d,
+    event_start_date: d.event_start_date !== undefined ? d.event_start_date : current.event_start_date as string | null,
+    event_end_date: d.event_end_date !== undefined ? d.event_end_date : current.event_end_date as string | null,
+    venue_bookings: validationBookings,
+  };
+  if (d.event_start_date === null) return c.json({ error: "Event start date cannot be cleared", field: "event_start_date" }, 422);
+  const dateIssue = getEventDateIssues(merged)[0];
+  if (dateIssue) return c.json({ error: dateIssue.message, field: dateIssue.path }, 422);
+  const mergedVenues = d.venue_bookings !== undefined
+    ? d.venue_bookings.map((booking) => booking.venue)
+    : (await db.prepare("SELECT venue FROM venue_bookings WHERE event_id = ?").bind(id).all<{ venue: string }>()).results.map((row) => row.venue);
+  const duplicates = await findLikelyDuplicateEvents(db, {
+    orgId: String(nextValueFrom(current, d, "organisation_id") ?? ""),
+    title: String(nextValueFrom(current, d, "title") ?? ""),
+    date: String(merged.event_start_date ?? ""),
+    venues: mergedVenues,
+    excludeEventId: id,
+  });
+  if (duplicates.length > 0) {
+    return c.json({ error: "A possible duplicate already exists for this organisation on that date.", duplicates }, 409);
+  }
+  if (d.event_start_date !== undefined || d.event_end_date !== undefined) {
+    const finalShowDate = merged.event_end_date ?? merged.event_start_date ?? null;
+    const checklistIssue = await postShowChecklistIssue(db, id, finalShowDate);
+    if (checklistIssue) return c.json({ error: checklistIssue }, 422);
+  }
+
+  const nextValue = (key: string) => nextValueFrom(current, d, key);
+  const updateEvent = db.prepare(
+    `UPDATE events SET title = ?, description = ?,
+       organisation_id = ?, primary_contact_id = ?,
+       event_type = ?,
+       program_officer = ?,
+       event_owner = ?, event_owner_id = ?,
+       event_start_date = ?, event_end_date = ?,
+       enquiry_source = ?, priority = ?,
+       requirements = ?, notes = ?,
        updated_at = ? WHERE id = ?`
   ).bind(
-    d.title ?? null, d.description ?? null, d.organisation_id ?? null, d.primary_contact_id ?? null,
-    d.event_type ?? null,
-    d.program_officer ?? null, d.event_owner ?? null, d.event_owner_id ?? null,
-    d.event_start_date ?? null, d.event_end_date ?? null, d.enquiry_source ?? null,
-    d.priority ?? null,
-    d.requirements ? JSON.stringify(d.requirements) : null,
-    d.notes ?? null, now, id
-  ).run();
+    nextValue("title"), nextValue("description"), nextValue("organisation_id"), nextValue("primary_contact_id"),
+    nextValue("event_type"), nextValue("program_officer"), nextValue("event_owner"), nextValue("event_owner_id"),
+    merged.event_start_date ?? null, merged.event_end_date ?? null, nextValue("enquiry_source"), nextValue("priority"),
+    d.requirements !== undefined ? (d.requirements ? JSON.stringify(d.requirements) : null) : current.requirements,
+    nextValue("notes"), now, id
+  );
+
+  if (d.venue_bookings !== undefined) {
+    let venueWrites: D1PreparedStatement[];
+    try {
+      venueWrites = await venueBookingSyncStatements(db, id, d.venue_bookings, now);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
+    await db.batch([updateEvent, ...venueWrites]);
+  } else {
+    await updateEvent.run();
+  }
+  if (d.event_owner_id !== undefined) {
+    await syncAutomaticTaskOwnerForEvent(db, id, d.event_owner_id ?? null);
+  }
+  if (d.event_start_date !== undefined || d.event_end_date !== undefined) {
+    await reconcileFileToAccountsReminderForEvent(db, id);
+  }
 
   await audit({ db, actor: actorFrom(user), action: "event.updated", targetType: "event", targetId: id });
   await eventActivity(db, id, "updated", actorFrom(user).id);
@@ -420,13 +566,8 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(makeId("sh"), id, from, to, user.id, now, lifecycleReason, lifecycleNote).run();
 
-  await completeTasksForSourceRules(
-    db,
-    id,
-    taskRulesCompletedByLifecycleTransition(from, to),
-    user.id,
-    "Completed automatically from lifecycle transition."
-  );
+  await reconcileTasksForLifecycleTransition(db, id, from, to, user.id);
+  await reconcileFileToAccountsReminderForEvent(db, id);
 
   await audit({
     db, actor: actorFrom(user), action: "event.status_changed",

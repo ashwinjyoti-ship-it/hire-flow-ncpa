@@ -89,7 +89,7 @@ function normalise(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-export function itemStatusForValue(item: { field_type: string; value: string | null; is_computed?: number }): string {
+export function itemStatusForValue(item: { field_type: string; value: string | null; is_computed?: number }, today = todayIso()): string {
   if (item.is_computed) return "not_applicable";
   const value = normalise(item.value);
   if (!value) return "not_started";
@@ -101,6 +101,7 @@ export function itemStatusForValue(item: { field_type: string; value: string | n
     if (NOT_DONE_VALUES.has(value)) return "not_started";
     return "in_progress";
   }
+  if (item.field_type === "date") return value <= today ? "completed" : "in_progress";
   return "completed";
 }
 
@@ -657,6 +658,7 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
       idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', ?, ?, ?)
      ON CONFLICT(idempotency_key) DO UPDATE SET
+       assignee_id = CASE WHEN tasks.status IN ('open','in_progress') THEN excluded.assignee_id ELSE tasks.assignee_id END,
        due_date = excluded.due_date,
        updated_at = excluded.updated_at`
   ).bind(
@@ -686,21 +688,79 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 
 async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined, userId: string): Promise<void> {
   const v = normalise(value);
-  const rules: string[] = [];
-  if (fieldKey === "approval_required" && v === "not required") rules.push("approval_followup");
-  if (fieldKey === "approval_received_on" && v) rules.push("approval_followup");
-  if (fieldKey === "confirmation_signed_received" && v === "yes") rules.push("confirmation_letter");
-  if (fieldKey === "onstage_received_from_client" && v) rules.push("onstage");
-  if (fieldKey === "feedback_received" && v) rules.push("feedback");
-  if (fieldKey === "minutes_of_meeting" && v === "yes") rules.push("technical_meeting");
-  if (fieldKey === "file_sent_to_accounts" && v) rules.push("send_file_to_accounts");
-  if (fieldKey === "final_file_received" && v === "yes") rules.push("accounts_file");
-  // Instalment follow-up tasks close out once payment is completed (the team
-  // records this via the Payment Status field). Instalment itself never blocks.
-  if (fieldKey === "payment_status" && v === "completed") rules.push("instalment");
-  if (!rules.length) return;
+  const completionByField: Record<string, { rule: string; complete: boolean }> = {
+    approval_required: { rule: "approval_followup", complete: v === "not required" },
+    approval_received_on: { rule: "approval_followup", complete: Boolean(v) },
+    confirmation_signed_received: { rule: "confirmation_letter", complete: v === "yes" },
+    onstage_received_from_client: { rule: "onstage", complete: Boolean(v) },
+    feedback_received: { rule: "feedback", complete: Boolean(v) },
+    minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },
+    file_sent_to_accounts: { rule: "send_file_to_accounts", complete: Boolean(v) },
+    final_file_received: { rule: "accounts_file", complete: v === "yes" },
+    payment_status: { rule: "instalment", complete: v === "completed" },
+  };
+  const action = completionByField[fieldKey];
+  if (!action) return;
+  if (action.complete) {
+    await completeTasksForSourceRules(db, eventId, [action.rule], userId, "Completed automatically from checklist update.");
+  } else {
+    await reopenAutomaticallyCompletedTasks(db, eventId, [action.rule]);
+  }
+}
 
-  await completeTasksForSourceRules(db, eventId, rules, userId, "Completed automatically from checklist update.");
+async function reopenAutomaticallyCompletedTasks(db: D1Database, eventId: string, rules: string[]): Promise<void> {
+  const now = new Date().toISOString();
+  for (const rule of rules) {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'open', completed_at = NULL, completed_by = NULL, completion_note = NULL, updated_at = ?
+       WHERE event_id = ? AND source_rule = ? AND task_type = 'automatic' AND status = 'completed'
+         AND completion_note LIKE 'Completed automatically%'
+         AND EXISTS (SELECT 1 FROM events e WHERE e.id = tasks.event_id AND e.status NOT IN ('cancelled','regret'))`
+    ).bind(now, eventId, rule).run();
+  }
+}
+
+export async function syncAutomaticTaskOwnerForEvent(db: D1Database, eventId: string, ownerId: string | null): Promise<void> {
+  await db.prepare(
+    `UPDATE tasks SET assignee_id = ?, updated_at = ?
+     WHERE event_id = ? AND task_type = 'automatic' AND status IN ('open','in_progress')`
+  ).bind(ownerId, new Date().toISOString(), eventId).run();
+}
+
+export async function reconcileTasksForLifecycleTransition(
+  db: D1Database,
+  eventId: string,
+  from: EventStatus,
+  to: EventStatus,
+  userId: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (to === "cancelled" || to === "regret") {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled', completion_note = ?, completed_at = NULL, completed_by = NULL, updated_at = ?
+       WHERE event_id = ? AND status IN ('open','in_progress')`
+    ).bind(`Cancelled automatically because event became ${to}.`, now, eventId).run();
+    return;
+  }
+
+  if (from === "cancelled" || from === "regret") {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'open', completion_note = NULL, updated_at = ?
+       WHERE event_id = ? AND task_type = 'automatic' AND status = 'cancelled'
+         AND completion_note LIKE 'Cancelled automatically because event became %'`
+    ).bind(now, eventId).run();
+  }
+
+  await completeTasksForSourceRules(
+    db,
+    eventId,
+    taskRulesCompletedByLifecycleTransition(from, to),
+    userId,
+    "Completed automatically from lifecycle transition.",
+  );
 }
 
 export function taskRulesCompletedByLifecycleTransition(from: EventStatus, to: EventStatus): string[] {
@@ -730,54 +790,87 @@ export async function completeTasksForSourceRules(
   }
 }
 
-async function createFileToAccountsReminders(db: D1Database, today: string, now: string): Promise<number> {
+export async function reconcileFileToAccountsReminderForEvent(db: D1Database, eventId: string, today = todayIso()): Promise<number> {
   const intervals = await getChecklistIntervals(db);
   const dueAfterDays = intervals.send_file_to_accounts;
 
-  const { results } = await db.prepare(
-    `SELECT e.id AS event_id,
-            e.event_end_date,
-            e.event_start_date,
-            ci.id AS checklist_item_id
+  const event = await db.prepare(
+    `SELECT e.id AS event_id, e.status AS event_status, e.event_end_date, e.event_start_date,
+            e.event_owner_id, ci.id AS checklist_item_id, ci.value AS file_sent_value
      FROM events e
      JOIN checklist_items ci ON ci.event_id = e.id
        AND ci.module = 'accounts'
        AND ci.field_key = 'file_sent_to_accounts'
-     WHERE e.status = 'confirmed'
-       AND COALESCE(e.event_end_date, e.event_start_date) IS NOT NULL
-       AND COALESCE(e.event_end_date, e.event_start_date) < ?
-       AND (ci.value IS NULL OR TRIM(ci.value) = '')`
-  ).bind(today).all<{
+     WHERE e.id = ?`
+  ).bind(eventId).first<{
     event_id: string;
+    event_status: string;
     event_end_date: string | null;
     event_start_date: string | null;
+    event_owner_id: string | null;
     checklist_item_id: string;
+    file_sent_value: string | null;
   }>();
+  if (!event) return 0;
+  const finalShowDate = event.event_end_date ?? event.event_start_date;
+  const eligible = event.event_status === "confirmed" && finalShowDate && finalShowDate < today && !normalise(event.file_sent_value);
+  const idempotency = `post-event:${event.event_id}:send-file-to-accounts`;
+  const now = new Date().toISOString();
+  if (!eligible || !finalShowDate) {
+    await db.prepare(
+      `UPDATE tasks SET status = 'cancelled', completion_note = 'Cancelled automatically because the reminder is no longer due.', updated_at = ?
+       WHERE idempotency_key = ? AND status IN ('open','in_progress')`
+    ).bind(now, idempotency).run();
+    return 0;
+  }
 
-  let created = 0;
-  for (const event of results) {
-    const finalShowDate = event.event_end_date ?? event.event_start_date;
-    if (!finalShowDate) continue;
-    const dueDate = addDays(finalShowDate, dueAfterDays);
-    const inserted = await db.prepare(
-      `INSERT OR IGNORE INTO tasks
+  const dueDate = addDays(finalShowDate, dueAfterDays);
+  const inserted = await db.prepare(
+      `INSERT INTO tasks
        (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
-        idempotency_key, due_date, priority, status, created_at, updated_at)
+        idempotency_key, assignee_id, due_date, priority, status, created_at, updated_at)
        VALUES (?, 'Send file to accounts', 'Event is over; send the venue hire file to Accounts.',
-        ?, ?, 'automatic', 'send_file_to_accounts', ?, ?, ?, 'open', ?, ?)`
+        ?, ?, 'automatic', 'send_file_to_accounts', ?, ?, ?, ?, 'open', ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         assignee_id = excluded.assignee_id,
+         due_date = excluded.due_date,
+         priority = excluded.priority,
+         status = CASE
+           WHEN tasks.status = 'cancelled' AND tasks.completion_note = 'Cancelled automatically because the reminder is no longer due.' THEN 'open'
+           ELSE tasks.status
+         END,
+         completion_note = CASE
+           WHEN tasks.status = 'cancelled' AND tasks.completion_note = 'Cancelled automatically because the reminder is no longer due.' THEN NULL
+           ELSE tasks.completion_note
+         END,
+         updated_at = excluded.updated_at`
     ).bind(
       makeId("task"),
       event.event_id,
       event.checklist_item_id,
-      `post-event:${event.event_id}:send-file-to-accounts`,
+      idempotency,
+      event.event_owner_id,
       dueDate,
       dueDate < today ? "high" : "medium",
       now,
       now
     ).run();
-    if (inserted.meta.changes > 0) created++;
+  return inserted.meta.changes > 0 ? 1 : 0;
+}
+
+async function createFileToAccountsReminders(db: D1Database, today: string): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT e.id FROM events e
+     JOIN checklist_items ci ON ci.event_id = e.id AND ci.field_key = 'file_sent_to_accounts'
+     WHERE e.status = 'confirmed' OR EXISTS (
+       SELECT 1 FROM tasks t WHERE t.event_id = e.id AND t.source_rule = 'send_file_to_accounts' AND t.status IN ('open','in_progress')
+     )`
+  ).all<{ id: string }>();
+  let changed = 0;
+  for (const event of results) {
+    changed += await reconcileFileToAccountsReminderForEvent(db, event.id, today);
   }
-  return created;
+  return changed;
 }
 
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness }> {
@@ -909,24 +1002,31 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
   const today = todayIso();
   const now = new Date().toISOString();
 
-  const { results: items } = await db.prepare(
-    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
+  const { results: datedEvents } = await db.prepare(
+    `SELECT DISTINCT ci.event_id
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
-     WHERE ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`
-  ).all<ChecklistItemRow>();
-  for (const item of items) {
-    await maybeCreateTaskForChecklistItem(db, item, null);
-    tasks++;
-  }
+     WHERE cd.field_type = 'date' AND ci.due_date IS NOT NULL`
+  ).all<{ event_id: string }>();
+  await db.prepare(
+    `UPDATE checklist_items
+     SET status = CASE WHEN due_date <= ? THEN 'completed' ELSE 'in_progress' END,
+         completed_at = CASE WHEN due_date <= ? THEN COALESCE(completed_at, ?) ELSE NULL END,
+         completed_by = CASE WHEN due_date <= ? THEN completed_by ELSE NULL END,
+         last_updated_at = ?
+     WHERE due_date IS NOT NULL
+       AND definition_id IN (SELECT id FROM checklist_definitions WHERE field_type = 'date')`
+  ).bind(today, today, now, today, now).run();
+  for (const row of datedEvents) await recalculateEventCompletion(db, row.event_id);
 
-  tasks += await createFileToAccountsReminders(db, today, now);
+  tasks += await rescheduleAllAutomaticTasks(db, today);
 
   const { results: dueTasks } = await db.prepare(
     `SELECT t.id, t.title, t.event_id, t.assignee_id, e.event_owner
      FROM tasks t
      LEFT JOIN events e ON e.id = t.event_id
-     WHERE t.status IN ('open','in_progress') AND t.due_date IS NOT NULL AND t.due_date <= ?`
+     WHERE t.status IN ('open','in_progress') AND t.due_date IS NOT NULL AND t.due_date <= ?
+       AND (t.event_id IS NULL OR e.status NOT IN ('cancelled','regret'))`
   ).bind(today).all<{ id: string; title: string; event_id: string | null; assignee_id: string | null; event_owner: string | null }>();
   for (const task of dueTasks) {
     await createNotification(db, {
@@ -943,7 +1043,23 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
 
   await db.prepare(
     "INSERT INTO scheduler_runs (ran_at, job, note, rows_affected) VALUES (?, ?, ?, ?)"
-  ).bind(now, "operational_jobs", "Created automatic tasks and due notifications", tasks + notifications).run();
+  ).bind(now, "operational_jobs", "Reconciled automatic tasks and due notifications", tasks + notifications).run();
 
   return { tasks, notifications };
+}
+
+export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayIso()): Promise<number> {
+  let changed = 0;
+  const { results: items } = await db.prepare(
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`
+  ).all<ChecklistItemRow>();
+  for (const item of items) {
+    await maybeCreateTaskForChecklistItem(db, item, null);
+    changed++;
+  }
+  changed += await createFileToAccountsReminders(db, today);
+  return changed;
 }

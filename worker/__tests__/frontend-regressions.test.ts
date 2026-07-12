@@ -25,6 +25,17 @@ describe("frontend regression guards", () => {
     expect(source).toContain("if (isEdit && (existingLoading || !hydrated))");
   });
 
+  it("persists venue and schedule edits instead of stripping them from the update payload", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const routes = readFileSync(resolve(root, "worker/routes/events.ts"), "utf8");
+
+    expect(source).toContain("await apiPut(`/events/${id}`, payload)");
+    expect(source).not.toContain("venue_bookings: _vb");
+    expect(routes).toContain("venueBookingSyncStatements");
+    expect(routes).toContain("db.batch([updateEvent, ...venueWrites])");
+    expect(routes).toContain("UPDATE schedule_entries");
+  });
+
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
     const source = readFileSync(resolve(root, "src/pages/ProfilePage.tsx"), "utf8");
 

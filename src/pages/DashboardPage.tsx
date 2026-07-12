@@ -166,6 +166,7 @@ function taskRank(task: TasksResponse["tasks"][number], todayIso: string): numbe
 
 function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolean {
   if (task.status !== "open" && task.status !== "in_progress") return false;
+  if (task.event_status === "cancelled" || task.event_status === "regret") return false;
   if (task.event_status === "confirmed" && task.source_rule && STALE_CONFIRMED_TASK_RULES.has(task.source_rule)) return false;
   return true;
 }

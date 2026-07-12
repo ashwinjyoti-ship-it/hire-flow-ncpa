@@ -25,6 +25,7 @@ import {
   syncChecklistDefinitionIntervals,
   type ChecklistIntervals,
 } from "./checklist-intervals";
+import { rescheduleAllAutomaticTasks } from "./operations";
 
 export const settingsRoutes = new Hono<AuthEnv>();
 
@@ -150,6 +151,7 @@ settingsRoutes.put("/checklist-intervals", requirePermission("settings.manage"),
   ).bind(SETTING_CHECKLIST_INTERVALS, JSON.stringify(intervals), new Date().toISOString(), user.id).run();
 
   await syncChecklistDefinitionIntervals(db, intervals);
+  await rescheduleAllAutomaticTasks(db);
   await audit({
     db,
     actor: actorFrom(user),
