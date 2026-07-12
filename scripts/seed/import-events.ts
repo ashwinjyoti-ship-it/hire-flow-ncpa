@@ -35,7 +35,7 @@ function str(v: unknown): string | null {
   return s === "" ? null : s;
 }
 
-function dateStr(v: unknown): string | null {
+export function dateStr(v: unknown): string | null {
   if (v === null || v === undefined || v === "") return null;
   if (v instanceof Date && !isNaN(v.getTime())) {
     const y = v.getFullYear();
@@ -51,13 +51,16 @@ function dateStr(v: unknown): string | null {
     const b = m1[2]!;
     let c = m1[3]!;
     if (c.length === 2) c = "20" + c;
-    if (Number(a) > 12) {
-      return `${c}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
-    }
-    return `${c}-${a.padStart(2, "0")}-${b.padStart(2, "0")}`;
+    return `${c}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
   }
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+  const m3 = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (m3) {
+    const months: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+    const month = months[m3[2]!.toLowerCase()];
+    if (month) return `${m3[3]}-${month}-${m3[1]!.padStart(2, "0")}`;
+  }
   return s;
 }
 

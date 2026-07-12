@@ -5,6 +5,7 @@ import { actorFrom, requirePermission, requireUser } from "../middleware/auth";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
+import { IsoDate } from "../lib/types";
 
 export const taskRoutes = new Hono<AuthEnv>();
 
@@ -14,7 +15,7 @@ const TaskInput = z.object({
   event_id: z.string().nullish(),
   venue_booking_id: z.string().nullish(),
   assignee_id: z.string().nullish(),
-  due_date: z.string().nullish(),
+  due_date: IsoDate.nullish(),
   due_time: z.string().nullish(),
   priority: z.enum(["high", "medium", "low"]).default("medium"),
 });
@@ -28,6 +29,7 @@ taskRoutes.get("/", requireUser, async (c) => {
   if (status && status !== "all") {
     where.push("t.status = ?");
     binds.push(status);
+    where.push("(t.event_id IS NULL OR e.status NOT IN ('cancelled','regret'))");
   }
   if (event) {
     where.push("t.event_id = ?");

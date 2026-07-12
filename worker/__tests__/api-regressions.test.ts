@@ -27,6 +27,9 @@ function fakeDb(handlerFor: (sql: string) => QueryHandler): D1Database {
         },
       };
     },
+    async batch(statements: D1PreparedStatement[]) {
+      return Promise.all(statements.map((statement) => statement.run()));
+    },
   } as unknown as D1Database;
 }
 
@@ -65,6 +68,9 @@ function bindCapturingDb(rules: BindRule[], onBinds: (binds: unknown[]) => void)
         async all() { return { results: [] }; },
         async run() { return { success: true }; },
       };
+    },
+    async batch(statements: D1PreparedStatement[]) {
+      return Promise.all(statements.map((statement) => statement.run()));
     },
   } as unknown as D1Database;
 }
@@ -609,6 +615,7 @@ describe("API regressions", () => {
         body: JSON.stringify({
           title: "Owner-linked event",
           organisation_id: "org_1",
+          event_start_date: "2026-07-01",
           event_owner: "Aditi Rao",
           event_owner_id: "demo_user_aditi",
           venue_bookings: [{ venue: "JBT" }],
@@ -1131,6 +1138,9 @@ describe("API regressions", () => {
     const db = fakeDb((sql) => {
       touchedSql.push(sql);
       if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("SELECT * FROM events WHERE id = ?")) {
+        return { first: () => ({ id: "ev_ankh", title: "Old title", description: null, event_start_date: "2026-07-01", event_end_date: null, is_archived: 0 }) };
+      }
       if (sql.startsWith("UPDATE events SET title")) return { run: () => ({ success: true }) };
       // syncEventReferenceChecklist reads the event + venues then updates the
       // checklist reference rows; assert the UPDATE fires.
@@ -1162,5 +1172,45 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
     expect(touchedSql.some((sql) => sql.startsWith("UPDATE events SET title"))).toBe(true);
     expect(checklistUpdated).toBe(true);
+  });
+
+  it("persists edited venue bookings and schedule entries on PUT", async () => {
+    const touchedSql: string[] = [];
+    const db = fakeDb((sql) => {
+      touchedSql.push(sql);
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("SELECT * FROM events WHERE id = ?")) {
+        return { first: () => ({ id: "ev_1", title: "Event", organisation_id: "org_1", event_start_date: "2026-07-01", event_end_date: null, is_archived: 0 }) };
+      }
+      if (sql === "SELECT id FROM venue_bookings WHERE event_id = ?") return { all: () => ({ results: [{ id: "vb_1" }] }) };
+      if (sql.includes("SELECT id FROM schedule_entries")) return { all: () => ({ results: [{ id: "se_1" }] }) };
+      if (sql.includes("SELECT id, title, event_type, description FROM events")) {
+        return { first: () => ({ id: "ev_1", title: "Event", event_type: "EE", description: null }) };
+      }
+      if (sql.includes("SELECT venue FROM venue_bookings")) return { all: () => ({ results: [{ venue: "Tata Theatre" }] }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/events/ev_1", {
+      method: "PUT",
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        venue_bookings: [{
+          id: "vb_1", venue: "Tata Theatre", booking_status: "confirmed", number_of_shows: 1,
+          requirements: null, notes: null,
+          schedule_entries: [{
+            id: "se_1", activity_type: "show", activity_date: "2026-07-01",
+            start_time: "19:00", end_time: "21:00", with_ac_start: null, with_ac_end: null,
+            with_ac_minutes: null, without_ac_start: null, without_ac_end: null,
+            without_ac_minutes: null, notes: null,
+          }],
+        }],
+      }),
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
+    expect(touchedSql.some((sql) => sql.startsWith("UPDATE venue_bookings"))).toBe(true);
+    expect(touchedSql.some((sql) => sql.startsWith("UPDATE schedule_entries"))).toBe(true);
   });
 });

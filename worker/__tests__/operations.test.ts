@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, runOperationalJobs, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -207,25 +207,24 @@ describe("operational lifecycle readiness", () => {
           async first() {
             // No custom checklist intervals stored → defaults (1 day after show).
             if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("JOIN checklist_items ci")) {
+              return {
+                event_id: "ev_after_show",
+                event_status: "confirmed",
+                event_end_date: "2026-07-06",
+                event_start_date: "2026-07-05",
+                event_owner_id: null,
+                checklist_item_id: "cli_file_sent",
+                file_sent_value: null,
+              };
+            }
             return null;
           },
           async all() {
-            if (sql.includes("cd.triggers_task IS NOT NULL")) return { results: [] };
-            if (sql.includes("JOIN checklist_items ci ON ci.event_id = e.id")) {
-              return {
-                results: [{
-                  event_id: "ev_after_show",
-                  event_end_date: "2026-07-06",
-                  event_start_date: "2026-07-05",
-                  checklist_item_id: "cli_file_sent",
-                }],
-              };
-            }
-            if (sql.includes("FROM tasks t")) return { results: [] };
             return { results: [] };
           },
           async run() {
-            if (sql.includes("INSERT OR IGNORE INTO tasks")) {
+            if (sql.includes("INSERT INTO tasks")) {
               inserts.push({ sql, binds: this.binds });
               return { meta: { changes: 1 } };
             }
@@ -236,9 +235,9 @@ describe("operational lifecycle readiness", () => {
       },
     } as unknown as D1Database;
 
-    const result = await runOperationalJobs(db);
+    const result = await reconcileFileToAccountsReminderForEvent(db, "ev_after_show", "2026-07-12");
 
-    expect(result.tasks).toBe(1);
+    expect(result).toBe(1);
     expect(inserts).toHaveLength(1);
     expect(inserts[0]?.sql).toContain("Send file to accounts");
     expect(inserts[0]?.binds).toContain("ev_after_show");
@@ -296,6 +295,26 @@ describe("checklist task date synchronization", () => {
     const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
     expect(taskWrite?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
     expect(taskWrite?.binds).toContain("2026-06-09");
+  });
+});
+
+describe("task lifecycle reconciliation", () => {
+  it("cancels actionable tasks when an event becomes terminal", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 2 } }; },
+        };
+      },
+    } as unknown as D1Database;
+
+    await reconcileTasksForLifecycleTransition(db, "ev_cancelled", "confirmed", "cancelled", "user_1");
+
+    expect(writes[0]?.sql).toContain("SET status = 'cancelled'");
+    expect(writes[0]?.binds).toContain("Cancelled automatically because event became cancelled.");
   });
 });
 
@@ -414,6 +433,12 @@ describe("checklist item status from value", () => {
   it("a non-default, non-done dropdown value stays in_progress", () => {
     // e.g. a custom intermediate choice that is neither a known default nor done.
     expect(itemStatusForValue({ field_type: "dropdown", value: "Partially done" })).toBe("in_progress");
+  });
+
+  it("keeps future date work in progress until the date is reached", () => {
+    expect(itemStatusForValue({ field_type: "date", value: "2026-07-20" }, "2026-07-12")).toBe("in_progress");
+    expect(itemStatusForValue({ field_type: "date", value: "2026-07-12" }, "2026-07-12")).toBe("completed");
+    expect(itemStatusForValue({ field_type: "date", value: "2026-07-01" }, "2026-07-12")).toBe("completed");
   });
 });
 

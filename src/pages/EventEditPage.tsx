@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
-import { canCreateEvent, organisationValueFromName, pruneEmptyVenueBookings } from "../lib/event-edit-form";
+import { canCreateEvent, getEventFormDateError, organisationValueFromName, pruneEmptyVenueBookings } from "../lib/event-edit-form";
 import { buildReviewItems as buildEventReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
@@ -288,12 +288,14 @@ export function EventEditPage() {
     const e = existing.event;
     const bookings: VenueBookingInputT[] = existing.venue_bookings?.length
       ? existing.venue_bookings.map((vb) => ({
+          id: vb.id,
           venue: vb.venue ?? "",
           booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
           number_of_shows: vb.number_of_shows ?? 1,
           requirements: parseRequirements(vb.requirements),
           notes: vb.notes ?? null,
           schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
+            id: se.id,
             activity_type: se.activity_type,
             activity_date: se.activity_date,
             start_time: se.start_time,
@@ -354,9 +356,7 @@ export function EventEditPage() {
         venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
       };
       if (isEdit && id) {
-        const { venue_bookings: _vb, ...rest } = payload;
-        void _vb;
-        await apiPut(`/events/${id}`, rest);
+        await apiPut(`/events/${id}`, payload);
         return undefined;
       }
       const res = await apiPost<{ id: string }>("/events", payload);
@@ -405,6 +405,11 @@ export function EventEditPage() {
   });
   const duplicates = duplicateData?.duplicates ?? [];
   const hasDuplicateWarning = duplicates.length > 0;
+  const dateError = getEventFormDateError({
+    event_start_date: form.event_start_date,
+    event_end_date: singleDay ? null : form.event_end_date,
+    venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
+  });
   const reviewOrganisationName = useMemo(() => {
     if (form.organisation_id.startsWith("new:")) return form.organisation_id.slice(4);
     return selectedOrganisation?.name ?? null;
@@ -464,7 +469,7 @@ export function EventEditPage() {
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
   const liquorLicence = isYes(reqs.liquor_licence);
 
-  const canSave = canCreateEvent(form) && !hasDuplicateWarning;
+  const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError;
 
   // In edit mode, wait for the existing event before rendering the form so the
   // user never sees an empty form for an event that already has data.
@@ -475,6 +480,12 @@ export function EventEditPage() {
   return (
     <div>
       <PageHeader title={isEdit ? "Edit Event" : "New Event"} subtitle={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`} />
+
+      {dateError && (
+        <p role="alert" className="mb-4 rounded-xl bg-status-cancelled/10 px-3 py-2 text-xs font-medium text-status-cancelled">
+          {dateError}
+        </p>
+      )}
 
       {/* Step indicator */}
       <div className="mb-6 flex gap-1.5">
