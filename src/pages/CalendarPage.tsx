@@ -220,9 +220,7 @@ export function CalendarPage() {
     return () => {
       cancelled = true;
     };
-    // updateParams/searchParams intentionally omitted — we only react to search/result changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.q, view, data?.entries, lifecycleData?.entries, isLoading, lifecycleLoading]);
+  }, [filters.q, filters.status, view, data?.entries, lifecycleData?.entries, isLoading, lifecycleLoading, searchParams, setSearchParams, cursor]);
 
   const byDate = data?.byDate ?? {};
   const lifecycleByDate = lifecycleData?.byDate ?? {};
@@ -285,8 +283,8 @@ export function CalendarPage() {
               type="search"
               value={filters.q}
               onChange={(e) => setFilter("q", e.target.value)}
-              placeholder="Search title, org…"
-              aria-label="Search calendar"
+              placeholder={view === "show" ? "Search show calendar…" : "Search lifecycle…"}
+              aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}
               className="carved rounded-full bg-marble-shadow/40 py-1.5 pl-3 pr-8 text-xs text-ink-primary focus:outline-none"
             />
             {filters.q ? (
