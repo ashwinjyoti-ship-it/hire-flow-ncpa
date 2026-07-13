@@ -447,4 +447,18 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("Customised information");
     expect(detail).toContain("Copy Text");
   });
+
+  it("exposes Print and Export to PDF for the filled event form on the lifecycle panel", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const helper = readFileSync(resolve(root, "src/lib/event-form-print.ts"), "utf8");
+
+    expect(detail).toContain("onPrintEventForm");
+    expect(detail).toContain("onExportEventFormPdf");
+    expect(detail).toContain("openEventFormPrintable");
+    expect(detail).toContain("Export to PDF");
+    expect(detail).toContain("Event form");
+    expect(helper).toContain("buildEventFormHtml");
+    expect(helper).toContain("No documents uploaded.");
+    expect(helper).toContain("Sign-off");
+  });
 });
