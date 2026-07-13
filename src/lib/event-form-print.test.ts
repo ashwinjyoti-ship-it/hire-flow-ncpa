@@ -1,0 +1,110 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildEventFormHtml,
+  buildEventFormPrintBody,
+  eventFormPrintFileBase,
+  eventFormPrintTitle,
+} from "./event-form-print";
+
+const sample = {
+  event_code: "VFH-2026-014",
+  title: "Gujrati Play - Long Drive",
+  description: "Evening performance",
+  event_type: "VFH",
+  status: "confirmed",
+  organisation_name: "Kaveesha Entertainments",
+  primary_contact_name: "Ms. Mehta",
+  program_officer: "Ms. Binaifar Bhesania",
+  event_owner: "Ashwin",
+  event_start_date: "2026-07-30",
+  event_end_date: "2026-07-30",
+  enquiry_source: "Email",
+  priority: "medium",
+  notes: "House seats held until Friday.",
+  approval_status: "approved",
+  confirmation_status: "signed",
+  requirements: {
+    program_officer_phone: "022 66223822",
+    sound: "NCPA basic sound",
+    light_call_time: "14:30",
+    ushers_required: "Yes",
+    stage_setup: "Black cyclorama ready by 2:30pm.",
+    digital_standee: "Yes",
+    digital_standee_note: "2 Standees",
+  },
+  venue_bookings: [
+    {
+      venue: "Godrej Dance Theatre",
+      booking_status: "confirmed",
+      number_of_shows: 1,
+      notes: null,
+      schedule_entries: [
+        {
+          activity_type: "show",
+          activity_date: "2026-07-30",
+          start_time: "19:00",
+          end_time: "21:00",
+          with_ac_start: "18:30",
+          with_ac_end: "21:00",
+          with_ac_minutes: 150,
+          without_ac_start: null,
+          without_ac_end: null,
+          without_ac_minutes: null,
+          notes: null,
+        },
+      ],
+    },
+  ],
+  documents: [
+    { file_name: "Confirmation_Letter.pdf", category: "confirmation_letter" },
+    { file_name: "Floor_Plan.png", category: "floor_plan" },
+  ],
+};
+
+describe("event-form-print", () => {
+  it("titles and file bases include the event code when present", () => {
+    expect(eventFormPrintTitle(sample)).toBe("Event Form — VFH-2026-014 — Gujrati Play - Long Drive");
+    expect(eventFormPrintFileBase(sample)).toBe("Event-Form-VFH-2026-014");
+  });
+
+  it("renders filled client, venue, requirement, document, and sign-off sections", () => {
+    const body = buildEventFormPrintBody(sample);
+
+    expect(body).toContain("Event &amp; Client");
+    expect(body).toContain("Kaveesha Entertainments");
+    expect(body).toContain("Godrej Dance Theatre");
+    expect(body).toContain("Show");
+    expect(body).toContain("NCPA basic sound");
+    expect(body).toContain("14:30");
+    expect(body).toContain("Confirmation_Letter.pdf (Confirmation letter)");
+    expect(body).toContain("Floor_Plan.png (Floor plan)");
+    expect(body).toContain("House seats held until Friday.");
+    expect(body).toContain("Sign-off");
+    expect(body).toContain("Prepared by");
+  });
+
+  it("lists blank requirement labels as em dashes and omits document names when none uploaded", () => {
+    const body = buildEventFormPrintBody({
+      title: "Draft event",
+      requirements: {},
+      venue_bookings: [],
+      documents: [],
+    });
+
+    expect(body).toContain("Sound Requirements");
+    expect(body).toContain("—");
+    expect(body).toContain("No documents uploaded.");
+    expect(body).toContain("No venue bookings recorded.");
+  });
+
+  it("builds print-ready HTML with separate Print and Export to PDF toolbar actions", () => {
+    const html = buildEventFormHtml(sample);
+
+    expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("window.print()");
+    expect(html).toContain(">Print</button>");
+    expect(html).toContain(">Export to PDF</button>");
+    expect(html).toContain("@media print");
+    expect(html).toContain("Filled form snapshot");
+  });
+});

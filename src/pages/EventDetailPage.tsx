@@ -21,6 +21,7 @@ import {
   momMissingFieldsMessage,
   type MomEventInput,
 } from "../lib/mom";
+import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
 
 type DetailResponse = {
@@ -28,14 +29,18 @@ type DetailResponse = {
     id: string;
     title: string;
     status: EventStatus;
+    event_code: string | null;
     event_type: string | null;
     event_start_date: string | null;
     event_end_date: string | null;
     organisation_name: string | null;
+    primary_contact_name: string | null;
     event_owner: string | null;
     program_officer: string | null;
     description: string | null;
     notes: string | null;
+    enquiry_source: string | null;
+    priority: string | null;
     requirements: Record<string, unknown> | string | null;
     approval_status: string | null;
     confirmation_status: string | null;
@@ -45,6 +50,7 @@ type DetailResponse = {
   };
   venue_bookings: Array<Record<string, unknown> & {
     venue?: string | null;
+    booking_status?: string | null;
     number_of_shows?: number | null;
     notes?: string | null;
     schedule_entries: unknown[];
@@ -328,6 +334,41 @@ export function EventDetailPage() {
     setExportMenuOpen(false);
   }
 
+  const eventFormPrintInput: EventFormPrintInput = {
+    event_code: e.event_code,
+    title: e.title,
+    description: e.description,
+    event_type: e.event_type,
+    status: e.status,
+    organisation_name: e.organisation_name,
+    primary_contact_name: e.primary_contact_name,
+    program_officer: e.program_officer,
+    event_owner: e.event_owner,
+    event_start_date: e.event_start_date,
+    event_end_date: e.event_end_date,
+    enquiry_source: e.enquiry_source,
+    priority: e.priority,
+    notes: e.notes,
+    approval_status: e.approval_status,
+    confirmation_status: e.confirmation_status,
+    requirements: e.requirements,
+    venue_bookings: (data?.venue_bookings ?? []).map((vb) => ({
+      venue: vb.venue ?? null,
+      booking_status: vb.booking_status ?? null,
+      number_of_shows: vb.number_of_shows ?? null,
+      notes: vb.notes ?? null,
+      schedule_entries: (vb.schedule_entries ?? []) as NonNullable<EventFormPrintInput["venue_bookings"]>[number]["schedule_entries"],
+    })),
+    documents: (documentsData?.documents ?? []).map((doc) => ({
+      file_name: doc.file_name,
+      category: doc.category,
+    })),
+  };
+
+  function openEventFormExport(autoPrint: boolean) {
+    openEventFormPrintable(eventFormPrintInput, autoPrint);
+  }
+
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
     selectTab(target.tab, target.fieldKey);
   }
@@ -388,6 +429,8 @@ export function EventDetailPage() {
         canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
         onGenerateMom={requestGenerateMom}
+        onPrintEventForm={() => openEventFormExport(true)}
+        onExportEventFormPdf={() => openEventFormExport(false)}
         onChoose={(status) => {
           setStatusModal(status);
           setReason("");
@@ -738,6 +781,8 @@ function LifecyclePanel({
   canShowStatusActions,
   onOpenBlocker,
   onGenerateMom,
+  onPrintEventForm,
+  onExportEventFormPdf,
   onChoose,
 }: {
   event: DetailResponse["event"];
@@ -747,6 +792,8 @@ function LifecyclePanel({
   canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onGenerateMom: () => void;
+  onPrintEventForm: () => void;
+  onExportEventFormPdf: () => void;
   onChoose: (status: EventStatus) => void;
 }) {
   const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
@@ -770,8 +817,8 @@ function LifecyclePanel({
 
   return (
     <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} />
@@ -783,18 +830,37 @@ function LifecyclePanel({
               <span className="rounded-full bg-marble-shadow/50 px-3 py-1 text-xs text-ink-muted etched">No next lifecycle action</span>
             )}
           </div>
+          <div className="mt-3 grid max-w-md grid-cols-2 gap-2 text-xs">
+            <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
+            <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
+          </div>
         </div>
-        <div className="flex flex-col items-stretch gap-3 md:items-end">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-64 lg:items-end">
           <button
             type="button"
             onClick={onGenerateMom}
-            className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+            className="carved-btn-sage w-full rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched sm:w-auto"
           >
             Generate MoM
           </button>
-          <div className="grid grid-cols-2 gap-2 text-xs md:min-w-80">
-            <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
-            <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
+          <div className="rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-64">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Event form</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onPrintEventForm}
+                className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+              >
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={onExportEventFormPdf}
+                className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+              >
+                Export to PDF
+              </button>
+            </div>
           </div>
         </div>
       </div>
