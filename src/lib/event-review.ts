@@ -129,11 +129,16 @@ export function buildReviewItems(
           pushItem(`Schedule ${venueIndex + 1}.${scheduleIndex + 1}`, formatScheduleSummary(entry));
         });
       }
+      const venueRequirements = (venueBooking.requirements ?? {}) as Record<string, unknown>;
+      Object.entries(venueRequirements).forEach(([key, value]) => {
+        if (key === "program_officer_phone") return;
+        pushItem(`${labelPrefix} ${formatReviewLabel(key)}`, value);
+      });
     });
   }
 
-  const requirements = (form.requirements ?? {}) as Record<string, unknown>;
-  Object.entries(requirements).forEach(([key, value]) => {
+  const eventRequirements = (form.requirements ?? {}) as Record<string, unknown>;
+  Object.entries(eventRequirements).forEach(([key, value]) => {
     pushItem(formatReviewLabel(key), value);
   });
 

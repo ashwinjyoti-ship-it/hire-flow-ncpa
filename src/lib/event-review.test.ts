@@ -81,6 +81,30 @@ describe("buildReviewItems", () => {
     expect(items.some((item) => item.label === "AC Hours")).toBe(false);
   });
 
+  it("shows requirements under each venue, not only at event level", () => {
+    const form = {
+      ...baseForm,
+      requirements: { program_officer_phone: "022 1" },
+      venue_bookings: [
+        {
+          ...baseForm.venue_bookings[0],
+          requirements: { sound: "JBT PA", light: "Warm" },
+        },
+        {
+          ...baseForm.venue_bookings[1],
+          requirements: { sound: "TATA line array" },
+        },
+      ],
+    } as unknown as EventInputT;
+
+    const items = buildReviewItems(form, "Test");
+    expect(items.find((item) => item.label === "Program Officer Contact")?.value).toBe("022 1");
+    expect(items.find((item) => item.label === "Venue 1 Sound")?.value).toBe("JBT PA");
+    expect(items.find((item) => item.label === "Venue 1 Light")?.value).toBe("Warm");
+    expect(items.find((item) => item.label === "Venue 2 Sound")?.value).toBe("TATA line array");
+    expect(items.some((item) => item.label === "Sound")).toBe(false);
+  });
+
   it("notes when a venue has no schedule details yet", () => {
     const form = {
       ...baseForm,

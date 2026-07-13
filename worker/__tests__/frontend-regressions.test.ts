@@ -210,6 +210,7 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("Light Call Time");
     expect(calendar).toContain("House Seats");
     expect(calendar).toContain("event_requirements");
+    expect(calendar).toContain("Object.keys(venueReqs).length > 0");
     expect(calendar).toContain("to={`/events/${entry.event_id}/edit`}");
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
@@ -231,14 +232,14 @@ describe("frontend regression guards", () => {
   });
 
   it("keeps missing call-time fields on the new event form", () => {
-    const edit = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
 
-    expect(edit).toContain('Field label="Sound Call Time"');
-    expect(edit).toContain('setReq("sound_call_time"');
-    expect(edit).toContain('Field label="Light Requirements"');
-    expect(edit).toContain('setReq("light"');
-    expect(edit).toContain('Field label="Light Call Time"');
-    expect(edit).toContain('setReq("light_call_time"');
+    expect(fields).toContain('Field label="Sound Call Time"');
+    expect(fields).toContain('setReq("sound_call_time"');
+    expect(fields).toContain('Field label="Light Requirements"');
+    expect(fields).toContain('setReq("light"');
+    expect(fields).toContain('Field label="Light Call Time"');
+    expect(fields).toContain('setReq("light_call_time"');
   });
 
   it("shows owner contact in the show calendar detail drawer", () => {
@@ -390,7 +391,7 @@ describe("frontend regression guards", () => {
     const review = readFileSync(resolve(root, "src/lib/event-review.ts"), "utf8");
 
     expect(eventForm).toContain("buildReviewItems(form, reviewOrganisationName");
-    expect(review).toContain("Object.entries(requirements)");
+    expect(review).toContain("venueRequirements");
     expect(review).toContain("bookings.forEach((venueBooking, venueIndex)");
     expect(review).toContain("formatScheduleSummary");
     expect(eventForm).toContain("reviewItems.map((item) =>");
@@ -437,15 +438,19 @@ describe("frontend regression guards", () => {
 
   it("keeps MoM-related event form fields for stage setup, interval, and officer contact", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
 
-    expect(eventForm).toContain('Field label="Stage Setup"');
-    expect(eventForm).toContain('setReq("stage_setup"');
+    expect(fields).toContain('Field label="Stage Setup"');
+    expect(fields).toContain('setReq("stage_setup"');
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
-    expect(eventForm).toContain('Field label="Interval (conditional)"');
-    expect(eventForm).toContain('setReq("interval"');
-    expect(eventForm).toContain('Field label="Digital Standee — notes"');
-    expect(eventForm).toContain('Field label="Car Display — notes"');
+    expect(fields).toContain('Field label="Interval (conditional)"');
+    expect(fields).toContain('setReq("interval"');
+    expect(fields).toContain('Field label="Digital Standee — notes"');
+    expect(fields).toContain('Field label="Car Display — notes"');
+    expect(eventForm).toContain("RequirementsFields");
+    expect(eventForm).toContain("hydrateVenueRequirements");
+    expect(eventForm).toContain("updateVenueRequirements");
   });
 
   it("exposes Generate MoM on the event lifecycle panel", () => {

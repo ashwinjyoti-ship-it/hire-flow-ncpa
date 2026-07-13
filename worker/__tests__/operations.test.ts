@@ -452,7 +452,7 @@ describe("additional requirements <-> checklist sync", () => {
   // updates events.requirements. Both call recalculateEventCompletion, whose
   // checklist_items reads return empty so completion stays 0 (a no-op UPDATE).
   type Upd = { sql: string; binds: unknown[] };
-  function buildReqDb(eventsRequirements: Record<string, unknown> | null) {
+  function buildReqDb(eventsRequirements: Record<string, unknown> | null, venueRequirements: Array<Record<string, unknown> | null> = []) {
     const updates: Upd[] = [];
     const db = {
       prepare(sql: string) {
@@ -468,6 +468,14 @@ describe("additional requirements <-> checklist sync", () => {
           },
           async all() {
             if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            if (sql.includes("SELECT requirements FROM venue_bookings") || sql.includes("SELECT id, requirements FROM venue_bookings")) {
+              return {
+                results: venueRequirements.map((reqs, index) => ({
+                  id: `vb_${index}`,
+                  requirements: reqs ? JSON.stringify(reqs) : null,
+                })),
+              };
+            }
             return { results: [] };
           },
           async run() {
@@ -512,6 +520,21 @@ describe("additional requirements <-> checklist sync", () => {
       expect(byField.get("req_piano")).toBe("Required");
       expect(byField.get("no_of_crew_cards")).toBe("12");
       expect(byField.get("licenses")).toBe("PPL, IPRS");
+    });
+
+    it("aggregates requirements across venue bookings when events.requirements is empty", async () => {
+      const { db, updates } = buildReqDb(null, [
+        { piano_required: "No", sound: "" },
+        { piano_required: "Yes", sound: "Line array" },
+      ]);
+
+      await syncAdditionalRequirementsChecklist(db, "ev_ankh");
+
+      const byField = new Map(updates
+        .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+        .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+      expect(byField.get("req_piano")).toBe("Required");
+      expect(byField.get("req_sound")).toBe("Required");
     });
 
     it("maps negative/empty form values: No/Remove -> Not Required, blank -> skip", async () => {

@@ -23,6 +23,7 @@ export type MomVenueBooking = {
   venue?: string | null;
   number_of_shows?: number | null;
   notes?: string | null;
+  requirements?: Record<string, unknown> | string | null;
   schedule_entries?: MomScheduleEntry[] | null;
 };
 
@@ -55,6 +56,41 @@ function parseRequirements(value: MomEventInput["requirements"]): Record<string,
     }
   }
   return value;
+}
+
+function isEmptyReqs(reqs: Record<string, unknown>): boolean {
+  return !Object.values(reqs).some((v) => filled(v));
+}
+
+/** Prefer venue requirements; fall back to event-level (minus contact) for legacy data. */
+function resolveVenueRequirements(
+  booking: MomVenueBooking,
+  eventReqs: Record<string, unknown>,
+): Record<string, unknown> {
+  const venueReqs = parseRequirements(booking.requirements);
+  if (!isEmptyReqs(venueReqs)) return venueReqs;
+  const { program_officer_phone: _phone, ...rest } = eventReqs;
+  return rest;
+}
+
+/** Union of event + all venue requirements (for missing-field checks and single-blob sections). */
+function aggregateMomRequirements(input: MomEventInput): Record<string, unknown> {
+  const eventReqs = parseRequirements(input.requirements);
+  const out: Record<string, unknown> = { ...eventReqs };
+  for (const booking of input.venue_bookings ?? []) {
+    const venueReqs = resolveVenueRequirements(booking, eventReqs);
+    for (const [key, value] of Object.entries(venueReqs)) {
+      if (!filled(out[key]) && filled(value)) out[key] = value;
+      else if (filled(value) && (value === "Yes" || value === "Required" || value === "Keep")) out[key] = value;
+    }
+  }
+  return out;
+}
+
+function withVenuePrefix(venue: string | null | undefined, lines: string[]): string[] {
+  const label = text(venue);
+  if (!label || lines.length === 0 || (lines.length === 1 && lines[0] === TBC)) return lines;
+  return [`[${label}]`, ...lines];
 }
 
 function filled(value: unknown): boolean {
@@ -144,7 +180,7 @@ function yesNoLine(label: string, value: unknown, note?: unknown): string | null
 }
 
 export function getMomMissingFields(input: MomEventInput): MomMissingField[] {
-  const reqs = parseRequirements(input.requirements);
+  const reqs = aggregateMomRequirements(input);
   const bookings = input.venue_bookings ?? [];
   const entries = bookings.flatMap((b) => b.schedule_entries ?? []);
   const missing: MomMissingField[] = [];
@@ -235,7 +271,22 @@ function buildTimingLines(bookings: MomVenueBooking[]): string[] {
   return lines.length > 0 ? lines : [TBC];
 }
 
-function buildGuestLines(bookings: MomVenueBooking[], reqs: Record<string, unknown>): string[] {
+function buildGuestLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildGuestLinesForReqs(bookings, reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    const venueLines = buildGuestLinesForReqs([booking], reqs);
+    lines.push(...withVenuePrefix(booking.venue, venueLines), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildGuestLinesForReqs(bookings: MomVenueBooking[], reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const totalShows = bookings.reduce((sum, b) => sum + (Number(b.number_of_shows) || 0), 0);
   if (totalShows > 0) {
@@ -272,7 +323,21 @@ function buildGuestLines(bookings: MomVenueBooking[], reqs: Record<string, unkno
   return lines.length > 0 ? lines : [TBC];
 }
 
-function buildVendorLines(reqs: Record<string, unknown>): string[] {
+function buildVendorLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildVendorLinesForReqs(reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    lines.push(...withVenuePrefix(booking.venue, buildVendorLinesForReqs(reqs)), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildVendorLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
 
   if (isYes(reqs.catering_required, "Yes")) {
@@ -312,7 +377,21 @@ function buildVendorLines(reqs: Record<string, unknown>): string[] {
   return lines;
 }
 
-function buildStageLines(reqs: Record<string, unknown>): string[] {
+function buildStageLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildStageLinesForReqs(reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    lines.push(...withVenuePrefix(booking.venue, buildStageLinesForReqs(reqs)), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildStageLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const stage = text(reqs.stage_setup);
   if (stage) lines.push(stage);
@@ -337,7 +416,21 @@ function buildStageLines(reqs: Record<string, unknown>): string[] {
   return lines.length > 0 ? lines : [TBC];
 }
 
-function buildFoyerLines(reqs: Record<string, unknown>): string[] {
+function buildFoyerLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildFoyerLinesForReqs(reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    lines.push(...withVenuePrefix(booking.venue, buildFoyerLinesForReqs(reqs)), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildFoyerLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const standee = yesNoLine("Digital standee", reqs.digital_standee, reqs.digital_standee_note);
   if (standee) lines.push(standee);
@@ -350,7 +443,21 @@ function buildFoyerLines(reqs: Record<string, unknown>): string[] {
   return lines.length > 0 ? lines : [TBC];
 }
 
-function buildSecurityLines(reqs: Record<string, unknown>): string[] {
+function buildSecurityLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildSecurityLinesForReqs(reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    lines.push(...withVenuePrefix(booking.venue, buildSecurityLinesForReqs(reqs)), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildSecurityLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const parking = text(reqs.parking);
   const security = text(reqs.security);
@@ -359,7 +466,21 @@ function buildSecurityLines(reqs: Record<string, unknown>): string[] {
   return lines.length > 0 ? lines : [TBC];
 }
 
-function buildHousekeepingLines(reqs: Record<string, unknown>): string[] {
+function buildHousekeepingLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
+  if (bookings.length <= 1) {
+    const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
+    return buildHousekeepingLinesForReqs(reqs);
+  }
+  const lines: string[] = [];
+  for (const booking of bookings) {
+    const reqs = resolveVenueRequirements(booking, eventReqs);
+    lines.push(...withVenuePrefix(booking.venue, buildHousekeepingLinesForReqs(reqs)), "");
+  }
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.length > 0 ? lines : [TBC];
+}
+
+function buildHousekeepingLinesForReqs(reqs: Record<string, unknown>): string[] {
   const hk = text(reqs.housekeeping);
   return hk ? [hk] : [TBC];
 }
@@ -386,7 +507,8 @@ function headline(input: MomEventInput): string {
 
 /** Auto MoM body through Program Officer (no custom block). */
 export function buildMomAutoText(input: MomEventInput): string {
-  const reqs = parseRequirements(input.requirements);
+  const eventReqs = parseRequirements(input.requirements);
+  const reqs = aggregateMomRequirements(input);
   const bookings = input.venue_bookings ?? [];
 
   const parts = [
@@ -398,19 +520,19 @@ export function buildMomAutoText(input: MomEventInput): string {
     "",
     section("Timings: -", buildTimingLines(bookings)),
     "",
-    section("Guest Arrival & Event: -", buildGuestLines(bookings, reqs)),
+    section("Guest Arrival & Event: -", buildGuestLines(bookings, eventReqs)),
     "",
-    section("Vendors: -", buildVendorLines(reqs)),
+    section("Vendors: -", buildVendorLines(bookings, eventReqs)),
     "",
-    section("Setup on Stage: -", buildStageLines(reqs)),
+    section("Setup on Stage: -", buildStageLines(bookings, eventReqs)),
     "",
-    section("Foyer: -", buildFoyerLines(reqs)),
+    section("Foyer: -", buildFoyerLines(bookings, eventReqs)),
     "",
-    section("Security: -", buildSecurityLines(reqs)),
+    section("Security: -", buildSecurityLines(bookings, eventReqs)),
     "",
-    section("Housekeeping: -", buildHousekeepingLines(reqs)),
+    section("Housekeeping: -", buildHousekeepingLines(bookings, eventReqs)),
     "",
-    section("Program Officer: -", buildProgramOfficerLines(input, reqs)),
+    section("Program Officer: -", buildProgramOfficerLines(input, eventReqs)),
   ];
 
   return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";

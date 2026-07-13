@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { canCreateEvent, getEventFormDateError, getScheduleValidationError, organisationValueFromName } from "./event-edit-form";
+import {
+  aggregateRequirements,
+  buildEventRequirementsPayload,
+  canCreateEvent,
+  getEventFormDateError,
+  getScheduleValidationError,
+  hydrateVenueRequirements,
+  organisationValueFromName,
+  pickEventLevelRequirements,
+} from "./event-edit-form";
+import type { VenueBookingInputT } from "../../worker/lib/types";
 
 describe("canCreateEvent", () => {
   it("allows submission when organisation, event name, and date are filled", () => {
@@ -115,5 +125,49 @@ describe("getScheduleValidationError", () => {
         }],
       },
     ])).toBeNull();
+  });
+});
+
+describe("per-venue requirements helpers", () => {
+  it("hydrates empty venue bookings from legacy event requirements", () => {
+    const bookings = [
+      { venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] },
+      { venue: "TATA", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "Already set" }, notes: null, schedule_entries: [] },
+    ] as VenueBookingInputT[];
+
+    const hydrated = hydrateVenueRequirements(bookings, {
+      program_officer_phone: "022 1",
+      sound: "PA",
+      light: "Basic",
+    });
+
+    expect(hydrated[0]!.requirements).toEqual({ sound: "PA", light: "Basic" });
+    expect(hydrated[1]!.requirements).toEqual({ sound: "Already set" });
+    expect(pickEventLevelRequirements({
+      program_officer_phone: "022 1",
+      sound: "PA",
+    })).toEqual({ program_officer_phone: "022 1" });
+  });
+
+  it("aggregates venue requirements for the denormalised event payload", () => {
+    const bookings = [
+      { venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "A", piano_required: "No", crew_cards: "2" }, notes: null, schedule_entries: [] },
+      { venue: "TATA", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "B", piano_required: "Yes", crew_cards: "5" }, notes: null, schedule_entries: [] },
+    ] as VenueBookingInputT[];
+
+    expect(aggregateRequirements([
+      bookings[0]!.requirements as Record<string, unknown>,
+      bookings[1]!.requirements as Record<string, unknown>,
+    ])).toEqual({
+      sound: "A · B",
+      piano_required: "Yes",
+      crew_cards: "5",
+    });
+
+    expect(buildEventRequirementsPayload(bookings, { program_officer_phone: "99" })).toMatchObject({
+      program_officer_phone: "99",
+      piano_required: "Yes",
+      crew_cards: "5",
+    });
   });
 });
