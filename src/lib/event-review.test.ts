@@ -2,52 +2,101 @@ import { describe, expect, it } from "vitest";
 import { buildReviewItems } from "./event-review";
 import type { EventInputT } from "../../worker/lib/types";
 
+const baseForm = {
+  title: "Test event 45",
+  organisation_id: "new:Test",
+  event_start_date: "2026-08-28",
+  event_end_date: null,
+  venue_bookings: [
+    {
+      venue: "JBT",
+      booking_status: "tentative",
+      number_of_shows: 2,
+      requirements: null,
+      notes: null,
+      schedule_entries: [
+        {
+          activity_type: "show",
+          activity_date: "2026-08-28",
+          start_time: null,
+          end_time: null,
+          with_ac_start: "10:00",
+          with_ac_end: "12:00",
+          with_ac_minutes: 120,
+          without_ac_start: "12:00",
+          without_ac_end: "15:00",
+          without_ac_minutes: 180,
+          notes: null,
+        },
+      ],
+    },
+    {
+      venue: "TATA",
+      booking_status: "confirmed",
+      number_of_shows: 1,
+      requirements: null,
+      notes: "Piano tuned",
+      schedule_entries: [
+        {
+          activity_type: "rehearsal",
+          activity_date: "2026-08-27",
+          start_time: "09:00",
+          end_time: "11:00",
+          with_ac_start: "09:00",
+          with_ac_end: "11:00",
+          with_ac_minutes: 120,
+          without_ac_start: null,
+          without_ac_end: null,
+          without_ac_minutes: null,
+          notes: null,
+        },
+      ],
+    },
+  ],
+} as unknown as EventInputT;
+
 describe("buildReviewItems", () => {
-  it("shows exactly the six review boxes requested", () => {
+  it("includes every venue booking and schedule entry, not only venue 1", () => {
+    const items = buildReviewItems(baseForm, "Test", { organisationType: "Corporate" });
+
+    expect(items.find((item) => item.label === "Organisation")?.value).toBe("Test");
+    expect(items.find((item) => item.label === "Event Name")?.value).toBe("Test event 45");
+    expect(items.find((item) => item.label === "Operating Window")?.value).toBe("28/08/2026");
+
+    expect(items.find((item) => item.label === "Venue 1")?.value).toBe("JBT");
+    expect(items.find((item) => item.label === "Venue 1 Booking Status")?.value).toBe("Tentative");
+    expect(items.find((item) => item.label === "Venue 1 Number of Shows")?.value).toBe("2");
+    expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("With AC 10:00 - 12:00");
+    expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("Without AC 12:00 - 15:00");
+
+    expect(items.find((item) => item.label === "Venue 2")?.value).toBe("TATA");
+    expect(items.find((item) => item.label === "Venue 2 Booking Status")?.value).toBe("Confirmed");
+    expect(items.find((item) => item.label === "Venue 2 Number of Shows")?.value).toBe("1");
+    expect(items.find((item) => item.label === "Venue 2 Notes")?.value).toBe("Piano tuned");
+    expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("Rehearsal");
+    expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("With AC 09:00 - 11:00");
+
+    // Regression: the old six-box summary only surfaced venue 1 aggregates.
+    expect(items.some((item) => item.label === "Venue Booking Status")).toBe(false);
+    expect(items.some((item) => item.label === "AC Hours")).toBe(false);
+  });
+
+  it("notes when a venue has no schedule details yet", () => {
     const form = {
-      title: "Test event 45",
-      organisation_id: "new:Test",
-      event_start_date: "2026-08-28",
-      event_end_date: null,
+      ...baseForm,
       venue_bookings: [
         {
-          venue: "NCPA",
+          venue: "GDT",
           booking_status: "tentative",
           number_of_shows: 1,
           requirements: null,
           notes: null,
-          schedule_entries: [
-            {
-              activity_type: "show",
-              activity_date: "2026-08-28",
-              start_time: null,
-              end_time: null,
-              with_ac_start: "10:00",
-              with_ac_end: "12:00",
-              with_ac_minutes: 120,
-              without_ac_start: "12:00",
-              without_ac_end: "15:00",
-              without_ac_minutes: 180,
-              notes: null,
-            },
-          ],
+          schedule_entries: [],
         },
       ],
     } as unknown as EventInputT;
 
     const items = buildReviewItems(form, "Test");
-
-    expect(items.map((item) => item.label)).toEqual([
-      "Organisation",
-      "Event Name",
-      "Operating Window",
-      "Venue Booking Status",
-      "Number of Shows",
-      "AC Hours",
-    ]);
-    expect(items.find((item) => item.label === "Organisation")?.value).toBe("Test");
-    expect(items.find((item) => item.label === "Operating Window")?.value).toBe("28/08/2026");
-    expect(items.find((item) => item.label === "AC Hours")?.value).toContain("With AC 2h");
-    expect(items.find((item) => item.label === "AC Hours")?.value).toContain("Without AC 3h");
+    expect(items.find((item) => item.label === "Venue 1 Schedule")?.value).toBe("No schedule details");
   });
 });

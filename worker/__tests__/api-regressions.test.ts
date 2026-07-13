@@ -1213,4 +1213,125 @@ describe("API regressions", () => {
     expect(touchedSql.some((sql) => sql.startsWith("UPDATE venue_bookings"))).toBe(true);
     expect(touchedSql.some((sql) => sql.startsWith("UPDATE schedule_entries"))).toBe(true);
   });
+
+  it("creates every venue booking and schedule entry supplied on POST", async () => {
+    const touchedSql: string[] = [];
+    const db = fakeDb((sql) => {
+      touchedSql.push(sql);
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events e") && sql.includes("GROUP_CONCAT(venue")) {
+        return { all: () => ({ results: [] }) };
+      }
+      if (sql === "SELECT id FROM venue_bookings WHERE event_id = ?") return { all: () => ({ results: [] }) };
+      if (sql.includes("SELECT id FROM schedule_entries")) return { all: () => ({ results: [] }) };
+      // Post-create checklist seeding looks the event back up — return a row so
+      // the handler can finish after the venue/schedule writes are queued.
+      if (sql.includes("FROM events") && sql.includes("WHERE id")) {
+        return { first: () => ({ id: "ev_new", title: "Gala", event_type: "EE", description: null, organisation_id: "org_1", status: "enquiry" }) };
+      }
+      if (sql.includes("FROM checklist_definitions")) return { all: () => ({ results: [] }) };
+      if (sql.includes("FROM checklist_items")) return { all: () => ({ results: [] }) };
+      if (sql.includes("SELECT venue FROM venue_bookings")) return { all: () => ({ results: [{ venue: "JBT" }, { venue: "TATA" }] }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/events", {
+      method: "POST",
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Gala",
+        organisation_id: "org_1",
+        event_start_date: "2026-07-10",
+        venue_bookings: [
+          {
+            venue: "JBT",
+            booking_status: "tentative",
+            number_of_shows: 2,
+            schedule_entries: [{
+              activity_type: "show",
+              activity_date: "2026-07-10",
+              with_ac_start: "18:00",
+              with_ac_end: "21:00",
+              with_ac_minutes: 180,
+              without_ac_start: "16:00",
+              without_ac_end: "18:00",
+              without_ac_minutes: 120,
+            }],
+          },
+          {
+            venue: "TATA",
+            booking_status: "confirmed",
+            number_of_shows: 1,
+            schedule_entries: [{
+              activity_type: "rehearsal",
+              activity_date: "2026-07-09",
+              with_ac_start: "10:00",
+              with_ac_end: "12:00",
+              with_ac_minutes: 120,
+            }],
+          },
+        ],
+      }),
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(201);
+    const venueInserts = touchedSql.filter((sql) => sql.startsWith("INSERT INTO venue_bookings"));
+    const scheduleInserts = touchedSql.filter((sql) => sql.startsWith("INSERT INTO schedule_entries"));
+    expect(venueInserts).toHaveLength(2);
+    expect(scheduleInserts).toHaveLength(2);
+    expect(touchedSql.some((sql) => sql.includes("with_ac_start"))).toBe(true);
+  });
+
+  it("returns schedule entries when D1 already parsed schedule_json as an array", async () => {
+    const schedule = [{
+      id: "se_1",
+      activity_type: "show",
+      activity_date: "2026-07-10",
+      start_time: "19:00",
+      end_time: "21:00",
+      with_ac_start: "18:00",
+      with_ac_end: "21:30",
+      with_ac_minutes: 210,
+      without_ac_start: "16:00",
+      without_ac_end: "18:00",
+      without_ac_minutes: 120,
+      notes: null,
+      sort_order: 1,
+    }];
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events e") && sql.includes("organisation_name")) {
+        return { first: () => ({ id: "ev_1", title: "Gala", organisation_id: "org_1", is_archived: 0 }) };
+      }
+      if (sql.includes("FROM venue_bookings vb")) {
+        return {
+          all: () => ({
+            results: [{
+              id: "vb_1",
+              event_id: "ev_1",
+              venue: "JBT",
+              booking_status: "tentative",
+              number_of_shows: 1,
+              schedule_json: schedule, // already parsed — old code JSON.parse()'d this and wiped entries
+            }],
+          }),
+        };
+      }
+      if (sql.includes("FROM event_activity")) return { all: () => ({ results: [] }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/events/ev_1", {
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      venue_bookings: Array<{ schedule_entries: Array<{ with_ac_start: string }> }>;
+    };
+    expect(body.venue_bookings[0]?.schedule_entries).toHaveLength(1);
+    expect(body.venue_bookings[0]?.schedule_entries[0]?.with_ac_start).toBe("18:00");
+  });
 });

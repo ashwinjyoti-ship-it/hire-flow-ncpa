@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCreateEvent, getEventFormDateError, organisationValueFromName } from "./event-edit-form";
+import { canCreateEvent, getEventFormDateError, getScheduleValidationError, organisationValueFromName } from "./event-edit-form";
 
 describe("canCreateEvent", () => {
   it("allows submission when organisation, event name, and date are filled", () => {
@@ -63,5 +63,57 @@ describe("organisationValueFromName", () => {
 
   it("clears the form value when the typed organisation is blank", () => {
     expect(organisationValueFromName("   ")).toBe("");
+  });
+});
+
+describe("getScheduleValidationError", () => {
+  it("flags schedule rows that are missing an activity date", () => {
+    expect(getScheduleValidationError([
+      {
+        venue: "JBT",
+        booking_status: "tentative",
+        number_of_shows: 1,
+        requirements: null,
+        notes: null,
+        schedule_entries: [{
+          activity_type: "show",
+          activity_date: "",
+          start_time: null,
+          end_time: null,
+          with_ac_start: "18:00",
+          with_ac_end: "21:00",
+          with_ac_minutes: 180,
+          without_ac_start: null,
+          without_ac_end: null,
+          without_ac_minutes: null,
+          notes: null,
+        }],
+      },
+    ])).toContain("activity date");
+  });
+
+  it("allows complete schedule rows", () => {
+    expect(getScheduleValidationError([
+      {
+        venue: "JBT",
+        booking_status: "tentative",
+        number_of_shows: 1,
+        requirements: null,
+        notes: null,
+        schedule_entries: [{
+          activity_type: "show",
+          activity_date: "2026-07-10",
+          start_time: null,
+          end_time: null,
+          with_ac_start: null,
+          with_ac_end: null,
+          with_ac_minutes: null,
+          without_ac_start: null,
+          without_ac_end: null,
+          without_ac_minutes: null,
+          notes: null,
+        }],
+      },
+    ])).toBeNull();
   });
 });
