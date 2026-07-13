@@ -41,7 +41,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Event Reference", field_key: "event_name", label: "Event Name", field_type: "text" },
   { module: "operations", section: "Event Reference", field_key: "event_type", label: "Event Type", field_type: "dropdown", options: ["EE", "FR", "VFH", "Free Event"] },
   { module: "operations", section: "Event Reference", field_key: "nature_of_event", label: "Nature of Event", field_type: "text" },
-  { module: "operations", section: "Event Reference", field_key: "venue", label: "Venue", field_type: "dropdown", options: ["JBT", "TATA", "TET", "GDT", "LT", "JBT Box", "OAP", "TATA Garden", "TET Garden", "Sunken Garden", "West Room 1", "SVR"] },
+  { module: "operations", section: "Event Reference", field_key: "venue", label: "Venue", field_type: "dropdown", options: ["JBT", "TATA", "TET", "LT", "GDT", "OAP", "JBT BOX", "TATA GARDEN", "TET GARDEN", "SUNKEN GARDEN", "WEST ROOM 1", "SVR", "TATA LOBBY", "JBT LOBBY"] },
 
   // 2. POINT OF CONTACT
   { module: "operations", section: "Point of Contact", field_key: "poc_name", label: "POC Name", field_type: "text" },
