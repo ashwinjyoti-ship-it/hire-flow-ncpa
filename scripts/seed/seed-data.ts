@@ -18,33 +18,25 @@ export interface DropdownSeed {
   metadata?: Record<string, unknown>;
 }
 
-/** All venues, including single venues and combined-venue combos from Dropdown_Master. */
+/**
+ * Canonical venue list (all caps). Single venues only — combined-venue combos
+ * are no longer offered. Source of truth for the `venue` lookup list.
+ */
 export const VENUES: DropdownSeed[] = [
-  // Single venues (canonical codes; full names mapped where used in the form)
   { list_key: "venue", value: "JBT", sort_order: 1 },
   { list_key: "venue", value: "TATA", sort_order: 2, metadata: { also: "TT" } },
   { list_key: "venue", value: "TET", sort_order: 3 },
-  { list_key: "venue", value: "GDT", sort_order: 4 },
-  { list_key: "venue", value: "LT", sort_order: 5 },
+  { list_key: "venue", value: "LT", sort_order: 4 },
+  { list_key: "venue", value: "GDT", sort_order: 5 },
   { list_key: "venue", value: "OAP", sort_order: 6 },
-  { list_key: "venue", value: "JBT Box", sort_order: 7 },
-  { list_key: "venue", value: "TATA Garden", sort_order: 8, metadata: { also: "TTGDN" } },
-  { list_key: "venue", value: "TET Garden", sort_order: 9, metadata: { also: "TETGDN" } },
-  { list_key: "venue", value: "Sunken Garden", sort_order: 10 },
-  { list_key: "venue", value: "West Room 1", sort_order: 11 },
+  { list_key: "venue", value: "JBT BOX", sort_order: 7 },
+  { list_key: "venue", value: "TATA GARDEN", sort_order: 8, metadata: { also: "TTGDN" } },
+  { list_key: "venue", value: "TET GARDEN", sort_order: 9, metadata: { also: "TETGDN" } },
+  { list_key: "venue", value: "SUNKEN GARDEN", sort_order: 10 },
+  { list_key: "venue", value: "WEST ROOM 1", sort_order: 11 },
   { list_key: "venue", value: "SVR", sort_order: 12 },
-  // Combined-venue combos (stored as single dropdown options per Dropdown_Master)
-  { list_key: "venue", value: "TET & GDT", sort_order: 20, metadata: { parts: ["TET", "GDT"], combo: true } },
-  { list_key: "venue", value: "JBT & OAP", sort_order: 21, metadata: { parts: ["JBT", "OAP"], combo: true } },
-  { list_key: "venue", value: "TATA & OAP", sort_order: 22, metadata: { parts: ["TATA", "OAP"], combo: true, also: "TT & OAP" } },
-  { list_key: "venue", value: "TATA & TATA Garden", sort_order: 23, metadata: { parts: ["TATA", "TATA Garden"], combo: true, also: "TT & TTGDN" } },
-  { list_key: "venue", value: "TET & OAP", sort_order: 24, metadata: { parts: ["TET", "OAP"], combo: true } },
-  { list_key: "venue", value: "TET & TET Garden", sort_order: 25, metadata: { parts: ["TET", "TET Garden"], combo: true, also: "TET & TETGDN" } },
-  { list_key: "venue", value: "GDT & OAP", sort_order: 26, metadata: { parts: ["GDT", "OAP"], combo: true } },
-  { list_key: "venue", value: "GDT & Sunken Garden", sort_order: 27, metadata: { parts: ["GDT", "Sunken Garden"], combo: true, also: "GDT & Sunken" } },
-  { list_key: "venue", value: "LT & OAP", sort_order: 28, metadata: { parts: ["LT", "OAP"], combo: true } },
-  { list_key: "venue", value: "LT & TET Garden", sort_order: 29, metadata: { parts: ["LT", "TET Garden"], combo: true, also: "LT & TETGDN" } },
-  { list_key: "venue", value: "LT & Sunken Garden", sort_order: 30, metadata: { parts: ["LT", "Sunken Garden"], combo: true, also: "LT & Sunken" } },
+  { list_key: "venue", value: "TATA LOBBY", sort_order: 13 },
+  { list_key: "venue", value: "JBT LOBBY", sort_order: 14 },
 ];
 
 export const DROPDOWN_LISTS: DropdownSeed[] = [
