@@ -11,6 +11,18 @@ export function pruneEmptyVenueBookings(venueBookings: EventInputT["venue_bookin
   return venueBookings.filter(hasVenue);
 }
 
+/** Incomplete schedule rows (no activity date) fail Zod on the API and block the whole save. */
+export function getScheduleValidationError(venueBookings: EventInputT["venue_bookings"]): string | null {
+  for (const [venueIndex, booking] of venueBookings.entries()) {
+    for (const [scheduleIndex, entry] of (booking.schedule_entries ?? []).entries()) {
+      if (!entry.activity_date || !/^\d{4}-\d{2}-\d{2}$/.test(entry.activity_date)) {
+        return `Venue ${venueIndex + 1}, schedule ${scheduleIndex + 1}: choose an activity date before saving.`;
+      }
+    }
+  }
+  return null;
+}
+
 export function canCreateEvent(form: Pick<EventInputT, "title" | "organisation_id" | "event_start_date">): boolean {
   return form.title.trim().length > 0
     && form.organisation_id.trim().length > 0

@@ -35,6 +35,20 @@ import { z } from "zod";
 
 export const eventRoutes = new Hono<AuthEnv>();
 
+/** D1 may return json_group_array results as a string or an already-parsed array. */
+export function parseScheduleJson(raw: unknown): unknown[] {
+  if (raw == null || raw === "") return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "object") return [];
+  if (typeof raw !== "string") return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 async function venueBookingSyncStatements(db: D1Database, eventId: string, bookings: VenueBookingInputT[], now: string): Promise<D1PreparedStatement[]> {
   const writes: D1PreparedStatement[] = [];
   const { results: existingBookings } = await db.prepare(
@@ -300,15 +314,12 @@ eventRoutes.get("/:id", requireUser, async (c) => {
      FROM venue_bookings vb WHERE vb.event_id = ? ORDER BY vb.sort_order`
   ).bind(id).all();
 
-  // Parse the schedule JSON strings.
+  // Parse the schedule JSON strings. D1 sometimes returns json_group_array
+  // output already parsed as an array — handle both shapes so AC timings are
+  // not silently dropped on read.
   const bookings = venue_bookings.map((vb) => {
-    const raw = (vb as { schedule_json?: string }).schedule_json;
-    let schedule: unknown[] = [];
-    try {
-      schedule = raw ? (JSON.parse(raw) as unknown[]) : [];
-    } catch {
-      schedule = [];
-    }
+    const raw = (vb as { schedule_json?: unknown }).schedule_json;
+    const schedule = parseScheduleJson(raw);
     const { schedule_json, ...rest } = vb as Record<string, unknown>;
     void schedule_json;
     return { ...rest, schedule_entries: schedule };

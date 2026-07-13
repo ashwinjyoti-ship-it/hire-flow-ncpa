@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet, apiPost, apiPut } from "../lib/api";
-import { canCreateEvent, getEventFormDateError, organisationValueFromName, pruneEmptyVenueBookings } from "../lib/event-edit-form";
-import { buildReviewItems as buildEventReviewItems } from "../lib/event-review";
+import { canCreateEvent, getEventFormDateError, getScheduleValidationError, organisationValueFromName, pruneEmptyVenueBookings } from "../lib/event-edit-form";
+import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
@@ -20,7 +20,6 @@ const EVENT_TYPE_OPTIONS = [
 ] as const;
 
 type OrgListItem = { id: string; name: string; org_type: string | null };
-type ReviewEntry = { label: string; value: string };
 type DuplicateCheckResponse = {
   duplicates: Array<{
     id: string;
@@ -123,122 +122,6 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
   return mins;
 }
 // (formatDuration is imported from lib/use-lookups for consistent hh/d rendering)
-
-function isFilledReviewValue(value: unknown): boolean {
-  if (value == null) return false;
-  if (typeof value === "string") return value.trim().length > 0;
-  if (typeof value === "number") return !Number.isNaN(value);
-  if (typeof value === "boolean") return true;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
-  return true;
-}
-
-function formatReviewValue(value: unknown): string | null {
-  if (!isFilledReviewValue(value)) return null;
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) {
-    const items = value
-      .map((item) => formatReviewValue(item))
-      .filter((item): item is string => Boolean(item));
-    return items.length > 0 ? items.join(", ") : null;
-  }
-  return JSON.stringify(value);
-}
-
-function titleCaseWords(value: string): string {
-  return value
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatReviewLabel(key: string): string {
-  const explicitLabels: Record<string, string> = {
-    no_of_pax: "No. of Pax",
-    crew_cards: "No. of Crew Cards",
-    liquor_licence: "Liquor Licence",
-    liquor_licence_details: "Liquor Licence Details",
-    sound_call_time: "Sound Call Time",
-    light_call_time: "Light Call Time",
-    recording_type: "Recording Type",
-    camera_count: "No. of Cameras",
-  };
-  return explicitLabels[key] ?? titleCaseWords(key);
-}
-
-function formatOperatingWindow(start: string | null | undefined, end: string | null | undefined): string | null {
-  if (!start) return null;
-  return end ? `${start} → ${end}` : start;
-}
-
-function formatScheduleSummary(entry: ScheduleEntryInputT): string {
-  const segments = [
-    titleCaseWords(entry.activity_type),
-    entry.activity_date,
-    entry.start_time && entry.end_time ? `${entry.start_time} - ${entry.end_time}` : null,
-    entry.with_ac_start && entry.with_ac_end
-      ? `With AC ${entry.with_ac_start} - ${entry.with_ac_end} (${formatDuration(entry.with_ac_minutes ?? diffMinutes(entry.with_ac_start, entry.with_ac_end))})`
-      : null,
-    entry.without_ac_start && entry.without_ac_end
-      ? `Without AC ${entry.without_ac_start} - ${entry.without_ac_end} (${formatDuration(entry.without_ac_minutes ?? diffMinutes(entry.without_ac_start, entry.without_ac_end))})`
-      : null,
-    entry.notes,
-  ].filter((segment): segment is string => Boolean(segment && segment.trim().length > 0));
-
-  return segments.join(" · ");
-}
-
-function buildReviewItems({
-  form,
-  organisationName,
-  organisationType,
-  isVfh,
-}: {
-  form: EventInputT;
-  organisationName: string | null;
-  organisationType: string;
-  isVfh: boolean;
-}): ReviewEntry[] {
-  return buildEventReviewItems(form, organisationName);
-  const items: ReviewEntry[] = [];
-  const pushItem = (label: string, value: unknown) => {
-    const text = formatReviewValue(value);
-    if (text) items.push({ label, value: text });
-  };
-
-  pushItem("Organisation", organisationName);
-  pushItem("Organisation Type", organisationType);
-  pushItem("Event Name", form.title);
-  pushItem("Description", form.description);
-  pushItem("Type", normaliseEventType(form.event_type));
-  pushItem("Enquiry Source", form.enquiry_source);
-  pushItem("Program Officer", form.program_officer);
-  pushItem("Owner", form.event_owner);
-  pushItem("Operating Window", formatOperatingWindow(form.event_start_date, form.event_end_date));
-
-  form.venue_bookings.forEach((venueBooking, venueIndex) => {
-    const labelPrefix = `Venue ${venueIndex + 1}`;
-    pushItem(labelPrefix, venueBooking.venue);
-    pushItem(`${labelPrefix} Booking Status`, titleCaseWords(venueBooking.booking_status));
-    pushItem(`${labelPrefix} Number of Shows`, venueBooking.number_of_shows);
-    pushItem(`${labelPrefix} Notes`, venueBooking.notes);
-    venueBooking.schedule_entries.forEach((entry, scheduleIndex) => {
-      pushItem(`Schedule ${venueIndex + 1}.${scheduleIndex + 1}`, formatScheduleSummary(entry));
-    });
-  });
-
-  const requirements = (form.requirements ?? {}) as Record<string, unknown>;
-  Object.entries(requirements).forEach(([key, value]) => {
-    pushItem(formatReviewLabel(key), value);
-  });
-
-  if (isVfh) pushItem("VFH Approval", "Will apply (VFH)");
-
-  return items;
-}
 
 export function EventEditPage() {
   const { id } = useParams();
@@ -349,11 +232,14 @@ export function EventEditPage() {
         const created = await apiPost<{ id: string }>("/organisations", { name, org_type: newOrganisationType || null });
         orgId = created.id;
       }
+      const venueBookings = pruneEmptyVenueBookings(form.venue_bookings);
+      const incompleteSchedule = getScheduleValidationError(venueBookings);
+      if (incompleteSchedule) throw new Error(incompleteSchedule);
       const payload = {
         ...form,
         organisation_id: orgId,
         event_end_date: singleDay ? null : form.event_end_date,
-        venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
+        venue_bookings: venueBookings,
       };
       if (isEdit && id) {
         await apiPut(`/events/${id}`, payload);
@@ -410,18 +296,19 @@ export function EventEditPage() {
     event_end_date: singleDay ? null : form.event_end_date,
     venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
   });
+  const scheduleError = getScheduleValidationError(pruneEmptyVenueBookings(form.venue_bookings));
   const reviewOrganisationName = useMemo(() => {
     if (form.organisation_id.startsWith("new:")) return form.organisation_id.slice(4);
     return selectedOrganisation?.name ?? null;
   }, [form.organisation_id, selectedOrganisation]);
-  const reviewItems = useMemo(() => buildReviewItems({
-    form,
-    organisationName: reviewOrganisationName,
+  const reviewItems = useMemo(() => buildReviewItems(form, reviewOrganisationName, {
     organisationType: newOrganisationType,
     isVfh,
   }), [form, reviewOrganisationName, newOrganisationType, isVfh]);
 
   // ---- Venue booking helpers ----
+  // Schedule helpers use functional setState so rapid AC time edits (and
+  // multi-venue updates) never overwrite each other via a stale form closure.
   const addVenue = () => {
     setForm((f) => ({
       ...f,
@@ -433,27 +320,55 @@ export function EventEditPage() {
     setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.map((vb, i) => (i === idx ? { ...vb, ...patch } : vb)) }));
 
   const addScheduleEntry = (vIdx: number) =>
-    updateVenue(vIdx, {
-      schedule_entries: [...(form.venue_bookings[vIdx]?.schedule_entries ?? []), {
-        activity_type: "show", activity_date: form.event_start_date ?? "", start_time: null, end_time: null,
-        with_ac_start: null, with_ac_end: null, with_ac_minutes: null,
-        without_ac_start: null, without_ac_end: null, without_ac_minutes: null,
-        notes: null,
-      }],
-    });
-  const removeScheduleEntry = (vIdx: number, sIdx: number) =>
-    updateVenue(vIdx, { schedule_entries: (form.venue_bookings[vIdx]?.schedule_entries ?? []).filter((_, i) => i !== sIdx) });
-  const updateScheduleEntry = (vIdx: number, sIdx: number, patch: Partial<ScheduleEntryInputT>) =>
-    updateVenue(vIdx, {
-      schedule_entries: (form.venue_bookings[vIdx]?.schedule_entries ?? []).map((se, i) => {
-        if (i !== sIdx) return se;
-        const merged = { ...se, ...patch };
-        // Auto-recompute AC durations whenever their start/end changes.
-        const withMin = diffMinutes(merged.with_ac_start, merged.with_ac_end);
-        const withoutMin = diffMinutes(merged.without_ac_start, merged.without_ac_end);
-        return { ...merged, with_ac_minutes: withMin, without_ac_minutes: withoutMin };
+    setForm((f) => ({
+      ...f,
+      venue_bookings: f.venue_bookings.map((vb, i) => {
+        if (i !== vIdx) return vb;
+        return {
+          ...vb,
+          schedule_entries: [...(vb.schedule_entries ?? []), {
+            activity_type: "show" as const,
+            activity_date: f.event_start_date ?? "",
+            start_time: null,
+            end_time: null,
+            with_ac_start: null,
+            with_ac_end: null,
+            with_ac_minutes: null,
+            without_ac_start: null,
+            without_ac_end: null,
+            without_ac_minutes: null,
+            notes: null,
+          }],
+        };
       }),
-    });
+    }));
+  const removeScheduleEntry = (vIdx: number, sIdx: number) =>
+    setForm((f) => ({
+      ...f,
+      venue_bookings: f.venue_bookings.map((vb, i) => (
+        i === vIdx
+          ? { ...vb, schedule_entries: (vb.schedule_entries ?? []).filter((_, j) => j !== sIdx) }
+          : vb
+      )),
+    }));
+  const updateScheduleEntry = (vIdx: number, sIdx: number, patch: Partial<ScheduleEntryInputT>) =>
+    setForm((f) => ({
+      ...f,
+      venue_bookings: f.venue_bookings.map((vb, i) => {
+        if (i !== vIdx) return vb;
+        return {
+          ...vb,
+          schedule_entries: (vb.schedule_entries ?? []).map((se, j) => {
+            if (j !== sIdx) return se;
+            const merged = { ...se, ...patch };
+            // Auto-recompute AC durations whenever their start/end changes.
+            const withMin = diffMinutes(merged.with_ac_start, merged.with_ac_end);
+            const withoutMin = diffMinutes(merged.without_ac_start, merged.without_ac_end);
+            return { ...merged, with_ac_minutes: withMin, without_ac_minutes: withoutMin };
+          }),
+        };
+      }),
+    }));
 
   // ---- Requirements helpers (conditional fields) ----
   // NOTE: must compare against the actual yes-value, NOT Boolean(value) —
@@ -469,7 +384,7 @@ export function EventEditPage() {
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
   const liquorLicence = isYes(reqs.liquor_licence);
 
-  const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError;
+  const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError && !scheduleError;
 
   // In edit mode, wait for the existing event before rendering the form so the
   // user never sees an empty form for an event that already has data.
@@ -484,6 +399,11 @@ export function EventEditPage() {
       {dateError && (
         <p role="alert" className="mb-4 rounded-xl bg-status-cancelled/10 px-3 py-2 text-xs font-medium text-status-cancelled">
           {dateError}
+        </p>
+      )}
+      {scheduleError && (
+        <p role="alert" className="mb-4 rounded-xl bg-status-cancelled/10 px-3 py-2 text-xs font-medium text-status-cancelled">
+          {scheduleError}
         </p>
       )}
 

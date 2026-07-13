@@ -31,9 +31,12 @@ describe("frontend regression guards", () => {
 
     expect(source).toContain("await apiPut(`/events/${id}`, payload)");
     expect(source).not.toContain("venue_bookings: _vb");
+    expect(source).toContain("setForm((f) => ({");
+    expect(source).toContain("with_ac_minutes: withMin");
     expect(routes).toContain("venueBookingSyncStatements");
     expect(routes).toContain("db.batch([updateEvent, ...venueWrites])");
     expect(routes).toContain("UPDATE schedule_entries");
+    expect(routes).toContain("parseScheduleJson");
   });
 
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
@@ -365,9 +368,10 @@ describe("frontend regression guards", () => {
 
   it("shows the organisation name on the review step instead of the raw id", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const review = readFileSync(resolve(root, "src/lib/event-review.ts"), "utf8");
 
     expect(eventForm).toContain("const reviewOrganisationName");
-    expect(eventForm).toContain('pushItem("Organisation", organisationName)');
+    expect(review).toContain('pushItem("Organisation", organisationName)');
     expect(eventForm).toContain("resolvedOrg?.organisation?.name");
   });
 
@@ -383,12 +387,18 @@ describe("frontend regression guards", () => {
 
   it("builds the review step from filled values instead of fixed blank rows", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const review = readFileSync(resolve(root, "src/lib/event-review.ts"), "utf8");
 
-    expect(eventForm).toContain("function buildReviewItems");
-    expect(eventForm).toContain("Object.entries(requirements)");
+    expect(eventForm).toContain("buildReviewItems(form, reviewOrganisationName");
+    expect(review).toContain("Object.entries(requirements)");
+    expect(review).toContain("bookings.forEach((venueBooking, venueIndex)");
+    expect(review).toContain("formatScheduleSummary");
     expect(eventForm).toContain("reviewItems.map((item) =>");
     expect(eventForm).not.toContain('<ReviewItem label="Program Officer" value={form.program_officer} />');
     expect(eventForm).not.toContain('<ReviewItem label="Owner" value={form.event_owner} />');
+    // Regression: do not early-return into a venue-1-only six-box summary.
+    expect(eventForm).not.toContain("return buildEventReviewItems(form, organisationName)");
+    expect(review).not.toContain("const firstBooking = form.venue_bookings[0]");
   });
 
   it("hydrates organisation type only once per resolved organisation so manual picks do not reset", () => {
