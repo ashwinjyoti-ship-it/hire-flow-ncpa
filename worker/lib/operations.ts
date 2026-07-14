@@ -364,7 +364,7 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
   }
 }
 
-/** NOC date only applies when NOC Sent? = Yes. */
+/** NOC date only applies when NOC Sent? = Sent. */
 export const NOC_DEPENDENT_FIELD_KEYS = ["noc_sent_on"] as const;
 
 export async function syncNocDependentChecklist(
@@ -372,7 +372,8 @@ export async function syncNocDependentChecklist(
   eventId: string,
   nocSent: string | null | undefined,
 ): Promise<void> {
-  const notApplicable = normalise(nocSent) !== "yes";
+  const v = normalise(nocSent);
+  const notApplicable = v !== "sent" && v !== "yes";
   const now = new Date().toISOString();
   for (const fieldKey of NOC_DEPENDENT_FIELD_KEYS) {
     await db.prepare(

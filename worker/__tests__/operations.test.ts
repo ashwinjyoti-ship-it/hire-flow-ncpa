@@ -673,8 +673,11 @@ describe("NOC dependent checklist fields", () => {
   it("seeds visibility_rule so date sent only shows when NOC Sent? = Yes", () => {
     const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
     expect(byKey.noc_sent?.field_type).toBe("dropdown");
-    expect(byKey.noc_sent?.options).toEqual(["No", "Yes"]);
-    expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Yes)");
+    expect(byKey.noc_sent?.options).toEqual(["Not sent", "Sent"]);
+    expect(byKey.noc_sent?.default_value).toBe("Not sent");
+    expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Sent)");
+    expect(byKey.monthly_chart_sent?.label).toBe("SENT for Monthly Chart");
+    expect(byKey.monthly_chart_sent?.options).toEqual(["Not sent", "Sent"]);
     expect(byKey.noc_status).toBeUndefined();
   });
 
@@ -700,7 +703,7 @@ describe("NOC dependent checklist fields", () => {
       },
     } as unknown as D1Database;
 
-    await syncNocDependentChecklist(db, "ev_1", "No");
+    await syncNocDependentChecklist(db, "ev_1", "Not sent");
 
     expect(updates).toHaveLength(1);
     expect(updates[0]?.sql).toContain("status = ?");
