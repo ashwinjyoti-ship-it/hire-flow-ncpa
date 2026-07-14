@@ -53,7 +53,7 @@ export function createDefaultVenueRequirements(): RequirementsRecord {
     catering_required: "No",
     interval: "No",
     decorator_required: "No",
-    orchestra_pit_chairs: "Remove",
+    orchestra_pit_chairs: "Keep",
     digital_standee: "No",
     car_display: "No",
     bike_display: "No",
@@ -69,7 +69,7 @@ export function createDefaultVenueRequirements(): RequirementsRecord {
 
 /** Event-level requirement defaults (Step 1 fields stored in requirements JSON). */
 export function createDefaultEventLevelRequirements(): RequirementsRecord {
-  return { vendor_registration_form: "Pending" };
+  return { vendor_registration_form: "No Applicable" };
 }
 
 /** Merge saved values over the negative defaults without dropping explicit nulls the user set. */

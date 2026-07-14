@@ -53,7 +53,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Point of Contact", field_key: "pan_no", label: "PAN No.", field_type: "text" },
   { module: "operations", section: "Point of Contact", field_key: "signing_authority_address", label: "Signing Authority & Address", field_type: "textarea" },
   { module: "operations", section: "Point of Contact", field_key: "courier_address", label: "Courier Address", field_type: "textarea" },
-  { module: "operations", section: "Point of Contact", field_key: "vendor_registration_form", label: "Vendor Registration Form", field_type: "dropdown", options: ["Pending", "Received", "No Applicable"], default_value: "Pending" },
+  { module: "operations", section: "Point of Contact", field_key: "vendor_registration_form", label: "Vendor Registration Form", field_type: "dropdown", options: ["Pending", "Received", "No Applicable"], default_value: "No Applicable" },
 
   // 3. APPROVAL (VFH only)
   // When Approval Required? = Not Required, the rest of this section is skipped:

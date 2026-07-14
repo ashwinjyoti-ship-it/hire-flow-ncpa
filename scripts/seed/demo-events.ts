@@ -146,7 +146,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "pan_no": return `AA${slug(event.orgName).slice(0, 3).toUpperCase()}${1000 + event.index}P`;
     case "signing_authority_address": return `${event.orgName}, Nariman Point, Mumbai`;
     case "courier_address": return `${event.orgName}, Fort, Mumbai 400001`;
-    case "vendor_registration_form": return "Pending";
+    case "vendor_registration_form": return "No Applicable";
     case "approval_required": return event.eventType === "VFH" ? "Required" : "Not Required";
     case "approval_sent_on": return null;
     case "approval_received_on": return null;

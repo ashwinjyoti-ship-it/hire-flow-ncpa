@@ -136,7 +136,7 @@ describe("requirement defaults", () => {
     const defaults = createDefaultVenueRequirements();
     expect(defaults.green_rooms_required).toBe("Not Required");
     expect(defaults.video_recording).toBe("No");
-    expect(defaults.orchestra_pit_chairs).toBe("Remove");
+    expect(defaults.orchestra_pit_chairs).toBe("Keep");
     expect(defaults.licenses_status).toBe("Not required");
     expect(defaults.catering_breakfast_required).toBe("No");
   });
@@ -144,7 +144,7 @@ describe("requirement defaults", () => {
   it("merges saved values over defaults without dropping explicit choices", () => {
     expect(withDefaultVenueRequirements({ piano_required: "Yes" }).piano_required).toBe("Yes");
     expect(withDefaultVenueRequirements({ piano_required: "Yes" }).licenses_status).toBe("Not required");
-    expect(createDefaultEventLevelRequirements().vendor_registration_form).toBe("Pending");
+    expect(createDefaultEventLevelRequirements().vendor_registration_form).toBe("No Applicable");
   });
 });
 
