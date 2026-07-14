@@ -457,7 +457,7 @@ describe("frontend regression guards", () => {
     expect(fields).toContain('setReq("stage_setup"');
     expect(fields).toContain('Field label="Foyer Setup"');
     expect(fields).toContain('setReq("foyer_setup"');
-    expect(fields).toContain('Field label="Licences — Received"');
+    expect(fields).toContain('Field label="Licences — Required"');
     expect(fields).toContain('setReq("licenses_status"');
     expect(eventForm).toContain("programmeOfficers");
     expect(eventForm).not.toContain("lookups?.lookups.program_officer");
@@ -474,6 +474,13 @@ describe("frontend regression guards", () => {
     expect(pocFields).toContain("Point of Contact incomplete");
     expect(eventForm).toContain("hydrateVenueRequirements");
     expect(eventForm).toContain("updateVenueRequirements");
+  });
+
+  it("exposes a New Event shortcut from the dashboard", () => {
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(dashboard).toContain('to="/events/new"');
+    expect(dashboard).toContain("+ New Event");
   });
 
   it("exposes Generate MoM on the event lifecycle panel", () => {

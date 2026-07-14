@@ -1,4 +1,4 @@
-import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
+import { CATERING_MEAL_TYPES, cateringMealRequiredKey, isCateringMealPaxKey } from "../../worker/lib/catering-meals";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
 import { getEventDateIssues } from "../../worker/lib/event-date-policy";
 
@@ -34,6 +34,51 @@ function hasVenue(booking: VenueBookingLike): boolean {
 
 export function pruneEmptyVenueBookings(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
   return venueBookings.filter(hasVenue);
+}
+
+/**
+ * Negative defaults for every Yes/No / Required dropdown on the event form.
+ * Pre-populating these lets a first save sync the Operations checklist without
+ * manual ops entry, and only affirmative choices create follow-up work.
+ */
+export function createDefaultVenueRequirements(): RequirementsRecord {
+  const out: RequirementsRecord = {
+    green_rooms_required: "Not Required",
+    ushers_required: "Not Required",
+    loaders_required: "Not Required",
+    house_seats_release: "No",
+    video_recording: "No",
+    piano_required: "No",
+    liquor_licence: "Not Required",
+    catering_required: "No",
+    interval: "No",
+    decorator_required: "No",
+    orchestra_pit_chairs: "Remove",
+    digital_standee: "No",
+    car_display: "No",
+    bike_display: "No",
+    stalls: "No",
+    telecasting_media: "No",
+    licenses_status: "Not required",
+  };
+  for (const meal of CATERING_MEAL_TYPES) {
+    out[cateringMealRequiredKey(meal.key)] = "No";
+  }
+  return out;
+}
+
+/** Event-level requirement defaults (Step 1 fields stored in requirements JSON). */
+export function createDefaultEventLevelRequirements(): RequirementsRecord {
+  return { vendor_registration_form: "Pending" };
+}
+
+/** Merge saved values over the negative defaults without dropping explicit nulls the user set. */
+export function withDefaultVenueRequirements(value: RequirementsRecord | null | undefined): RequirementsRecord {
+  return { ...createDefaultVenueRequirements(), ...(value ?? {}) };
+}
+
+export function withDefaultEventLevelRequirements(value: RequirementsRecord | null | undefined): RequirementsRecord {
+  return { ...createDefaultEventLevelRequirements(), ...(value ?? {}) };
 }
 
 /** Parse a requirements value that may arrive as a JSON string or already-decoded object. */

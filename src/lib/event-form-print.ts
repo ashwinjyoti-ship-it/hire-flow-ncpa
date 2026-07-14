@@ -100,7 +100,7 @@ const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
   { key: "security", label: "Security Notes" },
   { key: "housekeeping", label: "Housekeeping" },
   { key: "crew_cards", label: "No. of Crew Cards" },
-  { key: "licenses_status", label: "Licences — Received" },
+  { key: "licenses_status", label: "Licences — Required" },
   { key: "licenses", label: "Licence Types (PPL/IPRS etc.)" },
   { key: "stage_setup", label: "Stage Setup" },
   { key: "foyer_setup", label: "Foyer Setup" },

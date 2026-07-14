@@ -3,6 +3,7 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../../worker/lib/catering-meals";
+import { withDefaultVenueRequirements } from "../../lib/event-edit-form";
 import { useLookups } from "../../lib/use-lookups";
 
 type RequirementsValue = Record<string, unknown>;
@@ -56,7 +57,7 @@ function SubsectionTitle({ children }: { children: React.ReactNode }) {
 /** Venue-scoped requirements fields (same set for every venue booking). */
 export function RequirementsFields({ value, onChange }: RequirementsFieldsProps) {
   const { data: lookups } = useLookups();
-  const reqs = value ?? {};
+  const reqs = withDefaultVenueRequirements(value);
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
 
   const loadersRequired = isYes(reqs.loaders_required);
@@ -284,14 +285,13 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
           <Field label="No. of Crew Cards">
             <input type="number" min={0} value={(reqs.crew_cards as string) ?? ""} onChange={(e) => setReq("crew_cards", e.target.value || null)} className="carved input" />
           </Field>
-          <Field label="Licences — Received">
+          <Field label="Licences — Required">
             <select
               value={(reqs.licenses_status as string) ?? ""}
               onChange={(e) => setReq("licenses_status", e.target.value || null)}
               className="carved input"
             >
-              <option value="">Select…</option>
-              <option value="Not received">Not received</option>
+              <option value="Not required">Not required</option>
               <option value="Received">Received</option>
             </select>
           </Field>

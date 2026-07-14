@@ -81,7 +81,7 @@ function formatReviewLabel(key: string): string {
     crew_cards: "No. of Crew Cards",
     liquor_licence: "Liquor Licence",
     liquor_licence_details: "Liquor Licence Details",
-    licenses_status: "Licences — Received",
+    licenses_status: "Licences — Required",
     licenses: "Licence Types",
     foyer_setup: "Foyer Setup",
     sound_call_time: "Sound Call Time",
