@@ -6,6 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { apiGet } from "../lib/api";
 import { formatDate } from "../lib/use-lookups";
+import { eventContextLines } from "../lib/event-display";
 import {
   buildEventCommandCards,
   getEventOperationsLink,
@@ -153,9 +154,14 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
                   {isExpanded ? "Collapse" : "Expand"}
                 </button>
               </div>
-              <h3 className="truncate text-base font-semibold text-ink-primary etched-deep">
-                {card.event.id ? <Link to={getEventOperationsLink(card.event.id)} className="hover:text-sage-text">{card.event.title}</Link> : card.event.title}
-              </h3>
+              <EventContextHeading
+                organisationName={card.event.organisationName}
+                eventTitle={card.event.title}
+                eventId={card.event.id}
+                linkTo={card.event.id ? getEventOperationsLink(card.event.id) : undefined}
+                primaryClassName="truncate text-base font-semibold text-ink-primary etched-deep"
+                secondaryClassName="mt-0.5 truncate text-sm font-medium text-ink-secondary etched"
+              />
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted etched">
                 {card.event.startDate && <span>{formatEventDate(card.event.startDate, card.event.endDate)}</span>}
                 {card.event.venues && <span>{card.event.venues}</span>}
@@ -309,7 +315,19 @@ function TaskCardMain({ task, today, compact, showEvent = false, showDueDate = t
         <span>{getTaskIntentLabel(task)}</span>
         {showDueDate && task.due_date && <span>Due {formatDate(task.due_date)}</span>}
         {task.assignee_name && <span>{task.assignee_name}</span>}
-        {showEvent && task.event_id && task.event_title && <Link to={getTaskWorkLink(task)} className="text-sage-text underline">{task.event_title}</Link>}
+        {showEvent && task.event_id && (
+          <span className="basis-full">
+            <EventContextHeading
+              organisationName={task.organisation_name}
+              eventTitle={task.event_title ?? "—"}
+              eventId={task.event_id}
+              linkTo={getTaskWorkLink(task)}
+              linkClassName="text-sage-text underline hover:text-sage-text"
+              primaryClassName="text-xs font-semibold etched-deep"
+              secondaryClassName="text-xs font-medium etched"
+            />
+          </span>
+        )}
       </div>
       {!compact && task.description && <p className="mt-2 text-xs text-ink-secondary etched">{task.description}</p>}
     </div>
@@ -326,6 +344,41 @@ function OpenWorkLink({ task, compact = false }: { task: TaskRow; compact?: bool
       Open work
     </Link>
   );
+}
+
+function EventContextHeading({
+  organisationName,
+  eventTitle,
+  eventId,
+  linkTo,
+  linkClassName,
+  primaryClassName,
+  secondaryClassName,
+}: {
+  organisationName: string | null | undefined;
+  eventTitle: string;
+  eventId: string | null;
+  linkTo?: string;
+  linkClassName?: string;
+  primaryClassName: string;
+  secondaryClassName: string;
+}) {
+  if (!eventId) {
+    return <span className={primaryClassName}>{eventTitle}</span>;
+  }
+
+  const { primary, secondary } = eventContextLines(organisationName, eventTitle);
+  const content = (
+    <>
+      <span className={`block truncate ${primaryClassName}`}>{primary}</span>
+      {secondary && <span className={`mt-0.5 block truncate ${secondaryClassName}`}>{secondary}</span>}
+    </>
+  );
+
+  if (linkTo) {
+    return <Link to={linkTo} className={linkClassName ?? "hover:text-sage-text"}>{content}</Link>;
+  }
+  return content;
 }
 
 function parseView(value: string | null): TaskView {

@@ -283,7 +283,7 @@ describe("frontend regression guards", () => {
 
     expect(dashboard).toContain("e.organisation_name && e.title !== e.organisation_name");
     expect(dashboard).toContain("eventDisplayName(e.title, e.organisation_name)");
-    expect(dashboard).toContain("function eventDisplayName");
+    expect(dashboard).toContain('from "../lib/event-display"');
     expect(dashboard).toContain("getEventOperationsLink(e.event_id)");
   });
 
@@ -310,6 +310,9 @@ describe("frontend regression guards", () => {
 
     expect(source).toContain('cards: "By event"');
     expect(source).toContain('return "cards";');
+    expect(source).toContain("eventContextLines");
+    expect(source).toContain("EventContextHeading");
+    expect(source).toContain("organisationName");
   });
 
   it("lets By event select the card view explicitly", () => {
