@@ -3,11 +3,14 @@ import {
   aggregateRequirements,
   buildEventRequirementsPayload,
   canCreateEvent,
+  createDefaultEventLevelRequirements,
+  createDefaultVenueRequirements,
   getEventFormDateError,
   getScheduleValidationError,
   hydrateVenueRequirements,
   organisationValueFromName,
   pickEventLevelRequirements,
+  withDefaultVenueRequirements,
 } from "./event-edit-form";
 import type { VenueBookingInputT } from "../../worker/lib/types";
 
@@ -125,6 +128,23 @@ describe("getScheduleValidationError", () => {
         }],
       },
     ])).toBeNull();
+  });
+});
+
+describe("requirement defaults", () => {
+  it("pre-fills every requirement dropdown with its negative option", () => {
+    const defaults = createDefaultVenueRequirements();
+    expect(defaults.green_rooms_required).toBe("Not Required");
+    expect(defaults.video_recording).toBe("No");
+    expect(defaults.orchestra_pit_chairs).toBe("Remove");
+    expect(defaults.licenses_status).toBe("Not required");
+    expect(defaults.catering_breakfast_required).toBe("No");
+  });
+
+  it("merges saved values over defaults without dropping explicit choices", () => {
+    expect(withDefaultVenueRequirements({ piano_required: "Yes" }).piano_required).toBe("Yes");
+    expect(withDefaultVenueRequirements({ piano_required: "Yes" }).licenses_status).toBe("Not required");
+    expect(createDefaultEventLevelRequirements().vendor_registration_form).toBe("Pending");
   });
 });
 

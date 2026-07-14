@@ -8,6 +8,8 @@ import { apiGet, apiPost, apiPut } from "../lib/api";
 import {
   buildEventRequirementsPayload,
   canCreateEvent,
+  createDefaultEventLevelRequirements,
+  createDefaultVenueRequirements,
   getEventFormDateError,
   getScheduleValidationError,
   hydrateVenueRequirements,
@@ -15,6 +17,8 @@ import {
   parseRequirements,
   pickEventLevelRequirements,
   pruneEmptyVenueBookings,
+  withDefaultEventLevelRequirements,
+  withDefaultVenueRequirements,
 } from "../lib/event-edit-form";
 import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
@@ -144,9 +148,16 @@ export function EventEditPage() {
     event_end_date: null,
     enquiry_source: null,
     priority: "medium",
-    requirements: null,
+    requirements: createDefaultEventLevelRequirements(),
     notes: null,
-    venue_bookings: [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }],
+    venue_bookings: [{
+      venue: "",
+      booking_status: "tentative",
+      number_of_shows: 1,
+      requirements: createDefaultVenueRequirements(),
+      notes: null,
+      schedule_entries: [],
+    }],
   });
   // Single-day toggle: when checked, end date is hidden and submitted as null.
   // Defaults ON (most events are single-day). Synced from existing form data on edit.
@@ -174,7 +185,7 @@ export function EventEditPage() {
           venue: vb.venue ?? "",
           booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
           number_of_shows: vb.number_of_shows ?? 1,
-          requirements: parseRequirements(vb.requirements),
+          requirements: withDefaultVenueRequirements(parseRequirements(vb.requirements)),
           notes: vb.notes ?? null,
           schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
             id: se.id,
@@ -191,9 +202,12 @@ export function EventEditPage() {
             notes: se.notes,
           })),
         }))
-      : [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }];
+      : [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: createDefaultVenueRequirements(), notes: null, schedule_entries: [] }];
     // Legacy events stored requirements only on the event — seed each empty venue booking.
-    const bookings = hydrateVenueRequirements(bookingsRaw, eventReqs);
+    const bookings = hydrateVenueRequirements(bookingsRaw, eventReqs).map((booking) => ({
+      ...booking,
+      requirements: withDefaultVenueRequirements(booking.requirements as Record<string, unknown> | null),
+    }));
 
     setForm({
       title: e.title ?? "",
@@ -208,7 +222,7 @@ export function EventEditPage() {
       event_end_date: e.event_end_date ?? null,
       enquiry_source: e.enquiry_source ?? null,
       priority: e.priority ?? "medium",
-      requirements: pickEventLevelRequirements(eventReqs),
+      requirements: withDefaultEventLevelRequirements(pickEventLevelRequirements(eventReqs)),
       notes: e.notes ?? null,
       venue_bookings: bookings,
     });
@@ -323,7 +337,14 @@ export function EventEditPage() {
   const addVenue = () => {
     setForm((f) => ({
       ...f,
-      venue_bookings: [...f.venue_bookings, { venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] }],
+      venue_bookings: [...f.venue_bookings, {
+        venue: "",
+        booking_status: "tentative",
+        number_of_shows: 1,
+        requirements: createDefaultVenueRequirements(),
+        notes: null,
+        schedule_entries: [],
+      }],
     }));
   };
   const removeVenue = (idx: number) => setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.filter((_, i) => i !== idx) }));
@@ -382,7 +403,7 @@ export function EventEditPage() {
     }));
 
   // Event-level requirements only (program officer contact). Venue fields live on each booking.
-  const reqs = (form.requirements ?? {}) as Record<string, unknown>;
+  const reqs = withDefaultEventLevelRequirements(form.requirements as Record<string, unknown> | null);
   const setReq = (key: string, value: unknown) => update({ requirements: { ...reqs, [key]: value } });
   const venueCount = form.venue_bookings.length;
   const activeRequirementsVenue = Math.min(requirementsVenueTab, Math.max(0, venueCount - 1));

@@ -1,5 +1,6 @@
 import { VENDOR_REGISTRATION_OPTIONS } from "../../../worker/lib/poc-fields";
 import { evaluatePocCompletion } from "../../../worker/lib/poc-completion";
+import { withDefaultEventLevelRequirements } from "../../lib/event-edit-form";
 
 type PocValue = Record<string, unknown>;
 
@@ -19,7 +20,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** Event-level Point of Contact fields — mirrored to the Operations checklist. */
 export function PocFields({ value, onChange }: PocFieldsProps) {
-  const reqs = value ?? {};
+  const reqs = withDefaultEventLevelRequirements(value);
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
   const poc = evaluatePocCompletion(reqs);
 

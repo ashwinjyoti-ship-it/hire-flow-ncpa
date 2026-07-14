@@ -82,7 +82,15 @@ export function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" subtitle="All active lifecycle records and work needing attention" />
+      <PageHeader
+        title="Dashboard"
+        subtitle="All active lifecycle records and work needing attention"
+        actions={(
+          <Link to="/events/new" className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover">
+            + New Event
+          </Link>
+        )}
+      />
 
       <AnnouncementBanner />
 

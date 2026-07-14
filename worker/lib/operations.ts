@@ -488,7 +488,7 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  *   req_stalls                 stalls (Yes/No)                 -> Required/Not Required
  *   req_telecasting_media      telecasting_media (Yes/No)      -> Required/Not Required
  *   no_of_crew_cards           crew_cards (number)             -> the number string
- *   licenses_status            licenses_status (dropdown)      -> Received/Not received
+ *   licenses_status            licenses_status (dropdown)      -> Received/Not required
  *   licenses                   licenses (text)                 -> licence types
  *
  * Status is re-derived via itemStatusForValue so completion rollups stay
