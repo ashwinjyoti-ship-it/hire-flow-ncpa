@@ -457,7 +457,7 @@ describe("frontend regression guards", () => {
     expect(fields).toContain('setReq("stage_setup"');
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
-    expect(fields).toContain('Field label="Interval (conditional)"');
+    expect(fields).toContain('Field label="Interval"');
     expect(fields).toContain('setReq("interval"');
     expect(fields).toContain('Field label="Digital Standee — notes"');
     expect(fields).toContain('Field label="Car Display — notes"');

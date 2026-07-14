@@ -30,18 +30,26 @@ function YesNoSelect({
   onChange,
   yesValue = "Required",
   noValue = "Not Required",
+  className = "carved input",
 }: {
   value: string;
   onChange: (v: string) => void;
   yesValue?: string;
   noValue?: string;
+  className?: string;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="carved input">
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
       <option value="">Select…</option>
       <option value={noValue}>{noValue}</option>
       <option value={yesValue}>{yesValue}</option>
     </select>
+  );
+}
+
+function SubsectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h4 className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">{children}</h4>
   );
 }
 
@@ -160,67 +168,105 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
         </div>
       </section>
       <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering / Decorator</h3>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Catering Required">
-            <YesNoSelect value={(reqs.catering_required as string) ?? ""} onChange={(v) => setReq("catering_required", v || null)} yesValue="Yes" noValue="No" />
-          </Field>
-          {cateringRequired && (
-            <>
-              <Field label="Caterer (conditional)">
-                <select value={(reqs.catering_provider as string) ?? ""} onChange={(e) => setReq("catering_provider", e.target.value || null)} className="carved input">
-                  <option value="">Select…</option>
-                  {(lookups?.lookups.caterer ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-                </select>
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering / Decorator</h3>
+
+        <div className="space-y-5">
+          <div className="space-y-4">
+            <SubsectionTitle>Catering</SubsectionTitle>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Catering Required">
+                <YesNoSelect value={(reqs.catering_required as string) ?? ""} onChange={(v) => setReq("catering_required", v || null)} yesValue="Yes" noValue="No" />
               </Field>
-              <Field label="Interval (conditional)">
-                <YesNoSelect value={(reqs.interval as string) ?? ""} onChange={(v) => setReq("interval", v || null)} yesValue="Yes" noValue="No" />
+              {cateringRequired && (
+                <>
+                  <Field label="Caterer">
+                    <select value={(reqs.catering_provider as string) ?? ""} onChange={(e) => setReq("catering_provider", e.target.value || null)} className="carved input">
+                      <option value="">Select…</option>
+                      {(lookups?.lookups.caterer ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Interval">
+                    <YesNoSelect value={(reqs.interval as string) ?? ""} onChange={(v) => setReq("interval", v || null)} yesValue="Yes" noValue="No" />
+                  </Field>
+                </>
+              )}
+            </div>
+
+            {cateringRequired && (
+              <div className="rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-4">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
+                  <p className="text-[10px] text-ink-muted etched">Select meals required, then enter pax for each.</p>
+                </div>
+                <div className="hidden gap-3 border-b border-marble-shadow/25 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]">
+                  <span>Meal</span>
+                  <span>Required</span>
+                  <span className="text-right">Pax</span>
+                </div>
+                <div className="divide-y divide-marble-shadow/20">
+                  {CATERING_MEAL_TYPES.map((meal) => {
+                    const requiredKey = cateringMealRequiredKey(meal.key);
+                    const paxKey = cateringMealPaxKey(meal.key);
+                    const mealRequired = isYes(reqs[requiredKey], "Yes");
+                    return (
+                      <div
+                        key={meal.key}
+                        className="grid gap-3 py-3 first:pt-2 last:pb-1 md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] md:items-center md:gap-3 md:px-2"
+                      >
+                        <span className="text-sm font-medium text-ink-primary etched">{meal.label}</span>
+                        <label className="block md:contents">
+                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched md:hidden">Required</span>
+                          <YesNoSelect
+                            value={(reqs[requiredKey] as string) ?? ""}
+                            onChange={(v) => {
+                              const next = { ...reqs, [requiredKey]: v || null };
+                              if (v !== "Yes") next[paxKey] = null;
+                              onChange(next);
+                            }}
+                            yesValue="Yes"
+                            noValue="No"
+                          />
+                        </label>
+                        <label className="block md:contents">
+                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched md:hidden">Pax</span>
+                          {mealRequired ? (
+                            <input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={(reqs[paxKey] as string) ?? ""}
+                              onChange={(e) => setReq(paxKey, e.target.value || null)}
+                              className="carved input w-full max-w-[5.5rem] justify-self-end text-right tabular-nums md:w-full"
+                            />
+                          ) : (
+                            <span className="hidden justify-self-end text-xs text-ink-muted etched md:block">—</span>
+                          )}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-marble-shadow/30 pt-5">
+            <SubsectionTitle>Decorator</SubsectionTitle>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="Decorator Required">
+                <YesNoSelect value={(reqs.decorator_required as string) ?? ""} onChange={(v) => setReq("decorator_required", v || null)} yesValue="Yes" noValue="No" />
               </Field>
-              {CATERING_MEAL_TYPES.map((meal) => {
-                const requiredKey = cateringMealRequiredKey(meal.key);
-                const paxKey = cateringMealPaxKey(meal.key);
-                const mealRequired = isYes(reqs[requiredKey], "Yes");
-                return (
-                  <div key={meal.key} className="contents">
-                    <Field label={meal.label}>
-                      <YesNoSelect
-                        value={(reqs[requiredKey] as string) ?? ""}
-                        onChange={(v) => {
-                          const next = { ...reqs, [requiredKey]: v || null };
-                          if (v !== "Yes") next[paxKey] = null;
-                          onChange(next);
-                        }}
-                        yesValue="Yes"
-                        noValue="No"
-                      />
-                    </Field>
-                    {mealRequired && (
-                      <Field label={`${meal.label} — No. of Pax`}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={(reqs[paxKey] as string) ?? ""}
-                          onChange={(e) => setReq(paxKey, e.target.value || null)}
-                          className="carved input"
-                        />
-                      </Field>
-                    )}
-                  </div>
-                );
-              })}
-            </>
-          )}
-          <Field label="Decorator">
-            <YesNoSelect value={(reqs.decorator_required as string) ?? ""} onChange={(v) => setReq("decorator_required", v || null)} yesValue="Yes" noValue="No" />
-          </Field>
-          {decoratorRequired && (
-            <Field label="Decorator Name (conditional)">
-              <select value={(reqs.decorator_name as string) ?? ""} onChange={(e) => setReq("decorator_name", e.target.value || null)} className="carved input">
-                <option value="">Select…</option>
-                {(lookups?.lookups.decorator ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
-              </select>
-            </Field>
-          )}
+              {decoratorRequired && (
+                <Field label="Decorator Name">
+                  <select value={(reqs.decorator_name as string) ?? ""} onChange={(e) => setReq("decorator_name", e.target.value || null)} className="carved input">
+                    <option value="">Select…</option>
+                    {(lookups?.lookups.decorator ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
+          </div>
         </div>
       </section>
       <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
