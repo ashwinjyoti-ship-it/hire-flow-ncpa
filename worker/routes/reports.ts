@@ -169,6 +169,12 @@ function briefWorkbook(content: BriefContent) {
       ...s.risk_radar.blocked_items.map((b) => ({ Risk: "Blocked checklist item", Item: b.label, Detail: `${b.event_title} (${b.module} · ${b.section})`, Date: "" })),
       ...s.risk_radar.overdue_instalments.map((t) => ({ Risk: "Overdue payment follow-up", Item: t.title, Detail: t.event_title ?? "", Date: t.due_date ?? "" })),
       ...s.risk_radar.unsigned_confirmations.map((e) => ({ Risk: "Unsigned confirmation", Item: e.event_title, Detail: e.confirmation_status ?? "none", Date: e.event_start_date ?? "" })),
+      ...s.risk_radar.poc_incomplete.map((e) => ({
+        Risk: "POC incomplete",
+        Item: e.event_title,
+        Detail: `${e.filled_count}/${e.total_count} — ${e.missing_labels.join(", ")}`,
+        Date: e.event_start_date ?? "",
+      })),
     ]), "Risk Radar");
     utils.book_append_sheet(wb, utils.json_to_sheet(s.overdue.oldest.map((t) => ({
       Task: t.title, Priority: t.priority, Due: t.due_date ?? "", "Days Overdue": t.days_overdue, Event: t.event_title ?? "", Assignee: t.assignee_name ?? "Unassigned",

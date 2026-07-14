@@ -61,9 +61,21 @@ const S = {
   link: "color:#2f2c27;text-decoration:underline;text-decoration-color:#a8b39c;",
 };
 
-function eventLink(baseUrl: string, id: string | null | undefined, title: string | null | undefined): string {
+function eventLink(
+  baseUrl: string,
+  id: string | null | undefined,
+  title: string | null | undefined,
+  tab?: string,
+  fieldKey?: string,
+): string {
   const t = esc(title ?? "—");
-  return id ? `<a href="${esc(baseUrl)}/events/${esc(id)}" style="${S.link}">${t}</a>` : t;
+  if (!id) return t;
+  const params = new URLSearchParams();
+  if (tab) params.set("tab", tab);
+  if (fieldKey) params.set("field", fieldKey);
+  const query = params.toString();
+  const href = `${baseUrl}/events/${id}${query ? `?${query}` : ""}`;
+  return `<a href="${esc(href)}" style="${S.link}">${t}</a>`;
 }
 
 function section(title: string, inner: string): string {
@@ -288,6 +300,18 @@ function renderMorningEmail(s: MorningBriefContent, baseUrl: string): string {
           ]),
         )}`
       : "",
+    r.poc_incomplete.length
+      ? `${emailSubsection(`Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})`)}${emailRecordList(
+          ["Event", "Organisation", "Starts", "POC", "Still needed"],
+          r.poc_incomplete.map((e) => [
+            eventLink(baseUrl, e.event_id, e.event_title, "operations", "poc_name"),
+            esc(e.organisation_name ?? "—"),
+            fmtDate(e.event_start_date),
+            `<span style="${S.bad}font-weight:700;">${e.filled_count}/${e.total_count}</span>`,
+            esc(e.missing_labels.join(", ")),
+          ]),
+        )}`
+      : "",
   ].filter(Boolean).join("");
 
   return [
@@ -446,7 +470,7 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
 
   const r = s.risk_radar;
   const riskInner =
-    r.low_readiness.length + r.blocked_items.length + r.overdue_instalments.length + r.unsigned_confirmations.length === 0
+    r.low_readiness.length + r.blocked_items.length + r.overdue_instalments.length + r.unsigned_confirmations.length + r.poc_incomplete.length === 0
       ? `<p style="${S.good};font-size:13px;font-family:Georgia,serif;">No risks on the radar.</p>`
       : [
           r.low_readiness.length
@@ -470,6 +494,16 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
             ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Confirmed events without a signed confirmation (${r.unsigned_confirmations.length})</p>` +
               table(["Event", "Organisation", "Starts", "Confirmation"], r.unsigned_confirmations.map((e) => [
                 eventLink(baseUrl, e.event_id, e.event_title), esc(e.organisation_name ?? "—"), fmtDate(e.event_start_date), esc((e.confirmation_status ?? "none").replace(/_/g, " ")),
+              ]))
+            : "",
+          r.poc_incomplete.length
+            ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})</p>` +
+              table(["Event", "Organisation", "Starts", "POC", "Still needed"], r.poc_incomplete.map((e) => [
+                eventLink(baseUrl, e.event_id, e.event_title, "operations", "poc_name"),
+                esc(e.organisation_name ?? "—"),
+                fmtDate(e.event_start_date),
+                `<span style="${S.bad}">${e.filled_count}/${e.total_count}</span>`,
+                esc(e.missing_labels.join(", ")),
               ]))
             : "",
         ].join("");

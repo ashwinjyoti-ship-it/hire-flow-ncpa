@@ -12,6 +12,7 @@
  * All dates are Asia/Kolkata; UTC timestamps are shifted by +330 minutes.
  */
 import { IST_OFFSET_MINUTES, istToday, type ReportTask, type ScheduledEntry } from "./daily-report";
+import { listEventsWithIncompletePoc } from "./poc-completion";
 
 export type BriefType = "morning" | "evening";
 
@@ -175,6 +176,13 @@ export interface MorningBriefContent {
     blocked_items: Array<{ event_id: string; event_title: string; label: string; section: string; module: string }>;
     overdue_instalments: ReportTask[];
     unsigned_confirmations: Array<EventRef & { event_start_date: string | null; confirmation_status: string | null }>;
+    poc_incomplete: Array<EventRef & {
+      event_start_date: string | null;
+      status: string;
+      filled_count: number;
+      total_count: number;
+      missing_labels: string[];
+    }>;
   };
   overdue: {
     total: number;
@@ -268,6 +276,8 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
      ORDER BY e.event_start_date LIMIT 10`
   ).bind(date, addDaysIso(date, 14)).all<MorningBriefContent["risk_radar"]["unsigned_confirmations"][number]>();
 
+  const poc_incomplete = await listEventsWithIncompletePoc(db, { limit: 10 });
+
   // -- Overdue, bucketed so it never overwhelms ---------------------------
   const { results: overdueRows } = await db.prepare(
     `${BRIEF_TASK_SELECT}
@@ -334,7 +344,7 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
     decisions,
     today_schedule,
     team_plan,
-    risk_radar: { low_readiness, blocked_items, overdue_instalments, unsigned_confirmations },
+    risk_radar: { low_readiness, blocked_items, overdue_instalments, unsigned_confirmations, poc_incomplete },
     overdue: {
       total: withAge.length,
       buckets,

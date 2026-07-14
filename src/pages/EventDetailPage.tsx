@@ -559,6 +559,7 @@ export function EventDetailPage() {
           canEdit={canUpdateChecklist}
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
+          pocCompletion={showPocAlert ? pocCompletion : undefined}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
       )}
@@ -964,6 +965,7 @@ function ChecklistModuleView({
   isSaving,
   focusedFieldKey,
   finalShowDate,
+  pocCompletion,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
@@ -971,6 +973,7 @@ function ChecklistModuleView({
   isSaving: boolean;
   focusedFieldKey: string | null;
   finalShowDate: string | null;
+  pocCompletion?: PocCompletionStatus;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -993,6 +996,16 @@ function ChecklistModuleView({
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
+            {section === "Point of Contact" && pocCompletion && !pocCompletion.complete && (
+              <div className="mb-4 rounded-xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/10 px-3 py-2 text-xs text-ink-secondary etched">
+                <span className="font-semibold text-status-awaitingApproval">
+                  {pocCompletion.filledCount}/{pocCompletion.totalCount} fields complete
+                </span>
+                {pocCompletion.missingLabels.length > 0 && (
+                  <span> — still needed: {pocCompletion.missingLabels.join(", ")}</span>
+                )}
+              </div>
+            )}
             <div className="grid gap-3 md:grid-cols-2">
               {visibleItems.map((item) => (
                 <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />

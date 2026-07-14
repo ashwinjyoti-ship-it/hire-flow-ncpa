@@ -44,6 +44,7 @@ describe("task workflow helpers", () => {
   it("classifies workflow families from source rules and task titles", () => {
     expect(getWorkflowFamily(task({ id: "a", title: "Approval follow up", source_rule: "approval_followup" }))).toBe("beforeConfirmation");
     expect(getWorkflowFamily(task({ id: "b", title: "Send confirmation letter" }))).toBe("beforeConfirmation");
+    expect(getWorkflowFamily(task({ id: "poc", title: "Complete Point of Contact", source_rule: "poc_incomplete" }))).toBe("beforeConfirmation");
     expect(getWorkflowFamily(task({ id: "c", title: "Collect installment 2" }))).toBe("payments");
     expect(getWorkflowFamily(task({ id: "d", title: "OnStage technical sheet" }))).toBe("operations");
     expect(getWorkflowFamily(task({ id: "e", title: "Accounts file status" }))).toBe("accounts");

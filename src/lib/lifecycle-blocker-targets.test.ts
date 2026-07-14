@@ -50,6 +50,12 @@ describe("BLOCKER_TARGETS", () => {
     )) {
       emitted.add(blocker);
     }
+    for (const blocker of blockersForTransition(
+      event({ confirmation_status: "signed_received", costing_email: "Yes", payment_status: "Completed", poc_complete: false }),
+      "confirmed",
+    )) {
+      emitted.add(blocker);
+    }
 
     const informational = "Approved is only used for VFH events.";
     for (const blocker of emitted) {

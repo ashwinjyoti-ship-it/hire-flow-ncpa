@@ -83,6 +83,61 @@ export async function evaluatePocCompletionForEvent(db: D1Database, eventId: str
   return evaluatePocCompletion(values);
 }
 
+export type PocIncompleteEventRef = {
+  event_id: string;
+  event_title: string;
+  organisation_name: string | null;
+  event_start_date: string | null;
+  status: string;
+  filled_count: number;
+  total_count: number;
+  missing_labels: string[];
+};
+
+const POC_INCOMPLETE_ACTIVE_STATUSES = ["enquiry", "tentative", "approved"] as const;
+
+/** Active pipeline events missing one or more POC fields (for briefs / reports). */
+export async function listEventsWithIncompletePoc(
+  db: D1Database,
+  opts?: { limit?: number },
+): Promise<PocIncompleteEventRef[]> {
+  const limit = opts?.limit ?? 10;
+  const statusPlaceholders = POC_INCOMPLETE_ACTIVE_STATUSES.map(() => "?").join(", ");
+  const { results: events } = await db.prepare(
+    `SELECT e.id AS event_id, e.title AS event_title, o.name AS organisation_name,
+            e.event_start_date, e.status
+     FROM events e
+     LEFT JOIN organisations o ON o.id = e.organisation_id
+     WHERE e.is_archived = 0 AND e.status IN (${statusPlaceholders})
+     ORDER BY COALESCE(e.event_start_date, '9999'), e.title
+     LIMIT 200`,
+  ).bind(...POC_INCOMPLETE_ACTIVE_STATUSES).all<{
+    event_id: string;
+    event_title: string;
+    organisation_name: string | null;
+    event_start_date: string | null;
+    status: string;
+  }>();
+
+  const eventIds = (events ?? []).map((e) => e.event_id);
+  const pocValuesByEvent = await getPocFieldValuesForEvents(db, eventIds);
+  const incomplete: PocIncompleteEventRef[] = [];
+
+  for (const event of events ?? []) {
+    const poc = evaluatePocCompletion(pocValuesByEvent.get(event.event_id) ?? {});
+    if (!poc.complete) {
+      incomplete.push({
+        ...event,
+        filled_count: poc.filledCount,
+        total_count: poc.totalCount,
+        missing_labels: poc.missingLabels,
+      });
+    }
+  }
+
+  return incomplete.slice(0, limit);
+}
+
 export async function getPocFieldValuesForEvents(
   db: D1Database,
   eventIds: string[],

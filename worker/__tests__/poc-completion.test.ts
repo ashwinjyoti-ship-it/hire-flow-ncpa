@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluatePocCompletion,
   isPocFieldValueFilled,
+  listEventsWithIncompletePoc,
   mergePocValues,
   POC_CONFIRMATION_BLOCKER,
 } from "../../worker/lib/poc-completion";
@@ -53,5 +54,52 @@ describe("poc completion", () => {
 
   it("uses the confirmation blocker copy requested by ops", () => {
     expect(POC_CONFIRMATION_BLOCKER).toBe("POC not filled, cannot confirm.");
+  });
+
+  it("lists active pipeline events with incomplete POC for briefs", async () => {
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() { return this; },
+          async all() {
+            if (sql.includes("FROM events e") && sql.includes("e.status IN")) {
+              return {
+                results: [
+                  { event_id: "ev_full", event_title: "Full POC", organisation_name: "Acme", event_start_date: "2026-08-01", status: "tentative" },
+                  { event_id: "ev_gap", event_title: "Gap POC", organisation_name: "Beta", event_start_date: "2026-08-02", status: "approved" },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items") && sql.includes("event_id IN")) {
+              return {
+                results: [
+                  { event_id: "ev_full", field_key: "poc_name", value: "A" },
+                  { event_id: "ev_full", field_key: "poc_contact_number", value: "1" },
+                  { event_id: "ev_full", field_key: "poc_email", value: "a@b.c" },
+                  { event_id: "ev_full", field_key: "bank_details", value: "bank" },
+                  { event_id: "ev_full", field_key: "gst_no", value: "gst" },
+                  { event_id: "ev_full", field_key: "tan_no", value: "tan" },
+                  { event_id: "ev_full", field_key: "pan_no", value: "pan" },
+                  { event_id: "ev_full", field_key: "signing_authority_address", value: "addr" },
+                  { event_id: "ev_full", field_key: "courier_address", value: "courier" },
+                  { event_id: "ev_full", field_key: "vendor_registration_form", value: "Received" },
+                  { event_id: "ev_gap", field_key: "poc_name", value: "Only name" },
+                ],
+              };
+            }
+            if (sql.includes("SELECT id, requirements FROM events WHERE id IN")) {
+              return { results: [{ id: "ev_full", requirements: null }, { id: "ev_gap", requirements: null }] };
+            }
+            return { results: [] };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const rows = await listEventsWithIncompletePoc(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.event_id).toBe("ev_gap");
+    expect(rows[0]?.filled_count).toBe(1);
+    expect(rows[0]?.missing_labels.length).toBeGreaterThan(0);
   });
 });
