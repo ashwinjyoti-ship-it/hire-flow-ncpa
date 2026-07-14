@@ -239,6 +239,9 @@ function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_fiel
   }
 
   const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
+  if (task.source_rule === "tds_send_to_accounts" || haystack.includes("tds certificate")) {
+    return { module: "accounts", fieldKey: "tds_certificate_sent_to_accounts" };
+  }
   if (haystack.includes("account") || haystack.includes("ledger") || haystack.includes("tds") || haystack.includes("tax") || haystack.includes("refund")) {
     return { module: "accounts", fieldKey: "final_file_received" };
   }

@@ -1,7 +1,7 @@
 /**
  * Checklist template definitions — verbatim from:
  *   - Event Operations Accounts Forms v2.1.xlsx → "Event Operations Checklist" (14 sections)
- *   - Event Operations Accounts Forms v2.1.xlsx → "Accounts Tracking" (3 sections)
+ *   - Event Operations Accounts Forms v2.1.xlsx → "Accounts Tracking"
  *   - build_forms.py Agent Guide (state machines + conditional rules)
  *
  * Each definition becomes a row in checklist_definitions and is instantiated
@@ -142,12 +142,11 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },
   { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
 
-  // ===== ACCOUNTS TRACKING CHECKLIST (3 sections) =====
-  // Note: 3-day notification rule on file_sent_to_accounts.
+  // ===== ACCOUNTS TRACKING CHECKLIST =====
+  // Note: 3-day follow-up is automatic via accounts_file task on file_sent_to_accounts.
 
   // A1. FILE TRACKING
   { module: "accounts", section: "File Tracking", field_key: "file_sent_to_accounts", label: "File Sent to Accounts — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Final File is Received" } },
-  { module: "accounts", section: "File Tracking", field_key: "notify_after_3_days", label: "Notify After 3 Days?", field_type: "computed", is_computed: true, default_value: "Yes" },
   { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_1", label: "File Received Back — Edit 1", field_type: "dropdown", options: ["Pending", "Received"], default_value: "Pending" },
   { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_2", label: "File Received Back — Edit 2", field_type: "dropdown", options: ["Pending", "Received"], default_value: "Pending" },
   { module: "accounts", section: "File Tracking", field_key: "final_file_received", label: "Final File Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
@@ -156,17 +155,22 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "accounts", section: "Payment & Refund", field_key: "security_deposit_refund", label: "Security Deposit Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
   { module: "accounts", section: "Payment & Refund", field_key: "box_office_collection_refund", label: "Box Office Collection Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
   { module: "accounts", section: "Payment & Refund", field_key: "payment_advice", label: "Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
-  { module: "accounts", section: "Payment & Refund", field_key: "tds_certificate_sent_to_client", label: "TDS Certificate — Sent to Client?", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "accounts", section: "Payment & Refund", field_key: "tds_certificate_refund_and_payment_advice", label: "TDS Certificate Refund & Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
   { module: "accounts", section: "Payment & Refund", field_key: "payment_ledger", label: "Payment Ledger", field_type: "dropdown", options: ["Requested", "Received"], default_value: "Requested" },
 
   // B. TO CLIENT (outbound documents)
   { module: "accounts", section: "To Client", field_key: "tax_invoice_sent", label: "Tax Invoice — Sent?", field_type: "dropdown", options: ["Not Sent", "Sent"], default_value: "Not Sent" },
-  { module: "accounts", section: "To Client", field_key: "box_office_statement_sent", label: "Box Office Statement — Sent?", field_type: "dropdown", options: ["Not Sent", "Sent"], default_value: "Not Sent" },
+  { module: "accounts", section: "To Client", field_key: "box_office_statement_sent", label: "Box Office Statement — Sent?", field_type: "dropdown", options: ["Not Sent", "Sent", "Not Applicable"], default_value: "Not Sent" },
   { module: "accounts", section: "To Client", field_key: "payment_advice_received_from_client", label: "Payment Advice — Received from Client?", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "accounts", section: "To Client", field_key: "tds_certificate_from_client", label: "TDS Certificate — From Client", field_type: "dropdown", options: ["N.A.", "Awaiting", "Received"], default_value: "N.A." },
   { module: "accounts", section: "To Client", field_key: "tds_payment_and_advice_sent", label: "TDS Payment & Advice — Sent?", field_type: "dropdown", options: ["Awaiting", "Sent"], default_value: "Awaiting" },
   { module: "accounts", section: "To Client", field_key: "payment_ledger_sent", label: "Payment Ledger — Sent?", field_type: "dropdown", options: ["Requested", "Sent"], default_value: "Requested" },
+
+  // B2. TDS CERTIFICATE PROCESSING (client ↔ accounts) — visible when TDS from client = Received
+  { module: "accounts", section: "TDS Certificate Processing", field_key: "tds_received_from_client_date", label: "TDS Received from Client — Date", field_type: "date", visibility_rule: "onlyWhen(tds_certificate_from_client == Received)", triggers_task: { rule: "tds_send_to_accounts", title: "Send TDS certificate to Accounts", due_after_days: 0, complete_when: "TDS Certificate Sent to Accounts date is set" } },
+  { module: "accounts", section: "TDS Certificate Processing", field_key: "tds_certificate_sent_to_accounts", label: "TDS Certificate Sent to Accounts — Date", field_type: "date", visibility_rule: "onlyWhen(tds_certificate_from_client == Received)" },
+  { module: "accounts", section: "TDS Certificate Processing", field_key: "tds_accounts_refund_or_action", label: "Accounts Refund / Payment Action", field_type: "dropdown", options: ["Awaiting", "Refunded", "Payment Processed", "N/A"], default_value: "Awaiting", visibility_rule: "onlyWhen(tds_certificate_from_client == Received)" },
+  { module: "accounts", section: "TDS Certificate Processing", field_key: "tds_proof_sent_to_client", label: "Proof Sent to Client", field_type: "dropdown", options: ["Not Sent", "Sent"], default_value: "Not Sent", visibility_rule: "onlyWhen(tds_certificate_from_client == Received)" },
 
   // C. ACCOUNTS STATUS SUMMARY (computed, read-only)
   { module: "accounts", section: "Accounts Status Summary", field_key: "accounts_file_status", label: "Accounts File Status", field_type: "computed", is_computed: true, default_value: "Open" },
