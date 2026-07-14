@@ -451,6 +451,7 @@ describe("frontend regression guards", () => {
   it("keeps MoM-related event form fields for stage setup, interval, and officer contact", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
     const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
+    const pocFields = readFileSync(resolve(root, "src/components/event-form/PocFields.tsx"), "utf8");
 
     expect(fields).toContain('Field label="Stage Setup"');
     expect(fields).toContain('setReq("stage_setup"');
@@ -461,6 +462,9 @@ describe("frontend regression guards", () => {
     expect(fields).toContain('Field label="Digital Standee — notes"');
     expect(fields).toContain('Field label="Car Display — notes"');
     expect(eventForm).toContain("RequirementsFields");
+    expect(eventForm).toContain("PocFields");
+    expect(pocFields).toContain("vendor_registration_form");
+    expect(pocFields).toContain("VENDOR_REGISTRATION_OPTIONS");
     expect(eventForm).toContain("hydrateVenueRequirements");
     expect(eventForm).toContain("updateVenueRequirements");
   });

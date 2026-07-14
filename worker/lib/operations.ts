@@ -3,6 +3,7 @@ import { eventActivity } from "./audit";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { makeId } from "./id";
+import { POC_FIELD_KEYS } from "./poc-fields";
 import { canConfirm, canTransition, STATUS_LABELS, type EventStatus } from "./state-machine";
 
 export type ChecklistModule = "operations" | "accounts";
@@ -66,7 +67,7 @@ export type LifecycleReadiness = {
 };
 
 const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received"]);
-const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable"]);
+const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable", "no applicable"]);
 // Negative / placeholder defaults. A checklist field sitting at one of these is
 // "not done" (not_started), not "in progress" — it only counts as done once the
 // user marks a positive value. Covers every dropdown default in the seed.
@@ -279,6 +280,7 @@ export async function updateChecklistItem(args: {
   // JSON so the Add/Edit Event form reflects Operations-tab changes. No-op for
   // non-requirement fields (and for req_sound, which is form->checklist only).
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
+  await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
   await recalculateEventCompletion(db, current.event_id);
@@ -691,6 +693,87 @@ export async function syncRequirementsFromChecklistItem(
       "UPDATE venue_bookings SET requirements = ?, updated_at = ? WHERE id = ? AND event_id = ?"
     ).bind(JSON.stringify(venueReqs), now, booking.id, eventId).run();
   }
+}
+
+/**
+ * Mirror the event form's Point of Contact step into the Operations checklist.
+ * Values are copied 1:1 by field_key. Where the form is silent we leave any
+ * manual Operations-tab entry in place.
+ */
+export async function syncPocChecklist(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare("SELECT requirements FROM events WHERE id = ?")
+    .bind(eventId).first<{ requirements: string | null }>();
+  const reqs = parseRequirementsJson(row?.requirements);
+  const str = (v: unknown): string | null => {
+    const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+    return s.length ? s : null;
+  };
+
+  const { results: definitions } = await db.prepare(
+    `SELECT field_key, field_type FROM checklist_definitions WHERE field_key IN (${POC_FIELD_KEYS.map(() => "?").join(", ")})`
+  ).bind(...POC_FIELD_KEYS).all<{ field_key: string; field_type: string }>();
+  const fieldTypes = new Map((definitions ?? []).map((def) => [def.field_key, def.field_type]));
+
+  const now = new Date().toISOString();
+  for (const fieldKey of POC_FIELD_KEYS) {
+    const value = str(reqs[fieldKey]);
+    if (value === null) continue;
+    const fieldType = fieldTypes.get(fieldKey) ?? "text";
+    const status = itemStatusForValue({ field_type: fieldType, value });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, last_updated_at = ?
+       WHERE event_id = ? AND field_key = ?`
+    ).bind(value, status, now, eventId, fieldKey).run();
+  }
+  await recalculateEventCompletion(db, eventId);
+}
+
+/**
+ * Reverse-sync Point of Contact checklist edits into events.requirements so the
+ * add/edit event form reflects Operations-tab changes.
+ */
+export async function syncPocFromChecklistItem(
+  db: D1Database,
+  eventId: string,
+  fieldKey: string,
+  value: string | null,
+): Promise<void> {
+  if (!(POC_FIELD_KEYS as readonly string[]).includes(fieldKey)) return;
+  const trimmed = value == null ? "" : String(value).trim();
+  if (!trimmed.length) return;
+
+  const row = await db.prepare("SELECT requirements FROM events WHERE id = ?")
+    .bind(eventId).first<{ requirements: string | null }>();
+  if (!row) return;
+
+  const reqs = parseRequirementsJson(row.requirements);
+  reqs[fieldKey] = trimmed;
+  const now = new Date().toISOString();
+  await db.prepare("UPDATE events SET requirements = ?, updated_at = ? WHERE id = ?")
+    .bind(JSON.stringify(reqs), now, eventId).run();
+}
+
+/** Merge checklist POC values into requirements for read/edit hydration. */
+export async function mergePocRequirementsForRead(
+  db: D1Database,
+  eventId: string,
+  requirements: string | null | undefined,
+): Promise<Record<string, unknown>> {
+  const reqs = parseRequirementsJson(requirements);
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN (${POC_FIELD_KEYS.map(() => "?").join(", ")})`
+  ).bind(eventId, ...POC_FIELD_KEYS).all<{ field_key: string; value: string | null }>();
+
+  for (const row of results ?? []) {
+    const current = reqs[row.field_key];
+    const hasFormValue = current != null && !(typeof current === "string" && current.trim() === "");
+    if (hasFormValue) continue;
+    const checklistValue = row.value?.trim();
+    if (checklistValue) reqs[row.field_key] = checklistValue;
+  }
+  return reqs;
 }
 
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {
