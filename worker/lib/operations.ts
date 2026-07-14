@@ -1,6 +1,14 @@
 import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
-import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey, isCateringMealPaxKey } from "./catering-meals";
+import { isCateringMealPaxKey } from "./catering-meals";
+import {
+  buildTimingsWithAcText,
+  buildTimingsWithoutAcText,
+  formatHoursTotal,
+  sumAcMinutes,
+  sumWithoutAcMinutes,
+  type ScheduleTimingRow,
+} from "./timing-sync";
 import {
   deriveExecutionSectionStatus,
   EXECUTION_SECTIONS,
@@ -86,7 +94,7 @@ const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not appli
 // user marks a positive value. Covers every dropdown default in the seed.
 const NOT_DONE_VALUES = new Set([
   "no", "not sent", "incomplete", "not required", "pending", "awaiting",
-  "requested", "open", "not ready", "not recorded", "not started",
+  "requested", "open", "not ready", "not recorded", "not started", "not received",
 ]);
 const IN_PROGRESS_VALUES = new Set(["captured on form"]);
 
@@ -397,25 +405,6 @@ export async function syncNocDependentChecklist(
   }
 }
 
-function deriveCateringTypeFromRequirements(reqs: Record<string, unknown>): string | null {
-  const labels = CATERING_MEAL_TYPES
-    .filter((meal) => reqs[cateringMealRequiredKey(meal.key)] === "Yes")
-    .map((meal) => meal.label);
-  return labels.length ? labels.join(", ") : null;
-}
-
-function deriveTotalCateringPax(reqs: Record<string, unknown>): string | null {
-  let sum = 0;
-  let any = false;
-  for (const meal of CATERING_MEAL_TYPES) {
-    const pax = reqs[cateringMealPaxKey(meal.key)];
-    if (pax == null || (typeof pax === "string" && pax.trim() === "")) continue;
-    sum += Number(pax) || 0;
-    any = true;
-  }
-  return any ? String(sum) : null;
-}
-
 /** Checklist fields that only apply when Approval Required? = Required (VFH). */
 export const APPROVAL_DEPENDENT_FIELD_KEYS = [
   "approval_sent_on",
@@ -646,13 +635,57 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
     { fieldKey: "caterer_name", fieldType: "text", value: str(reqs.catering_provider) },
     { fieldKey: "decorator_name", fieldType: "text", value: str(reqs.decorator_name) },
-    { fieldKey: "type_of_catering", fieldType: "dropdown", value: deriveCateringTypeFromRequirements(reqs) },
-    { fieldKey: "no_of_pax", fieldType: "number", value: deriveTotalCateringPax(reqs) },
   ];
 
   for (const { fieldKey, fieldType, value } of detailUpdates) {
     if (value === null) continue;
     const status = itemStatusForValue({ field_type: fieldType, value });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, last_updated_at = ?
+       WHERE event_id = ? AND field_key = ?`
+    ).bind(value, status, now, eventId, fieldKey).run();
+  }
+  await recalculateEventCompletion(db, eventId);
+}
+
+/**
+ * Mirror venue schedule AC windows from the event form into the Operations
+ * Timings section. Multi-venue events are grouped by hall in the text blocks.
+ * Only overwrites when the form carries schedule rows with AC windows — manual
+ * ops edits are left in place when the form has no timing data yet.
+ */
+export async function syncTimingsChecklist(db: D1Database, eventId: string): Promise<void> {
+  const { results } = await db.prepare(
+    `SELECT vb.venue, se.activity_type, se.activity_date, se.start_time, se.end_time,
+            se.with_ac_start, se.with_ac_end, se.with_ac_minutes,
+            se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
+            se.notes, se.sort_order
+     FROM schedule_entries se
+     JOIN venue_bookings vb ON vb.id = se.venue_booking_id
+     WHERE se.event_id = ?
+     ORDER BY vb.sort_order, vb.rowid, se.activity_date, se.sort_order, se.rowid`
+  ).bind(eventId).all<ScheduleTimingRow>();
+
+  if (!results?.length) return;
+
+  const withAc = buildTimingsWithAcText(results);
+  const withoutAc = buildTimingsWithoutAcText(results);
+  if (!withAc && !withoutAc) return;
+
+  const now = new Date().toISOString();
+  const updates: Array<{ fieldKey: string; fieldType: string; value: string }> = [];
+  if (withAc) {
+    updates.push({ fieldKey: "timings_with_ac", fieldType: "textarea", value: withAc });
+    updates.push({ fieldKey: "ac_hours", fieldType: "computed", value: formatHoursTotal(sumAcMinutes(results)) });
+  }
+  if (withoutAc) {
+    updates.push({ fieldKey: "timings_without_ac", fieldType: "textarea", value: withoutAc });
+    updates.push({ fieldKey: "non_ac_hours", fieldType: "computed", value: formatHoursTotal(sumWithoutAcMinutes(results)) });
+  }
+
+  for (const { fieldKey, fieldType, value } of updates) {
+    const status = itemStatusForValue({ field_type: fieldType, value, is_computed: fieldType === "computed" ? 1 : 0 });
     await db.prepare(
       `UPDATE checklist_items
        SET value = ?, status = ?, last_updated_at = ?
