@@ -140,6 +140,9 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "poc_name": return `${event.orgName.split(" ")[0]} Coordinator`;
     case "poc_contact_number": return event.phone;
     case "poc_email": return event.email;
+    case "event_company_contact_name": return `${event.orgName.split(" ")[0]} Events Lead`;
+    case "event_company_contact_number": return event.phone;
+    case "event_company_email": return `events@${slug(event.orgName).slice(0, 12) || "organiser"}.example`;
     case "bank_details": return `HDFC Bank / ${event.orgName} / XXXX${event.index.toString().padStart(4, "0")}`;
     case "gst_no": return `27AA${slug(event.orgName).slice(0, 4).toUpperCase()}${1000 + event.index}Z1`;
     case "tan_no": return `MUM${10000 + event.index}A`;
