@@ -36,6 +36,7 @@ export type EventCommandCard = {
   event: {
     id: string | null;
     title: string;
+    organisationName: string | null;
     status: string | null;
     startDate: string | null;
     endDate: string | null;
@@ -123,6 +124,7 @@ export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday())
         event: {
           id: first.event_id,
           title: first.event_title ?? "Unlinked task",
+          organisationName: first.organisation_name ?? null,
           status: first.event_status,
           startDate: first.event_start_date ?? null,
           endDate: first.event_end_date ?? null,

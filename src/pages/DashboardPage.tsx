@@ -5,6 +5,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { AnnouncementBanner } from "../components/AnnouncementBanner";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { eventDisplayName } from "../lib/event-display";
 import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -169,15 +170,6 @@ function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolea
   if (task.event_status === "cancelled" || task.event_status === "regret") return false;
   if (task.event_status === "confirmed" && task.source_rule && STALE_CONFIRMED_TASK_RULES.has(task.source_rule)) return false;
   return true;
-}
-
-function eventDisplayName(title: string, organisationName: string | null): string {
-  if (!organisationName) return title;
-  const prefix = `${organisationName} - `;
-  if (title.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) {
-    return title.slice(prefix.length).trim();
-  }
-  return title;
 }
 
 function SummaryCard({ label, value, status }: { label: string; value: number; status: EventStatus }) {
