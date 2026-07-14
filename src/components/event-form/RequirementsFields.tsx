@@ -1,3 +1,8 @@
+import {
+  CATERING_MEAL_TYPES,
+  cateringMealPaxKey,
+  cateringMealRequiredKey,
+} from "../../../worker/lib/catering-meals";
 import { useLookups } from "../../lib/use-lookups";
 
 type RequirementsValue = Record<string, unknown>;
@@ -168,12 +173,41 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
                   {(lookups?.lookups.caterer ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
                 </select>
               </Field>
-              <Field label="No. of Pax (conditional)">
-                <input type="number" min={0} value={(reqs.no_of_pax as string) ?? ""} onChange={(e) => setReq("no_of_pax", e.target.value || null)} className="carved input" />
-              </Field>
               <Field label="Interval (conditional)">
                 <YesNoSelect value={(reqs.interval as string) ?? ""} onChange={(v) => setReq("interval", v || null)} yesValue="Yes" noValue="No" />
               </Field>
+              {CATERING_MEAL_TYPES.map((meal) => {
+                const requiredKey = cateringMealRequiredKey(meal.key);
+                const paxKey = cateringMealPaxKey(meal.key);
+                const mealRequired = isYes(reqs[requiredKey], "Yes");
+                return (
+                  <div key={meal.key} className="contents">
+                    <Field label={meal.label}>
+                      <YesNoSelect
+                        value={(reqs[requiredKey] as string) ?? ""}
+                        onChange={(v) => {
+                          const next = { ...reqs, [requiredKey]: v || null };
+                          if (v !== "Yes") next[paxKey] = null;
+                          onChange(next);
+                        }}
+                        yesValue="Yes"
+                        noValue="No"
+                      />
+                    </Field>
+                    {mealRequired && (
+                      <Field label={`${meal.label} — No. of Pax`}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={(reqs[paxKey] as string) ?? ""}
+                          onChange={(e) => setReq(paxKey, e.target.value || null)}
+                          className="carved input"
+                        />
+                      </Field>
+                    )}
+                  </div>
+                );
+              })}
             </>
           )}
           <Field label="Decorator">

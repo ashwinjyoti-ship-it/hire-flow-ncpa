@@ -1,3 +1,8 @@
+import {
+  CATERING_MEAL_TYPES,
+  cateringMealPaxKey,
+  cateringMealRequiredKey,
+} from "../../worker/lib/catering-meals";
 import type { EventInputT } from "../../worker/lib/types";
 import { formatDate, formatDuration } from "./use-lookups";
 
@@ -73,7 +78,6 @@ function formatReviewValue(value: unknown): string | null {
 
 function formatReviewLabel(key: string): string {
   const explicitLabels: Record<string, string> = {
-    no_of_pax: "No. of Pax",
     crew_cards: "No. of Crew Cards",
     liquor_licence: "Liquor Licence",
     liquor_licence_details: "Liquor Licence Details",
@@ -93,6 +97,10 @@ function formatReviewLabel(key: string): string {
     courier_address: "Courier Address",
     vendor_registration_form: "Vendor Registration Form",
   };
+  for (const meal of CATERING_MEAL_TYPES) {
+    explicitLabels[cateringMealRequiredKey(meal.key)] = meal.label;
+    explicitLabels[cateringMealPaxKey(meal.key)] = `${meal.label} — No. of Pax`;
+  }
   return explicitLabels[key] ?? titleCaseWords(key);
 }
 
