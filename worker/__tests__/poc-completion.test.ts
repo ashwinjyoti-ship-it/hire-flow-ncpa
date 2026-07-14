@@ -14,7 +14,7 @@ describe("poc completion", () => {
     expect(isPocFieldValueFilled("vendor_registration_form", "No Applicable")).toBe(true);
   });
 
-  it("requires all ten fields before marking complete", () => {
+  it("requires all thirteen fields before marking complete", () => {
     const partial = evaluatePocCompletion({
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
@@ -23,6 +23,7 @@ describe("poc completion", () => {
     expect(partial.complete).toBe(false);
     expect(partial.filledCount).toBe(3);
     expect(partial.missing).toContain("bank_details");
+    expect(partial.missing).toContain("event_company_contact_name");
   });
 
   it("marks complete only when every field is filled", () => {
@@ -30,6 +31,9 @@ describe("poc completion", () => {
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
       poc_email: "karina.arora@cathedral-school.com",
+      event_company_contact_name: "Ravi Shah",
+      event_company_contact_number: "9820000000",
+      event_company_email: "ravi@eventco.example",
       bank_details: "ICICI Bank",
       gst_no: "27AAATT3454F1ZI",
       tan_no: "TAN123",
@@ -76,6 +80,9 @@ describe("poc completion", () => {
                   { event_id: "ev_full", field_key: "poc_name", value: "A" },
                   { event_id: "ev_full", field_key: "poc_contact_number", value: "1" },
                   { event_id: "ev_full", field_key: "poc_email", value: "a@b.c" },
+                  { event_id: "ev_full", field_key: "event_company_contact_name", value: "Org" },
+                  { event_id: "ev_full", field_key: "event_company_contact_number", value: "2" },
+                  { event_id: "ev_full", field_key: "event_company_email", value: "org@b.c" },
                   { event_id: "ev_full", field_key: "bank_details", value: "bank" },
                   { event_id: "ev_full", field_key: "gst_no", value: "gst" },
                   { event_id: "ev_full", field_key: "tan_no", value: "tan" },

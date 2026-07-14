@@ -49,6 +49,20 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
         <Field label="Email">
           <input type="email" value={(reqs.poc_email as string) ?? ""} onChange={(e) => setReq("poc_email", e.target.value || null)} className="carved input" />
         </Field>
+      </div>
+      <h4 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Contact Name">
+          <input type="text" value={(reqs.event_company_contact_name as string) ?? ""} onChange={(e) => setReq("event_company_contact_name", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Contact Number">
+          <input type="tel" value={(reqs.event_company_contact_number as string) ?? ""} onChange={(e) => setReq("event_company_contact_number", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Email Address">
+          <input type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
+        </Field>
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
         <Field label="Bank Details">
           <textarea value={(reqs.bank_details as string) ?? ""} onChange={(e) => setReq("bank_details", e.target.value || null)} className="carved input" rows={3} />
         </Field>
