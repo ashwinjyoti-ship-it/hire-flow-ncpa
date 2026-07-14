@@ -7,6 +7,11 @@
  * Empty sections / lines render as "TBC".
  */
 
+import {
+  CATERING_MEAL_TYPES,
+  cateringMealPaxKey,
+  cateringMealRequiredKey,
+} from "../../worker/lib/catering-meals";
 import { omitEventLevelRequirements } from "./event-edit-form";
 
 export type MomScheduleEntry = {
@@ -206,6 +211,12 @@ export function getMomMissingFields(input: MomEventInput): MomMissingField[] {
   if (isYes(reqs.catering_required, "Yes")) {
     push("catering_provider", "Caterer", filled(reqs.catering_provider));
     push("interval", "Interval", filled(reqs.interval));
+    for (const meal of CATERING_MEAL_TYPES) {
+      const requiredKey = cateringMealRequiredKey(meal.key);
+      if (isYes(reqs[requiredKey], "Yes")) {
+        push(cateringMealPaxKey(meal.key), `${meal.label} — No. of Pax`, filled(reqs[cateringMealPaxKey(meal.key)]));
+      }
+    }
   }
 
   return missing;
@@ -338,15 +349,25 @@ function buildVendorLines(bookings: MomVenueBooking[], eventReqs: Record<string,
   return lines.length > 0 ? lines : [TBC];
 }
 
+function formatCateringMealPaxSummary(reqs: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  for (const meal of CATERING_MEAL_TYPES) {
+    if (!isYes(reqs[cateringMealRequiredKey(meal.key)], "Yes")) continue;
+    const pax = text(reqs[cateringMealPaxKey(meal.key)]);
+    parts.push(pax ? `${meal.label}: ${pax} pax` : `${meal.label}: ${TBC}`);
+  }
+  return parts.length > 0 ? parts.join("; ") : null;
+}
+
 function buildVendorLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
 
   if (isYes(reqs.catering_required, "Yes")) {
     const caterer = text(reqs.catering_provider) ?? TBC;
-    const pax = text(reqs.no_of_pax);
+    const mealPax = formatCateringMealPaxSummary(reqs);
     const interval = text(reqs.interval);
     let catererLine = `Caterer - ${caterer}`;
-    if (pax) catererLine += ` (${pax} pax)`;
+    if (mealPax) catererLine += ` (${mealPax})`;
     if (interval) catererLine += `. Interval: ${interval}`;
     lines.push(catererLine);
   } else if (filled(reqs.catering_required)) {

@@ -26,6 +26,10 @@ const sample = {
     house_tickets: "NCPA pass",
     catering_required: "Yes",
     catering_provider: "NCPA canteen",
+    catering_lunch_required: "Yes",
+    catering_lunch_pax: "120",
+    catering_hi_tea_required: "Yes",
+    catering_hi_tea_pax: "80",
     interval: "Yes",
     stage_setup: "Props, sofas & chairs by organisers. Black cyclorama & wings ready by 2:30pm.",
     digital_standee: "Yes",
@@ -105,6 +109,8 @@ describe("buildMomDocument", () => {
     expect(doc).toContain("2 Standees");
     expect(doc).toContain("12 chairs");
     expect(doc).toContain("Props, sofas & chairs by organisers");
+    expect(doc).toContain("Lunch: 120 pax");
+    expect(doc).toContain("Hi-Tea: 80 pax");
     expect(doc).toContain("Interval – Yes");
     expect(doc).toContain("Ms. Binaifar Bhesania – 022 66223822");
     expect(doc).toContain("Additional / undecided items:");

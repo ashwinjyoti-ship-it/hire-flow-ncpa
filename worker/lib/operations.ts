@@ -494,6 +494,8 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
  * Safe to call repeatedly (idempotent).
  */
+import { isCateringMealPaxKey } from "./catering-meals";
+
 function parseRequirementsJson(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
   try {
@@ -530,7 +532,7 @@ function aggregateRequirementSources(
         out[key] = value;
         continue;
       }
-      if (key === "crew_cards" || key === "camera_count" || key === "no_of_pax") {
+      if (key === "crew_cards" || key === "camera_count" || isCateringMealPaxKey(key)) {
         out[key] = String(Math.max(Number(current) || 0, Number(value) || 0));
         continue;
       }

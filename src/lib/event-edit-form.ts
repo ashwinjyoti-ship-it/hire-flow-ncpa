@@ -1,3 +1,4 @@
+import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
 import { getEventDateIssues } from "../../worker/lib/event-date-policy";
 
@@ -114,7 +115,7 @@ export function aggregateRequirements(
         out[key] = value;
         continue;
       }
-      if (key === "crew_cards" || key === "camera_count" || key === "no_of_pax") {
+      if (key === "crew_cards" || key === "camera_count" || isCateringMealPaxKey(key)) {
         const max = Math.max(Number(current) || 0, Number(value) || 0);
         out[key] = String(max);
         continue;

@@ -3,6 +3,11 @@
  * Print and "Export to PDF" both open this document; PDF is the browser's Save as PDF.
  */
 
+import {
+  CATERING_MEAL_TYPES,
+  cateringMealPaxKey,
+  cateringMealRequiredKey,
+} from "../../worker/lib/catering-meals";
 import { escapeHtml } from "./export";
 import { omitEventLevelRequirements } from "./event-edit-form";
 import { formatDate, formatDuration, formatTime, formatTimeRange } from "./use-lookups";
@@ -60,6 +65,11 @@ export type EventFormPrintInput = {
 const BLANK = "—";
 
 /** Ordered venue requirement fields matching the Add/Edit Event form (excludes event-level contact). */
+const CATERING_MEAL_FIELDS = CATERING_MEAL_TYPES.flatMap((meal) => [
+  { key: cateringMealRequiredKey(meal.key), label: meal.label },
+  { key: cateringMealPaxKey(meal.key), label: `${meal.label} — No. of Pax` },
+]);
+
 const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
   { key: "sound", label: "Sound Requirements" },
   { key: "sound_call_time", label: "Sound Call Time" },
@@ -82,7 +92,7 @@ const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
   { key: "liquor_licence_details", label: "Liquor Licence Details" },
   { key: "catering_required", label: "Catering Required" },
   { key: "catering_provider", label: "Caterer" },
-  { key: "no_of_pax", label: "No. of Pax" },
+  ...CATERING_MEAL_FIELDS,
   { key: "interval", label: "Interval" },
   { key: "decorator_required", label: "Decorator" },
   { key: "decorator_name", label: "Decorator Name" },
