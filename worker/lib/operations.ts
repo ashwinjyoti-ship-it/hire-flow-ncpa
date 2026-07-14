@@ -1,5 +1,11 @@
 import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
+import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey, isCateringMealPaxKey } from "./catering-meals";
+import {
+  deriveExecutionSectionStatus,
+  EXECUTION_SECTIONS,
+  shouldPreserveExecutionSectionValue,
+} from "./requirement-sections";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { makeId } from "./id";
@@ -73,15 +79,16 @@ export type LifecycleReadiness = {
   actions: LifecycleAction[];
 };
 
-const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received"]);
+const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received", "verified"]);
 const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable", "no applicable"]);
 // Negative / placeholder defaults. A checklist field sitting at one of these is
 // "not done" (not_started), not "in progress" — it only counts as done once the
 // user marks a positive value. Covers every dropdown default in the seed.
 const NOT_DONE_VALUES = new Set([
   "no", "not sent", "incomplete", "not required", "pending", "awaiting",
-  "requested", "open", "not ready", "not recorded",
+  "requested", "open", "not ready", "not recorded", "not started",
 ]);
+const IN_PROGRESS_VALUES = new Set(["captured on form"]);
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -104,6 +111,7 @@ export function itemStatusForValue(item: { field_type: string; value: string | n
   if (NOT_APPLICABLE_VALUES.has(value)) return "not_applicable";
   if (item.field_type === "dropdown" || item.field_type === "status") {
     if (DONE_VALUES.has(value)) return "completed";
+    if (IN_PROGRESS_VALUES.has(value)) return "in_progress";
     // A negative default is "not started"; only a non-default, non-done value
     // (e.g. an intermediate free-text choice) is "in progress".
     if (NOT_DONE_VALUES.has(value)) return "not_started";
@@ -286,8 +294,8 @@ export async function updateChecklistItem(args: {
 
   await syncEventFieldsFromChecklist(db, current.event_id, current.field_key, value);
   // Mirror requirement checklist edits back into the event form's requirements
-  // JSON so the Add/Edit Event form reflects Operations-tab changes. No-op for
-  // non-requirement fields (and for req_sound, which is form->checklist only).
+  // JSON so the Add/Edit Event form reflects Operations-tab changes. Section
+  // rollup rows (exec_*) are checklist-only.
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await reconcilePocTaskForEvent(db, current.event_id);
@@ -537,41 +545,15 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
 }
 
 /**
- * Sync the event form's "Requirements" step into the Operations checklist's
- * "Additional Requirements" + "Operations Details" sections. The event form is
- * the source of truth, so where the form carries a value we overwrite the
- * matching checklist row; where the form is silent (blank/null) we leave the
- * checklist untouched, preserving any value entered on the Operations tab.
+ * Sync the event form Requirements step into the Operations checklist.
  *
- * Requirements may live on each venue booking and/or as a denormalised union on
- * events.requirements. Checklist items remain event-scoped, so we aggregate
- * across venues (affirmative wins; free-text joins; numbers take max).
+ * - Six section-level rows (Event Requirements) roll up each form card.
+ * - Operations Details rows carry vendor/pax detail for coordination.
  *
- * Checklist dropdown fields only accept "Required" / "Not Required", so the
- * form's varied values (Yes/No, Keep/Remove, non-empty text for sound/piano)
- * are normalised. The form's note fields (qty/model text) are intentionally
- * not synced — they live only in the requirements JSON.
- *
- *   field_key                  source (requirements)           -> checklist value
- *   req_sound                  sound (free text)               -> Required if set
- *   req_piano                  piano_required (Yes/No)         -> Required/Not Required
- *   req_liquor_license         liquor_licence                  -> as-is
- *   req_orchestra_pit_chairs   orchestra_pit_chairs (Keep/Rm)  -> Required/Not Required
- *   req_digital_standee        digital_standee (Yes/No)        -> Required/Not Required
- *   req_car_display            car_display (Yes/No)            -> Required/Not Required
- *   req_bike_display           bike_display (Yes/No)           -> Required/Not Required
- *   req_stalls                 stalls (Yes/No)                 -> Required/Not Required
- *   req_telecasting_media      telecasting_media (Yes/No)      -> Required/Not Required
- *   no_of_crew_cards           crew_cards (number)             -> the number string
- *   licenses_status            licenses_status (dropdown)      -> Received/Not required
- *   licenses                   licenses (text)                 -> licence types
- *
- * Status is re-derived via itemStatusForValue so completion rollups stay
- * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
- * Safe to call repeatedly (idempotent).
+ * Section rows auto-set "Captured on form" when meaningful form data exists.
+ * Ops may manually promote to Verified or Not applicable; sync never
+ * overwrites those.
  */
-import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey, isCateringMealPaxKey } from "./catering-meals";
-
 function parseRequirementsJson(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
   try {
@@ -639,39 +621,25 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
     return s.length ? s : null;
   };
-  // Normalise a form control value to the checklist's Required/Not Required
-  // vocabulary. Returns null when the form is silent (leave checklist as-is).
-  const toReq = (v: unknown, yesValues: string[]): string | null => {
-    const s = str(v);
-    if (!s) return null;
-    return yesValues.includes(s) ? "Required" : "Not Required";
-  };
+
+  const now = new Date().toISOString();
+
+  for (const section of EXECUTION_SECTIONS) {
+    const derived = deriveExecutionSectionStatus(section.fieldKey, reqs);
+    const current = await db.prepare(
+      "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = ?"
+    ).bind(eventId, section.fieldKey).first<{ value: string | null }>();
+    if (shouldPreserveExecutionSectionValue(current?.value)) continue;
+    const status = itemStatusForValue({ field_type: "dropdown", value: derived });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, last_updated_at = ?
+       WHERE event_id = ? AND field_key = ?`
+    ).bind(derived, status, now, eventId, section.fieldKey).run();
+  }
 
   type Pending = { fieldKey: string; fieldType: string; value: string | null };
-  const updates: Pending[] = [
-    // Free-text fields: any non-empty entry counts as "Required".
-    { fieldKey: "req_sound", fieldType: "dropdown", value: str(reqs.sound) ? "Required" : null },
-    { fieldKey: "req_light", fieldType: "dropdown", value: str(reqs.light) ? "Required" : null },
-    { fieldKey: "req_piano", fieldType: "dropdown", value: toReq(reqs.piano_required, ["Yes"]) },
-    { fieldKey: "req_liquor_license", fieldType: "dropdown", value: toReq(reqs.liquor_licence, ["Required"]) },
-    { fieldKey: "req_orchestra_pit_chairs", fieldType: "dropdown", value: toReq(reqs.orchestra_pit_chairs, ["Keep"]) },
-    { fieldKey: "req_digital_standee", fieldType: "dropdown", value: toReq(reqs.digital_standee, ["Yes"]) },
-    { fieldKey: "req_car_display", fieldType: "dropdown", value: toReq(reqs.car_display, ["Yes"]) },
-    { fieldKey: "req_bike_display", fieldType: "dropdown", value: toReq(reqs.bike_display, ["Yes"]) },
-    { fieldKey: "req_stalls", fieldType: "dropdown", value: toReq(reqs.stalls, ["Yes"]) },
-    { fieldKey: "req_telecasting_media", fieldType: "dropdown", value: toReq(reqs.telecasting_media, ["Yes"]) },
-    { fieldKey: "req_green_rooms", fieldType: "dropdown", value: toReq(reqs.green_rooms_required, ["Required"]) },
-    { fieldKey: "req_ushers", fieldType: "dropdown", value: toReq(reqs.ushers_required, ["Required"]) },
-    { fieldKey: "req_loaders", fieldType: "dropdown", value: toReq(reqs.loaders_required, ["Required"]) },
-    { fieldKey: "req_video_recording", fieldType: "dropdown", value: toReq(reqs.video_recording, ["Yes"]) },
-    { fieldKey: "req_catering", fieldType: "dropdown", value: toReq(reqs.catering_required, ["Yes"]) },
-    { fieldKey: "req_decorator", fieldType: "dropdown", value: toReq(reqs.decorator_required, ["Yes"]) },
-    { fieldKey: "req_parking", fieldType: "dropdown", value: str(reqs.parking) ? "Required" : null },
-    { fieldKey: "req_security", fieldType: "dropdown", value: str(reqs.security) ? "Required" : null },
-    { fieldKey: "req_housekeeping", fieldType: "dropdown", value: str(reqs.housekeeping) ? "Required" : null },
-    { fieldKey: "req_stage_setup", fieldType: "dropdown", value: str(reqs.stage_setup) ? "Required" : null },
-    { fieldKey: "req_foyer_setup", fieldType: "dropdown", value: str(reqs.foyer_setup) ? "Required" : null },
-    // Operations Details: pass the raw value through.
+  const detailUpdates: Pending[] = [
     { fieldKey: "no_of_crew_cards", fieldType: "number", value: str(reqs.crew_cards) },
     { fieldKey: "licenses_status", fieldType: "dropdown", value: str(reqs.licenses_status) },
     { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
@@ -681,9 +649,8 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     { fieldKey: "no_of_pax", fieldType: "number", value: deriveTotalCateringPax(reqs) },
   ];
 
-  const now = new Date().toISOString();
-  for (const { fieldKey, fieldType, value } of updates) {
-    if (value === null) continue; // form silent — don't clobber a manual ops value
+  for (const { fieldKey, fieldType, value } of detailUpdates) {
+    if (value === null) continue;
     const status = itemStatusForValue({ field_type: fieldType, value });
     await db.prepare(
       `UPDATE checklist_items
@@ -695,36 +662,8 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
 }
 
 /**
- * Reverse-sync counterpart to syncAdditionalRequirementsChecklist: when a
- * requirement checklist field is edited on the Operations tab, reflect the
- * change into the event form's `requirements` JSON so the Add/Edit Event form
- * shows it on next open. The event form remains the source of truth; this is
- * the UX nicety that keeps the two views in step without re-typing.
- *
- * The dropdown checklist fields only carry Required/Not Required, so the value
- * is mapped back into the form field's vocabulary (Yes/No, Keep/Remove, …).
- * The round-trip is stable: every inverse value below is one that
- * syncAdditionalRequirementsChecklist accepts back as the same checklist value.
- *
- *   checklist field_key          -> form requirements key    value
- *   req_piano                    -> piano_required           Yes/No
- *   req_liquor_license           -> liquor_licence           Required/Not Required
- *   req_orchestra_pit_chairs     -> orchestra_pit_chairs     Keep/Remove
- *   req_digital_standee          -> digital_standee          Yes/No
- *   req_car_display              -> car_display              Yes/No
- *   req_bike_display             -> bike_display             Yes/No
- *   req_stalls                   -> stalls                   Yes/No
- *   req_telecasting_media        -> telecasting_media        Yes/No
- *   no_of_crew_cards             -> crew_cards               passthrough (number)
- *   licenses_status              -> licenses_status          passthrough (Received/Not received)
- *   licenses                     -> licenses                 passthrough (text)
- *
- * `req_sound` is intentionally NOT reverse-synced: the form field is free text
- * (e.g. "8-channel PA"), which the checklist cannot represent, so sound flows
- * form->checklist only. Any other fieldKey is a no-op.
- *
- * No completion recalc here — the caller (updateChecklistItem) already runs
- * recalculateEventCompletion in its cascade. Safe to call repeatedly.
+ * Reverse-sync Operations Details checklist edits into the event form.
+ * Section rollup rows (exec_*) are checklist-only and do not mirror back.
  */
 export async function syncRequirementsFromChecklistItem(
   db: D1Database,
@@ -732,25 +671,6 @@ export async function syncRequirementsFromChecklistItem(
   fieldKey: string,
   value: string | null,
 ): Promise<void> {
-  // Inverse map: checklist field_key -> { formKey, affirmative } where the
-  // form value is affirmative (or its negation) when the checklist value is
-  // "Required" (or "Not Required"). Passthrough fields use a sentinel.
-  const YES_NO: Record<string, { formKey: string; affirmative: string; negative: string }> = {
-    req_piano: { formKey: "piano_required", affirmative: "Yes", negative: "No" },
-    req_liquor_license: { formKey: "liquor_licence", affirmative: "Required", negative: "Not Required" },
-    req_orchestra_pit_chairs: { formKey: "orchestra_pit_chairs", affirmative: "Keep", negative: "Remove" },
-    req_digital_standee: { formKey: "digital_standee", affirmative: "Yes", negative: "No" },
-    req_car_display: { formKey: "car_display", affirmative: "Yes", negative: "No" },
-    req_bike_display: { formKey: "bike_display", affirmative: "Yes", negative: "No" },
-    req_stalls: { formKey: "stalls", affirmative: "Yes", negative: "No" },
-    req_telecasting_media: { formKey: "telecasting_media", affirmative: "Yes", negative: "No" },
-    req_green_rooms: { formKey: "green_rooms_required", affirmative: "Required", negative: "Not Required" },
-    req_ushers: { formKey: "ushers_required", affirmative: "Required", negative: "Not Required" },
-    req_loaders: { formKey: "loaders_required", affirmative: "Required", negative: "Not Required" },
-    req_video_recording: { formKey: "video_recording", affirmative: "Yes", negative: "No" },
-    req_catering: { formKey: "catering_required", affirmative: "Yes", negative: "No" },
-    req_decorator: { formKey: "decorator_required", affirmative: "Yes", negative: "No" },
-  };
   const PASSTHROUGH: Record<string, string> = {
     no_of_crew_cards: "crew_cards",
     licenses_status: "licenses_status",
@@ -762,18 +682,7 @@ export async function syncRequirementsFromChecklistItem(
   let formKey: string | null = null;
   let formValue: string | null = null;
 
-  if (fieldKey in YES_NO) {
-    const { formKey: fk, affirmative, negative } = YES_NO[fieldKey]!;
-    const v = normalise(value);
-    if (v === "required") {
-      formKey = fk;
-      formValue = affirmative;
-    } else if (v === "not required") {
-      formKey = fk;
-      formValue = negative;
-    }
-    // Any other/empty value: leave the form field as-is (no-op).
-  } else if (fieldKey in PASSTHROUGH) {
+  if (fieldKey in PASSTHROUGH) {
     const fk = PASSTHROUGH[fieldKey]!;
     const v = value == null ? "" : String(value).trim();
     if (v.length) {
@@ -782,7 +691,7 @@ export async function syncRequirementsFromChecklistItem(
     }
   }
 
-  if (formKey === null || formValue === null) return; // nothing to mirror
+  if (formKey === null || formValue === null) return;
 
   const row = await db.prepare("SELECT requirements FROM events WHERE id = ?")
     .bind(eventId).first<{ requirements: string | null }>();
