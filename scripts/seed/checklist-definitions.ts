@@ -99,6 +99,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
 
   // 8. ADDITIONAL REQUIREMENTS
   { module: "operations", section: "Additional Requirements", field_key: "req_sound", label: "Sound", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_light", label: "Light", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
   { module: "operations", section: "Additional Requirements", field_key: "req_piano", label: "Piano", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
   { module: "operations", section: "Additional Requirements", field_key: "req_liquor_license", label: "Liquor License", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
   { module: "operations", section: "Additional Requirements", field_key: "req_orchestra_pit_chairs", label: "Orchestra Pit Chairs", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
@@ -107,10 +108,21 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Additional Requirements", field_key: "req_bike_display", label: "Bike Display", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
   { module: "operations", section: "Additional Requirements", field_key: "req_stalls", label: "Stalls", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
   { module: "operations", section: "Additional Requirements", field_key: "req_telecasting_media", label: "Telecasting / Media", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_green_rooms", label: "Green Rooms", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_ushers", label: "Ushers", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_loaders", label: "Loaders", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_video_recording", label: "Video Recording", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_catering", label: "Catering", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_decorator", label: "Decorator", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_parking", label: "Parking", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_security", label: "Security", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_housekeeping", label: "Housekeeping", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_stage_setup", label: "Stage Setup", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
+  { module: "operations", section: "Additional Requirements", field_key: "req_foyer_setup", label: "Foyer Setup", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required" },
 
   // 9. NOC
-  { module: "operations", section: "NOC", field_key: "noc_sent_on", label: "NOC Sent On", field_type: "date" },
-  { module: "operations", section: "NOC", field_key: "noc_status", label: "NOC Status", field_type: "computed", is_computed: true, default_value: "Not Sent" },
+  { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
+  { module: "operations", section: "NOC", field_key: "noc_sent_on", label: "Date Sent", field_type: "date", visibility_rule: "onlyWhen(noc_sent == Yes)" },
 
   // 10. ONSTAGE (sequential pipeline)
   { module: "operations", section: "OnStage", field_key: "onstage_asked_client", label: "OnStage — Asked Client", field_type: "date", triggers_task: { rule: "onstage", title: "Follow up for OnStage information", due_after_days: 3, complete_when: "marked Received" } },

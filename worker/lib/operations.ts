@@ -150,6 +150,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   if (!results.length) {
     // Heal Approval dependents for existing VFH events (idempotent).
     await syncApprovalDependentChecklistFromEvent(db, eventId);
+    await syncNocDependentChecklistFromEvent(db, eventId);
     return;
   }
 
@@ -179,6 +180,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   }
   // After seeding, mark Approval dependents N/A when default is Not Required.
   await syncApprovalDependentChecklistFromEvent(db, eventId);
+  await syncNocDependentChecklistFromEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
@@ -349,6 +351,60 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
     await db.prepare("UPDATE events SET confirmation_status = 'signed_received', updated_at = ? WHERE id = ?")
       .bind(now, eventId).run();
   }
+  if (fieldKey === "noc_sent") {
+    await syncNocDependentChecklist(db, eventId, value);
+  }
+}
+
+/** NOC date only applies when NOC Sent? = Yes. */
+export const NOC_DEPENDENT_FIELD_KEYS = ["noc_sent_on"] as const;
+
+export async function syncNocDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  nocSent: string | null | undefined,
+): Promise<void> {
+  const notApplicable = normalise(nocSent) !== "yes";
+  const now = new Date().toISOString();
+  for (const fieldKey of NOC_DEPENDENT_FIELD_KEYS) {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = ?, value = CASE WHEN ? THEN value ELSE NULL END,
+           due_date = CASE WHEN ? THEN due_date ELSE NULL END,
+           completed_at = CASE WHEN ? THEN completed_at ELSE NULL END,
+           completed_by = CASE WHEN ? THEN completed_by ELSE NULL END,
+           last_updated_at = ?
+       WHERE event_id = ? AND field_key = ?`
+    ).bind(
+      notApplicable ? "not_applicable" : "not_started",
+      notApplicable ? 0 : 1,
+      notApplicable ? 0 : 1,
+      notApplicable ? 0 : 1,
+      notApplicable ? 0 : 1,
+      now,
+      eventId,
+      fieldKey,
+    ).run();
+  }
+}
+
+function deriveCateringTypeFromRequirements(reqs: Record<string, unknown>): string | null {
+  const labels = CATERING_MEAL_TYPES
+    .filter((meal) => reqs[cateringMealRequiredKey(meal.key)] === "Yes")
+    .map((meal) => meal.label);
+  return labels.length ? labels.join(", ") : null;
+}
+
+function deriveTotalCateringPax(reqs: Record<string, unknown>): string | null {
+  let sum = 0;
+  let any = false;
+  for (const meal of CATERING_MEAL_TYPES) {
+    const pax = reqs[cateringMealPaxKey(meal.key)];
+    if (pax == null || (typeof pax === "string" && pax.trim() === "")) continue;
+    sum += Number(pax) || 0;
+    any = true;
+  }
+  return any ? String(sum) : null;
 }
 
 /** Checklist fields that only apply when Approval Required? = Required (VFH). */
@@ -408,6 +464,14 @@ async function syncApprovalDependentChecklistFromEvent(db: D1Database, eventId: 
   await syncApprovalDependentChecklist(db, eventId, row.value);
 }
 
+async function syncNocDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'noc_sent'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncNocDependentChecklist(db, eventId, row.value);
+}
+
 /**
  * Mirror the event's own reference data into the Operations checklist's
  * "Event Reference" rows. These fields (event_name, event_type,
@@ -423,9 +487,9 @@ async function syncApprovalDependentChecklistFromEvent(db: D1Database, eventId: 
  *                                            "Description" carries the nature)
  *   venue          <- comma-joined venue_bookings.venue
  *
- * Only rows whose current value is NULL/empty are written, so a user's manual
- * entry is never clobbered. Status is re-derived from the new value so the
- * completion rollups stay accurate. Safe to call repeatedly (idempotent).
+ * Only rows whose current value is NULL/empty are written for event_type,
+ * nature_of_event, and venue, so manual ops edits there are preserved.
+ * event_name always follows events.title so renames stay in sync.
  */
 export async function syncEventReferenceChecklist(db: D1Database, eventId: string): Promise<void> {
   const event = await db.prepare(
@@ -450,13 +514,24 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
   const now = new Date().toISOString();
   for (const [fieldKey, value] of Object.entries(fieldToValue)) {
     if (!value) continue; // nothing to copy for this field
-    // Only update rows that are currently empty — never clobber a manual entry.
+    const status = itemStatusForValue({ field_type: "text", value });
+    if (fieldKey === "event_name") {
+      // Event title is canonical on the event row — always mirror renames into ops.
+      await db.prepare(
+        `UPDATE checklist_items
+         SET value = ?, status = ?, completed_at = COALESCE(completed_at, ?),
+             completed_by = COALESCE(completed_by, NULL), last_updated_at = ?
+         WHERE event_id = ? AND field_key = ?`
+      ).bind(value, status, now, now, eventId, fieldKey).run();
+      continue;
+    }
+    // Other reference rows: only fill when empty — never clobber manual ops edits.
     await db.prepare(
       `UPDATE checklist_items
-       SET value = ?, status = 'completed', completed_at = COALESCE(completed_at, ?),
+       SET value = ?, status = ?, completed_at = COALESCE(completed_at, ?),
            completed_by = COALESCE(completed_by, NULL), last_updated_at = ?
        WHERE event_id = ? AND field_key = ? AND (value IS NULL OR TRIM(value) = '')`
-    ).bind(value, now, now, eventId, fieldKey).run();
+    ).bind(value, status, now, now, eventId, fieldKey).run();
   }
   await recalculateEventCompletion(db, eventId);
 }
@@ -495,7 +570,7 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
  * Safe to call repeatedly (idempotent).
  */
-import { isCateringMealPaxKey } from "./catering-meals";
+import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey, isCateringMealPaxKey } from "./catering-meals";
 
 function parseRequirementsJson(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -576,6 +651,7 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
   const updates: Pending[] = [
     // Free-text fields: any non-empty entry counts as "Required".
     { fieldKey: "req_sound", fieldType: "dropdown", value: str(reqs.sound) ? "Required" : null },
+    { fieldKey: "req_light", fieldType: "dropdown", value: str(reqs.light) ? "Required" : null },
     { fieldKey: "req_piano", fieldType: "dropdown", value: toReq(reqs.piano_required, ["Yes"]) },
     { fieldKey: "req_liquor_license", fieldType: "dropdown", value: toReq(reqs.liquor_licence, ["Required"]) },
     { fieldKey: "req_orchestra_pit_chairs", fieldType: "dropdown", value: toReq(reqs.orchestra_pit_chairs, ["Keep"]) },
@@ -584,10 +660,25 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     { fieldKey: "req_bike_display", fieldType: "dropdown", value: toReq(reqs.bike_display, ["Yes"]) },
     { fieldKey: "req_stalls", fieldType: "dropdown", value: toReq(reqs.stalls, ["Yes"]) },
     { fieldKey: "req_telecasting_media", fieldType: "dropdown", value: toReq(reqs.telecasting_media, ["Yes"]) },
+    { fieldKey: "req_green_rooms", fieldType: "dropdown", value: toReq(reqs.green_rooms_required, ["Required"]) },
+    { fieldKey: "req_ushers", fieldType: "dropdown", value: toReq(reqs.ushers_required, ["Required"]) },
+    { fieldKey: "req_loaders", fieldType: "dropdown", value: toReq(reqs.loaders_required, ["Required"]) },
+    { fieldKey: "req_video_recording", fieldType: "dropdown", value: toReq(reqs.video_recording, ["Yes"]) },
+    { fieldKey: "req_catering", fieldType: "dropdown", value: toReq(reqs.catering_required, ["Yes"]) },
+    { fieldKey: "req_decorator", fieldType: "dropdown", value: toReq(reqs.decorator_required, ["Yes"]) },
+    { fieldKey: "req_parking", fieldType: "dropdown", value: str(reqs.parking) ? "Required" : null },
+    { fieldKey: "req_security", fieldType: "dropdown", value: str(reqs.security) ? "Required" : null },
+    { fieldKey: "req_housekeeping", fieldType: "dropdown", value: str(reqs.housekeeping) ? "Required" : null },
+    { fieldKey: "req_stage_setup", fieldType: "dropdown", value: str(reqs.stage_setup) ? "Required" : null },
+    { fieldKey: "req_foyer_setup", fieldType: "dropdown", value: str(reqs.foyer_setup) ? "Required" : null },
     // Operations Details: pass the raw value through.
     { fieldKey: "no_of_crew_cards", fieldType: "number", value: str(reqs.crew_cards) },
     { fieldKey: "licenses_status", fieldType: "dropdown", value: str(reqs.licenses_status) },
     { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
+    { fieldKey: "caterer_name", fieldType: "text", value: str(reqs.catering_provider) },
+    { fieldKey: "decorator_name", fieldType: "text", value: str(reqs.decorator_name) },
+    { fieldKey: "type_of_catering", fieldType: "dropdown", value: deriveCateringTypeFromRequirements(reqs) },
+    { fieldKey: "no_of_pax", fieldType: "number", value: deriveTotalCateringPax(reqs) },
   ];
 
   const now = new Date().toISOString();
@@ -653,11 +744,19 @@ export async function syncRequirementsFromChecklistItem(
     req_bike_display: { formKey: "bike_display", affirmative: "Yes", negative: "No" },
     req_stalls: { formKey: "stalls", affirmative: "Yes", negative: "No" },
     req_telecasting_media: { formKey: "telecasting_media", affirmative: "Yes", negative: "No" },
+    req_green_rooms: { formKey: "green_rooms_required", affirmative: "Required", negative: "Not Required" },
+    req_ushers: { formKey: "ushers_required", affirmative: "Required", negative: "Not Required" },
+    req_loaders: { formKey: "loaders_required", affirmative: "Required", negative: "Not Required" },
+    req_video_recording: { formKey: "video_recording", affirmative: "Yes", negative: "No" },
+    req_catering: { formKey: "catering_required", affirmative: "Yes", negative: "No" },
+    req_decorator: { formKey: "decorator_required", affirmative: "Yes", negative: "No" },
   };
   const PASSTHROUGH: Record<string, string> = {
     no_of_crew_cards: "crew_cards",
     licenses_status: "licenses_status",
     licenses: "licenses",
+    caterer_name: "catering_provider",
+    decorator_name: "decorator_name",
   };
 
   let formKey: string | null = null;

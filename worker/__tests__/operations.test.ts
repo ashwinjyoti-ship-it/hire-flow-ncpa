@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -393,10 +393,30 @@ describe("event reference checklist sync", () => {
     expect(nameUpd?.binds[0]).toBe("Ankh");
     const natureUpd = updates.find((u) => u.binds[u.binds.length - 1] === "nature_of_event");
     expect(natureUpd?.binds[0]).toBe("Hindi play, ticketed event");
-    // Only empty rows are written.
+    // event_name always mirrors title; other reference fields only fill empty rows.
     for (const u of updates) {
-      expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
+      const fieldKey = u.binds[u.binds.length - 1];
+      if (fieldKey === "event_name") {
+        expect(u.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
+      } else {
+        expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
+      }
     }
+  });
+
+  it("overwrites event_name when the event title is renamed", async () => {
+    const { db, updates } = buildDb({
+      title: "Renamed Concert",
+      eventType: "EE",
+      description: "Updated",
+      venues: ["JBT"],
+    });
+
+    await syncEventReferenceChecklist(db, "ev_ankh");
+
+    const nameUpd = updates.find((u) => u.binds[u.binds.length - 1] === "event_name");
+    expect(nameUpd?.binds[0]).toBe("Renamed Concert");
+    expect(nameUpd?.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
   });
 
   it("does not write for fields whose source is empty (no description => no nature_of_event update)", async () => {
@@ -513,8 +533,19 @@ describe("additional requirements <-> checklist sync", () => {
         liquor_licence: "Required",
         // Free-text -> Required when non-empty
         sound: "8-channel PA",
+        light: "LED wash",
+        parking: "VIP bay",
         // Now a Yes/No dropdown (was free text)
         piano_required: "Yes",
+        green_rooms_required: "Required",
+        catering_required: "Yes",
+        decorator_required: "Yes",
+        catering_provider: "Royal Caterers",
+        decorator_name: "StageCraft",
+        catering_lunch_required: "Yes",
+        catering_lunch_pax: "100",
+        catering_dinner_required: "Yes",
+        catering_dinner_pax: "50",
         // Passthrough
         crew_cards: "12", licenses_status: "Received", licenses: "PPL, IPRS",
       });
@@ -529,10 +560,19 @@ describe("additional requirements <-> checklist sync", () => {
       expect(byField.get("req_orchestra_pit_chairs")).toBe("Required");
       expect(byField.get("req_liquor_license")).toBe("Required");
       expect(byField.get("req_sound")).toBe("Required");
+      expect(byField.get("req_light")).toBe("Required");
       expect(byField.get("req_piano")).toBe("Required");
+      expect(byField.get("req_green_rooms")).toBe("Required");
+      expect(byField.get("req_catering")).toBe("Required");
+      expect(byField.get("req_decorator")).toBe("Required");
+      expect(byField.get("req_parking")).toBe("Required");
       expect(byField.get("no_of_crew_cards")).toBe("12");
       expect(byField.get("licenses_status")).toBe("Received");
       expect(byField.get("licenses")).toBe("PPL, IPRS");
+      expect(byField.get("caterer_name")).toBe("Royal Caterers");
+      expect(byField.get("decorator_name")).toBe("StageCraft");
+      expect(byField.get("type_of_catering")).toBe("Lunch, Dinner");
+      expect(byField.get("no_of_pax")).toBe("150");
     });
 
     it("aggregates requirements across venue bookings when events.requirements is empty", async () => {
@@ -715,6 +755,46 @@ describe("additional requirements <-> checklist sync", () => {
         expect(yesValues.includes(formValue)).toBe(checklistVal === "Required");
       }
     });
+  });
+});
+
+describe("NOC dependent checklist fields", () => {
+  it("seeds visibility_rule so date sent only shows when NOC Sent? = Yes", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.noc_sent?.field_type).toBe("dropdown");
+    expect(byKey.noc_sent?.options).toEqual(["No", "Yes"]);
+    expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Yes)");
+    expect(byKey.noc_status).toBeUndefined();
+  });
+
+  it("marks Date Sent not_applicable when NOC Sent? = No", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncNocDependentChecklist(db, "ev_1", "No");
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = ?");
+    expect(updates[0]?.binds[0]).toBe("not_applicable");
+    expect(updates[0]?.binds[updates[0]!.binds.length - 1]).toBe("noc_sent_on");
   });
 });
 
