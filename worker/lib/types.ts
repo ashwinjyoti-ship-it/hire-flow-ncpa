@@ -36,7 +36,20 @@ export const ContactInput = z.object({
 export type ContactInputT = z.infer<typeof ContactInput>;
 
 // ---- Schedule entries ----
-export const ACTIVITY_TYPES = ["setup", "rehearsal", "show", "dismantling", "technical_meeting"] as const;
+export const ACTIVITY_TYPES = ["setup", "rehearsal", "show", "dismantling", "zero_show"] as const;
+export type ActivityType = (typeof ACTIVITY_TYPES)[number];
+
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  setup: "Setup",
+  rehearsal: "Rehearsal",
+  show: "Show",
+  dismantling: "Dismantling",
+  zero_show: "Zero Show",
+};
+
+export function formatActivityType(value: string): string {
+  return ACTIVITY_TYPE_LABELS[value as ActivityType] ?? value.replace(/_/g, " ");
+}
 
 export const ScheduleEntryInput = z.object({
   id: z.string().optional(),
