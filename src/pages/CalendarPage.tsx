@@ -8,6 +8,7 @@ import { getEventStatusSurface } from "../lib/event-status-surface";
 import { useLookups, formatDate, formatDuration, formatTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
+import { getEventOperationsLink } from "../lib/task-workflows";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS } from "../../worker/lib/state-machine";
 import { shouldShowLifecycleStepCountBadge } from "../lib/lifecycle-calendar-display";
@@ -231,11 +232,17 @@ export function CalendarPage() {
   const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const filterOptions = {
     status: [
-      // Show Calendar shows confirmed events by default (see worker
-      // /calendar route). Lifecycle Calendar shows all lifecycle
-      // milestones, so its default reads "All statuses".
+      // Show Calendar: confirmed by default (see worker /calendar). Lifecycle
+      // Calendar is the pre-confirm pipeline (+ regret/cancelled); confirmed
+      // events have moved to Show Calendar.
       { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
-      ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
+      ...Object.entries(STATUS_LABELS)
+        .filter(([k]) => {
+          if (view === "lifecycle") return k !== "confirmed";
+          if (view === "show") return k !== "cancelled" && k !== "regret";
+          return true;
+        })
+        .map(([k, v]) => ({ value: k, label: v })),
     ],
     venue: [{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))],
     type: [
@@ -324,7 +331,10 @@ export function CalendarPage() {
 
       {/* Legend */}
       <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
-        {(view === "lifecycle" ? Object.entries(LIFECYCLE_LABELS) : Object.entries(STATUS_LABELS)).map(([key, label]) => (
+        {(view === "lifecycle"
+          ? Object.entries(LIFECYCLE_LABELS).filter(([key]) => key !== "confirmed")
+          : Object.entries(STATUS_LABELS)
+        ).map(([key, label]) => (
             <span key={key} className="inline-flex items-center gap-1.5">
               <span className={"h-2 w-2 rounded-full " + (view === "lifecycle" ? lifecycleDot(key as LifecycleType) : getEventStatusSurface(key).dot)} /> {label}
             </span>
@@ -366,6 +376,9 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <Link to={getEventOperationsLink(entry.event_id)} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
+              Ops
+            </Link>
             <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
               Edit
             </Link>

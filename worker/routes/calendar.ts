@@ -65,6 +65,14 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
     binds.push(like, like, like);
   }
 
+  // Dated calendar grids are the pre-confirm pipeline (+ terminal regret/cancelled).
+  // Confirmed events live on the Show Calendar. The undated dashboard call still
+  // includes confirmed so summary counts and the lifecycle queue stay complete.
+  const calendarGrid = Boolean(from || to);
+  const lifecycleStatuses = calendarGrid
+    ? "('enquiry', 'tentative', 'approved', 'regret', 'cancelled')"
+    : "('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')";
+
   const sql = `WITH lifecycle AS (
       SELECT
         'current_' || e.id AS id,
@@ -96,7 +104,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         ORDER BY latest.changed_at DESC
         LIMIT 1
       )
-      WHERE e.status IN ('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')
+      WHERE e.status IN ${lifecycleStatuses}
     ),
     normalised_dates AS (
       SELECT
@@ -160,11 +168,14 @@ calendarRoutes.get("/", requireUser, async (c) => {
   }
 
   // The Show Calendar represents what's committed at the venue. By default it
-  // surfaces only confirmed events — enquiries and tentative holds don't earn a
-  // card here (they live on the Lifecycle Calendar). An explicit status choice
-  // from the filter still overrides, so a user can deliberately inspect any
-  // single status.
-  const statusFilter = status ?? "confirmed";
+  // surfaces only confirmed events — enquiries and tentative holds stay on the
+  // Lifecycle Calendar, and cancelled/regret stay there too (never "move" here).
+  // An explicit status choice from the filter still overrides for inspection,
+  // except cancelled/regret which remain Lifecycle-only.
+  const requestedStatus = status ?? "confirmed";
+  const statusFilter = requestedStatus === "cancelled" || requestedStatus === "regret"
+    ? "confirmed"
+    : requestedStatus;
 
   // The calendar must not require schedule entries (setup/rehearsal/show rows
   // with AC timings) before a confirmed event earns a card. Those details are

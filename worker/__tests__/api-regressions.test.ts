@@ -201,6 +201,9 @@ describe("API regressions", () => {
         expect(sql).toContain("event_status_history");
         expect(sql).not.toContain("tasks t");
         expect(sql).not.toContain("'show' AS milestone_type");
+        // Dated lifecycle grids exclude confirmed (those live on Show Calendar).
+        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'regret', 'cancelled')");
+        expect(sql).not.toContain("'confirmed', 'regret'");
         return {
           all: () => ({
             results: [
@@ -242,6 +245,28 @@ describe("API regressions", () => {
         "2026-06-03": [{ milestone_type: "enquiry" }],
       },
     });
+  });
+
+  it("keeps confirmed events on the undated lifecycle feed used by the dashboard", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("WITH lifecycle AS")) {
+        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar/lifecycle",
+      {
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
   });
 
   it("allows lifecycle cards to be fetched across all dates for the dashboard", async () => {
