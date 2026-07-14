@@ -180,13 +180,14 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "req_bike_display": return "Not Required";
     case "req_stalls": return event.index % 5 === 0 ? "Required" : "Not Required";
     case "req_telecasting_media": return event.eventType === "EE" ? "Required" : "Not Required";
-    case "noc_sent": return event.index % 4 === 0 ? "Yes" : "No";
+    case "noc_sent": return event.index % 4 === 0 ? "Sent" : "Not sent";
     case "noc_sent_on": return event.index % 4 === 0 ? addDays(event.startDate, -14) : null;
     case "onstage_asked_client": return active ? addDays(event.startDate, -12) : null;
     case "onstage_received_from_client": return null;
     case "onstage_sent_to_team": return null;
     case "onstage_verified": return null;
     case "onstage_complete": return null;
+    case "monthly_chart_sent": return event.index % 3 === 0 ? "Sent" : "Not sent";
     case "technical_meeting_date": return addDays(event.startDate, -5);
     case "minutes_of_meeting": return "No";
     case "no_of_crew_cards": return String(8 + (event.index % 18));
