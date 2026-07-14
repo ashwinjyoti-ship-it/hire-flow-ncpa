@@ -20,7 +20,7 @@ import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
-import { ACTIVITY_TYPES } from "../../worker/lib/types";
+import { ACTIVITY_TYPES, formatActivityType } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
@@ -612,7 +612,7 @@ export function EventEditPage() {
                         <div className="mb-2 grid grid-cols-2 items-end gap-2 md:grid-cols-4">
                           <Field label="Activity">
                             <select value={se.activity_type} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_type: e.target.value as ScheduleEntryInputT["activity_type"] })} className="carved input">
-                              {ACTIVITY_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+                              {ACTIVITY_TYPES.map((a) => <option key={a} value={a}>{formatActivityType(a)}</option>)}
                             </select>
                           </Field>
                           <Field label="Date">
@@ -650,7 +650,7 @@ export function EventEditPage() {
                       </div>
                     );
                   })}
-                  {vb.schedule_entries.length === 0 && <p className="text-xs text-ink-muted etched">No details yet. Add setup, rehearsal, show, dismantling, or technical meeting with their AC timings.</p>}
+                  {vb.schedule_entries.length === 0 && <p className="text-xs text-ink-muted etched">No details yet. Add setup, rehearsal, show, dismantling, or zero show with their AC timings.</p>}
                 </div>
               </div>
             </div>
