@@ -13,6 +13,7 @@ import type { AuthEnv } from "../middleware/auth";
 import { requireUser, requirePermission, actorFrom, ipHint } from "../middleware/auth";
 import { EventInput, StatusTransitionInput, type VenueBookingInputT } from "../lib/types";
 import { getEventDateIssues } from "../lib/event-date-policy";
+import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
 import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
@@ -30,6 +31,7 @@ import {
   syncAutomaticTaskOwnerForEvent,
   syncEventReferenceChecklist,
   syncPocChecklist,
+  reconcilePocTaskForEvent,
   mergePocRequirementsForRead,
   updateChecklistItem,
 } from "../lib/operations";
@@ -337,11 +339,13 @@ eventRoutes.get("/:id", requireUser, async (c) => {
     id,
     (event as { requirements?: string | null }).requirements,
   );
+  const poc = await evaluatePocCompletionForEvent(c.env.DB, id);
 
   return c.json({
     event: {
       ...(event as Record<string, unknown>),
       requirements: Object.keys(mergedRequirements).length > 0 ? mergedRequirements : null,
+      poc_completion: poc,
     },
     venue_bookings: bookings,
     activity,
@@ -419,6 +423,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   // up on the Operations tab instead of the seeded "Not Required" defaults.
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
+  await reconcilePocTaskForEvent(db, id);
   return c.json({ id }, 201);
 });
 
@@ -515,6 +520,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   // place (see syncAdditionalRequirementsChecklist for the field mapping).
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
+  await reconcilePocTaskForEvent(db, id);
   return c.json({ ok: true });
 });
 
@@ -547,6 +553,8 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
     if (row.field_key === "payment_status") paymentStatus = row.value ?? null;
   }
 
+  const poc = await evaluatePocCompletionForEvent(db, id);
+
   const from = event.status;
   if (!canTransition(from, to)) {
     return c.json({ error: `Invalid transition: ${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}` }, 422);
@@ -562,7 +570,17 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   })) {
     return c.json({ error: "Confirmation requires costing email sent, payment received, and signed confirmation. VFH events also require approval received or approved (unless approval is marked Not Required)." }, 422);
   }
-  const lifecycleBlockers = blockersForTransition({ id, title: "", ...event, costing_email: costingEmail, payment_status: paymentStatus, ops_completion: null, accounts_completion: null, overall_completion: null }, to);
+  const lifecycleBlockers = blockersForTransition({
+    id,
+    title: "",
+    ...event,
+    costing_email: costingEmail,
+    payment_status: paymentStatus,
+    poc_complete: poc.complete,
+    ops_completion: null,
+    accounts_completion: null,
+    overall_completion: null,
+  }, to);
   if (lifecycleBlockers.length > 0) {
     return c.json({ error: lifecycleBlockers.join(" ") }, 422);
   }
@@ -623,7 +641,7 @@ eventRoutes.get("/:id/checklist", requireUser, async (c) => {
       options: item.options ? JSON.parse(item.options) as unknown[] : null,
     });
   }
-  return c.json({ checklist: grouped, lifecycle: lifecycle.readiness });
+  return c.json({ checklist: grouped, lifecycle: lifecycle.readiness, poc: lifecycle.poc });
 });
 
 const ChecklistUpdateInput = z.object({

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
+import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
@@ -23,6 +24,7 @@ import {
 } from "../lib/mom";
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
+import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -47,6 +49,7 @@ type DetailResponse = {
     overall_completion: number | null;
     ops_completion: number | null;
     accounts_completion: number | null;
+    poc_completion?: PocCompletionStatus;
   };
   venue_bookings: Array<Record<string, unknown> & {
     venue?: string | null;
@@ -91,6 +94,7 @@ type ChecklistResponse = {
     nextAction: LifecycleAction | null;
     actions: LifecycleAction[];
   };
+  poc: PocCompletionStatus;
 };
 
 type EventPageFreshState = {
@@ -267,6 +271,8 @@ export function EventDetailPage() {
   const canChangeStatus = can(user?.permissions, "event.status.change");
   const canUpdateChecklist = can(user?.permissions, "checklist.update");
   const actions = checklistData?.lifecycle.actions ?? [];
+  const pocCompletion = (e.poc_completion ?? checklistData?.poc) as PocCompletionStatus | undefined;
+  const showPocAlert = pocCompletion && !pocCompletion.complete && e.status !== "cancelled" && e.status !== "regret";
   const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
 
   const momInput: MomEventInput = {
@@ -395,6 +401,7 @@ export function EventDetailPage() {
         actions={
           <>
             <StatusBadge status={e.status} size="md" />
+            {showPocAlert && <PocStatusBadge complete={false} />}
             {can(user?.permissions, "event.edit") && (
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
@@ -415,6 +422,10 @@ export function EventDetailPage() {
           </>
         }
       />
+
+      {showPocAlert && pocCompletion && (
+        <PocIncompleteBanner poc={pocCompletion} eventId={e.id} />
+      )}
 
       <div className="carved-card mb-5 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/50 p-5 md:grid-cols-5">
         <SummaryItem label="Type" value={formatEventType(e.event_type)} />

@@ -1,4 +1,5 @@
 import { VENDOR_REGISTRATION_OPTIONS } from "../../../worker/lib/poc-fields";
+import { evaluatePocCompletion } from "../../../worker/lib/poc-completion";
 
 type PocValue = Record<string, unknown>;
 
@@ -20,10 +21,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function PocFields({ value, onChange }: PocFieldsProps) {
   const reqs = value ?? {};
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
+  const poc = evaluatePocCompletion(reqs);
 
   return (
     <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
       <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Point of Contact</h3>
+      {!poc.complete && (
+        <div role="alert" className="mb-4 rounded-xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/12 px-4 py-3 text-xs text-ink-secondary etched">
+          <span className="font-semibold text-status-awaitingApproval etched-deep">
+            Point of Contact incomplete ({poc.filledCount}/{poc.totalCount})
+          </span>
+          {poc.missingLabels.length > 0 && (
+            <span className="mt-1 block">
+              Still needed: {poc.missingLabels.join(", ")}. All fields must be complete before confirmation.
+            </span>
+          )}
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="POC Name">
           <input type="text" value={(reqs.poc_name as string) ?? ""} onChange={(e) => setReq("poc_name", e.target.value || null)} className="carved input" />

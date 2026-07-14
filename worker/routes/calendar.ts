@@ -7,6 +7,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser } from "../middleware/auth";
+import { evaluatePocCompletion, getPocFieldValuesForEvents } from "../lib/poc-completion";
 
 export const calendarRoutes = new Hono<AuthEnv>();
 
@@ -45,6 +46,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const owner = c.req.query("owner");
   const q = c.req.query("q");
   const mine = c.req.query("mine");
+  const pocIncomplete = c.req.query("poc_incomplete") === "1";
   const user = c.get("user");
 
   const where = ["is_archived = 0"];
@@ -142,14 +144,36 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
     LIMIT 1200`;
 
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  const byDate: Record<string, typeof results> = {};
-  for (const r of results) {
-    const row = r as { milestone_date: string };
-    if (!byDate[row.milestone_date]) byDate[row.milestone_date] = [];
-    byDate[row.milestone_date]!.push(r);
+  const eventIds = Array.from(new Set((results ?? []).map((row) => (row as { event_id: string }).event_id)));
+  const pocValuesByEvent = await getPocFieldValuesForEvents(c.env.DB, eventIds);
+
+  const enriched = (results ?? []).map((row) => {
+    const entry = row as Record<string, unknown> & { event_id: string; status: string };
+    const poc = evaluatePocCompletion(pocValuesByEvent.get(entry.event_id) ?? {});
+    return {
+      ...entry,
+      poc_complete: poc.complete,
+      poc_filled_count: poc.filledCount,
+      poc_total_count: poc.totalCount,
+      poc_missing_labels: poc.missingLabels,
+    };
+  });
+
+  const activeStatuses = new Set(["enquiry", "tentative", "approved"]);
+  const filtered = pocIncomplete
+    ? enriched.filter((entry) => activeStatuses.has(entry.status) && !entry.poc_complete)
+    : enriched;
+
+  const pocIncompleteCount = enriched.filter((entry) => activeStatuses.has(entry.status) && !entry.poc_complete).length;
+
+  const byDate: Record<string, Array<Record<string, unknown>>> = {};
+  for (const r of filtered) {
+    const milestoneDate = String((r as Record<string, unknown>).milestone_date ?? "");
+    if (!byDate[milestoneDate]) byDate[milestoneDate] = [];
+    byDate[milestoneDate]!.push(r);
   }
 
-  return c.json({ entries: results, byDate });
+  return c.json({ entries: filtered, byDate, poc_incomplete_count: pocIncompleteCount });
 });
 
 calendarRoutes.get("/", requireUser, async (c) => {

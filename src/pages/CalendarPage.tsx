@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { PocStatusBadge } from "../components/PocIncompleteBanner";
 import { useLookups, formatDate, formatDuration, formatTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
@@ -59,8 +60,16 @@ type LifecycleEntry = {
   venues: string | null;
   task_id: string | null;
   task_title: string | null;
+  poc_complete?: boolean;
+  poc_filled_count?: number;
+  poc_total_count?: number;
+  poc_missing_labels?: string[];
 };
-type LifecycleResponse = { entries: LifecycleEntry[]; byDate: Record<string, LifecycleEntry[]> };
+type LifecycleResponse = {
+  entries: LifecycleEntry[];
+  byDate: Record<string, LifecycleEntry[]>;
+  poc_incomplete_count?: number;
+};
 type LifecycleOverflowState = { date: string; entries: LifecycleEntry[] };
 
 type View = "show" | "lifecycle";
@@ -122,6 +131,7 @@ export function CalendarPage() {
     type: searchParams.get("type") ?? "",
     owner: searchParams.get("owner") ?? "",
     q: searchParams.get("q") ?? "",
+    pocIncomplete: searchParams.get("poc_incomplete") === "1",
   }), [searchParams]);
   const mine = searchParams.get("mine") === "1";
 
@@ -149,7 +159,7 @@ export function CalendarPage() {
     });
   }
 
-  function setFilter<K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) {
+  function setFilter(key: "status" | "venue" | "type" | "owner" | "q", value: string) {
     updateParams((params) => {
       if (value.trim()) params.set(key, value.trim());
       else params.delete(key);
@@ -163,6 +173,13 @@ export function CalendarPage() {
     });
   }
 
+  function setPocIncompleteFilter(next: boolean) {
+    updateParams((params) => {
+      if (next) params.set("poc_incomplete", "1");
+      else params.delete("poc_incomplete");
+    });
+  }
+
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
   // adjacent-month events from leaking into the grid.
@@ -170,14 +187,37 @@ export function CalendarPage() {
     return { from: isoDate(startOfMonth(cursor)), to: isoDate(endOfMonth(cursor)) };
   }, [cursor]);
 
-  const q = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
+  const q = new URLSearchParams({
+    from: range.from,
+    to: range.to,
+    ...Object.fromEntries(Object.entries({
+      status: filters.status,
+      venue: filters.venue,
+      type: filters.type,
+      owner: filters.owner,
+      q: filters.q,
+    }).filter(([, v]) => v)),
+    ...(mine ? { mine: "1" } : {}),
+  });
   const { data, isLoading } = useQuery({
     queryKey: ["calendar", range.from, range.to, filters, mine],
     queryFn: () => apiGet<CalResponse>(`/calendar?${q.toString()}`),
     enabled: view !== "lifecycle",
   });
 
-  const lifecycleQuery = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)), ...(mine ? { mine: "1" } : {}) });
+  const lifecycleQuery = new URLSearchParams({
+    from: range.from,
+    to: range.to,
+    ...Object.fromEntries(Object.entries({
+      status: filters.status,
+      venue: filters.venue,
+      type: filters.type,
+      owner: filters.owner,
+      q: filters.q,
+      ...(filters.pocIncomplete ? { poc_incomplete: "1" } : {}),
+    }).filter(([, v]) => v)),
+    ...(mine ? { mine: "1" } : {}),
+  });
   const { data: lifecycleData, isLoading: lifecycleLoading } = useQuery({
     queryKey: ["calendar-lifecycle", range.from, range.to, filters, mine],
     queryFn: () => apiGet<LifecycleResponse>(`/calendar/lifecycle?${lifecycleQuery.toString()}`),
@@ -254,7 +294,7 @@ export function CalendarPage() {
     ],
     owner: [{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))],
   };
-  const activeFilterCount = [filters.status, filters.venue, filters.type, filters.owner].filter(Boolean).length;
+  const activeFilterCount = [filters.status, filters.venue, filters.type, filters.owner, filters.pocIncomplete].filter(Boolean).length;
   // "This month" only when the viewed cursor is the actual current month/year.
   const nowDate = new Date();
   const isCurrentMonth = cursor.getFullYear() === nowDate.getFullYear() && cursor.getMonth() === nowDate.getMonth();
@@ -319,6 +359,17 @@ export function CalendarPage() {
                 <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilter("venue", v)} options={filterOptions.venue} />
                 <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilter("type", v)} options={filterOptions.type} />
                 <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilter("owner", v)} options={filterOptions.owner} />
+                {view === "lifecycle" && (
+                  <label className="flex items-center gap-2 rounded-lg bg-marble-shadow/25 px-3 py-2 text-xs font-medium text-ink-secondary etched">
+                    <input
+                      type="checkbox"
+                      checked={filters.pocIncomplete}
+                      onChange={(e) => setPocIncompleteFilter(e.target.checked)}
+                      className="h-4 w-4 rounded border-ink-muted accent-terracotta"
+                    />
+                    POC incomplete only
+                  </label>
+                )}
               </div>
             </div>
           </details>
@@ -630,6 +681,7 @@ function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOver
                 {entry.event_code && <span>{entry.event_code}</span>}
                 {entry.venues && <span>{entry.venues}</span>}
                 {entry.event_owner && <span>{entry.event_owner}</span>}
+                {entry.poc_complete === false && <PocStatusBadge complete={false} />}
               </div>
             </Link>
           ))}
@@ -656,6 +708,11 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         {entry.organisation_name ?? entry.title}
       </div>
       {entry.venues && <div className="truncate text-[10px] text-ink-muted etched">{entry.venues}</div>}
+      {entry.poc_complete === false && (
+        <div className="mt-1">
+          <PocStatusBadge complete={false} />
+        </div>
+      )}
     </Link>
   );
 }

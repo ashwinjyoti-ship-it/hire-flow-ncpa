@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -77,6 +77,17 @@ describe("operational lifecycle readiness", () => {
     expect(blockers).not.toContain("Costing email must be sent.");
     expect(blockers).not.toContain("Payment must be completed.");
     expect(blockers).not.toContain("Amount received must be entered.");
+  });
+
+  it("blocks confirmation when Point of Contact is incomplete", () => {
+    const blockers = blockersForTransition(event({
+      costing_email: "Yes",
+      payment_status: "Completed",
+      confirmation_status: "signed_received",
+      approval_status: "not_required",
+      poc_complete: false,
+    }), "confirmed");
+    expect(blockers).toContain("POC not filled, cannot confirm.");
   });
 
   it("does not block VFH confirmation when approval is Not Required", () => {
@@ -891,5 +902,45 @@ describe("point of contact <-> checklist sync", () => {
       poc_name: "Karina Arora",
       gst_no: "27AAATT3454F1ZI",
     });
+  });
+});
+
+describe("reconcilePocTaskForEvent", () => {
+  it("creates a high-priority automatic task when POC is incomplete", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT id, status, event_owner_id FROM events")) {
+              return { id: "ev_poc", status: "tentative", event_owner_id: "user_1" };
+            }
+            if (sql.includes("SELECT requirements FROM events")) return { requirements: "{}" };
+            if (sql.includes("SELECT id FROM checklist_items")) return { id: "cli_poc" };
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM checklist_items")) return { results: [] };
+            if (sql.includes("FROM checklist_definitions")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcilePocTaskForEvent(db, "ev_poc");
+
+    const insert = updates.find((u) => u.sql.includes("INSERT INTO tasks"));
+    expect(insert).toBeDefined();
+    expect(insert!.binds).toContain("Complete Point of Contact");
+    expect(insert!.binds).toContain("poc_incomplete");
+    expect(insert!.sql).toContain("'high'");
   });
 });
