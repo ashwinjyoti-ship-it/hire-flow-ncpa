@@ -849,6 +849,19 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
   return (inserted.meta?.changes ?? 1) > 0 ? 1 : 0;
 }
 
+/** Sweep active pipeline events so POC auto-tasks exist even if not recently edited. */
+export async function reconcileAllPocTasks(db: D1Database, today = todayIso()): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT id FROM events
+     WHERE is_archived = 0 AND status IN ('enquiry','tentative','approved')`
+  ).all<{ id: string }>();
+  let changed = 0;
+  for (const row of results ?? []) {
+    changed += await reconcilePocTaskForEvent(db, row.id, today);
+  }
+  return changed;
+}
+
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {
   if (!item.triggers_task || !normalise(item.value)) return;
   let rule: { rule: string; title: string; due_after_days: number } | null = null;
@@ -1286,5 +1299,6 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
     changed++;
   }
   changed += await createFileToAccountsReminders(db, today);
+  changed += await reconcileAllPocTasks(db, today);
   return changed;
 }

@@ -173,7 +173,12 @@ export function DashboardPage() {
                       )}
                       <span className="mt-0.5 block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
                     </span>
-                    <StatusBadge status={e.milestone_type} />
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {e.poc_complete === false && (e.status === "enquiry" || e.status === "tentative" || e.status === "approved") && (
+                        <PocStatusBadge complete={false} />
+                      )}
+                      <StatusBadge status={e.milestone_type} />
+                    </div>
                   </Link>
                 </li>
               ))}

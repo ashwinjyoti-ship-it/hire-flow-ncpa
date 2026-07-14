@@ -407,10 +407,28 @@ function TaskTable({ tasks }: { tasks: DailyReportContent["system_tasks"] }) {
 
 // ------------------------------------------------------- Morning / Evening briefs
 
-function EventCell({ id, title }: { id: string | null; title: string | null }) {
+function EventCell({
+  id,
+  title,
+  tab,
+  fieldKey,
+}: {
+  id: string | null;
+  title: string | null;
+  tab?: string;
+  fieldKey?: string;
+}) {
   if (!title) return <>—</>;
   if (!id) return <>{title}</>;
-  return <Link to={`/events/${id}`} className="underline decoration-sage/40 underline-offset-2">{title}</Link>;
+  const params = new URLSearchParams();
+  if (tab) params.set("tab", tab);
+  if (fieldKey) params.set("field", fieldKey);
+  const query = params.toString();
+  return (
+    <Link to={`/events/${id}${query ? `?${query}` : ""}`} className="underline decoration-sage/40 underline-offset-2">
+      {title}
+    </Link>
+  );
 }
 
 function SubBlock({ title, tone, children }: { title: string; tone?: "alert" | "ok"; children: React.ReactNode }) {
@@ -477,7 +495,7 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
   const d = s.decisions;
   const r = s.risk_radar;
   const decisionCount = d.approvals_pending.length + d.conflicts.length + d.unassigned_high_priority.length + d.stale_enquiries.length;
-  const riskCount = r.low_readiness.length + r.blocked_items.length + r.overdue_instalments.length + r.unsigned_confirmations.length;
+  const riskCount = r.low_readiness.length + r.blocked_items.length + r.overdue_instalments.length + r.unsigned_confirmations.length + r.poc_incomplete.length;
 
   return (
     <>
@@ -589,6 +607,20 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
                   rows={r.unsigned_confirmations.map((e) => [
                     <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—",
                     e.event_start_date ? formatDate(e.event_start_date) : "—", (e.confirmation_status ?? "none").replace(/_/g, " "),
+                  ])}
+                />
+              </SubBlock>
+            )}
+            {r.poc_incomplete.length > 0 && (
+              <SubBlock title={`Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})`} tone="alert">
+                <ReportTable
+                  headers={["Event", "Organisation", "Starts", "POC", "Still needed"]}
+                  rows={r.poc_incomplete.map((e) => [
+                    <EventCell key="e" id={e.event_id} title={e.event_title} tab="operations" fieldKey="poc_name" />,
+                    e.organisation_name ?? "—",
+                    e.event_start_date ? formatDate(e.event_start_date) : "—",
+                    `${e.filled_count}/${e.total_count}`,
+                    e.missing_labels.join(", "),
                   ])}
                 />
               </SubBlock>
@@ -748,6 +780,11 @@ function briefWordBody(content: BriefContent): string {
         ...s.risk_radar.blocked_items.map((b) => ["Blocked checklist item", b.label, b.event_title]),
         ...s.risk_radar.overdue_instalments.map((t) => ["Overdue payment follow-up", t.title, t.event_title ?? ""]),
         ...s.risk_radar.unsigned_confirmations.map((e) => ["Unsigned confirmation", e.event_title, e.confirmation_status ?? "none"]),
+        ...s.risk_radar.poc_incomplete.map((e) => [
+          "POC incomplete",
+          e.event_title,
+          `${e.filled_count}/${e.total_count} — ${e.missing_labels.join(", ")}`,
+        ]),
       ]),
       htmlTableSection("Overdue (oldest)", ["Task", "Priority", "Due", "Event", "Assignee", "Days Overdue"],
         s.overdue.oldest.map((t) => [t.title, t.priority, t.due_date, t.event_title, t.assignee_name ?? "Unassigned", t.days_overdue])),

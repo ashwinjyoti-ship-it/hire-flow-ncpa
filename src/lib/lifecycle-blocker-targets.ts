@@ -44,6 +44,11 @@ export const BLOCKER_TARGETS: Record<
     fieldKey: "approval_received_on",
     label: "Approval Received On",
   },
+  "POC not filled, cannot confirm.": {
+    tab: "operations",
+    fieldKey: "poc_name",
+    label: "POC Name",
+  },
 };
 
 /** Every actionable blocker string emitted by `blockersForTransition`. */
@@ -55,4 +60,5 @@ export const ACTIONABLE_LIFECYCLE_BLOCKERS = [
   "Signed confirmation must be received.",
   "VFH approval must be received or approved.",
   "VFH approval must be received before marking the event approved.",
+  "POC not filled, cannot confirm.",
 ] as const;

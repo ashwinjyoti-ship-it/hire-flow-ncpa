@@ -77,6 +77,7 @@ const TIMING_LABELS: Record<TimingGroupKey, string> = {
 const TIMING_ORDER: TimingGroupKey[] = ["overdue", "today", "tomorrow", "thisWeek", "later", "noDate"];
 
 export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
+  if (task.source_rule === "poc_incomplete") return "beforeConfirmation";
   const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
   if (haystack.includes("approval")) return "beforeConfirmation";
   if (haystack.includes("confirmation") || haystack.includes("letter") || haystack.includes("signed")) return "beforeConfirmation";

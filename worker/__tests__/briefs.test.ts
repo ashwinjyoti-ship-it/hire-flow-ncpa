@@ -73,7 +73,37 @@ describe("brief content builders", () => {
     });
     expect(content.team_plan).toEqual([]);
     expect(content.overdue.buckets).toHaveLength(4);
+    expect(content.risk_radar.poc_incomplete).toEqual([]);
     expect(content.yesterday).toEqual({ completed: 0, new_enquiries: 0, confirmations: 0 });
+  });
+
+  it("includes incomplete POC events in the morning brief risk radar", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM events e") && sql.includes("e.status IN") && sql.includes("organisation")) {
+        return {
+          all: () => ({
+            results: [{
+              event_id: "ev_poc",
+              event_title: "Missing POC",
+              organisation_name: "Acme",
+              event_start_date: "2026-08-01",
+              status: "tentative",
+            }],
+          }),
+        };
+      }
+      if (sql.includes("FROM checklist_items") && sql.includes("event_id IN")) {
+        return { all: () => ({ results: [{ event_id: "ev_poc", field_key: "poc_name", value: "Only" }] }) };
+      }
+      if (sql.includes("SELECT id, requirements FROM events WHERE id IN")) {
+        return { all: () => ({ results: [{ id: "ev_poc", requirements: null }] }) };
+      }
+      return {};
+    });
+    const content = await buildMorningBrief(db, "2026-07-07");
+    expect(content.risk_radar.poc_incomplete).toHaveLength(1);
+    expect(content.risk_radar.poc_incomplete[0]?.event_id).toBe("ev_poc");
+    expect(content.risk_radar.poc_incomplete[0]?.filled_count).toBe(1);
   });
 
   it("groups the team plan by assignee with unassigned first", async () => {
