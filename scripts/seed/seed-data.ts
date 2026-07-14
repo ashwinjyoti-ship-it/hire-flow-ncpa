@@ -127,6 +127,7 @@ export const DROPDOWN_LISTS: DropdownSeed[] = [
   // Vendor Registration Form
   { list_key: "vendor_registration", value: "Pending", sort_order: 1 },
   { list_key: "vendor_registration", value: "Received", sort_order: 2 },
+  { list_key: "vendor_registration", value: "No Applicable", sort_order: 3 },
 
   // Catering tier
   { list_key: "tier", value: "A", sort_order: 1 },

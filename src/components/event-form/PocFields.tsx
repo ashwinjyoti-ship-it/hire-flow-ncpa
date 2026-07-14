@@ -1,0 +1,64 @@
+import { VENDOR_REGISTRATION_OPTIONS } from "../../../worker/lib/poc-fields";
+
+type PocValue = Record<string, unknown>;
+
+type PocFieldsProps = {
+  value: PocValue;
+  onChange: (next: PocValue) => void;
+};
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Event-level Point of Contact fields — mirrored to the Operations checklist. */
+export function PocFields({ value, onChange }: PocFieldsProps) {
+  const reqs = value ?? {};
+  const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
+
+  return (
+    <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Point of Contact</h3>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="POC Name">
+          <input type="text" value={(reqs.poc_name as string) ?? ""} onChange={(e) => setReq("poc_name", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Contact Number">
+          <input type="tel" value={(reqs.poc_contact_number as string) ?? ""} onChange={(e) => setReq("poc_contact_number", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Email">
+          <input type="email" value={(reqs.poc_email as string) ?? ""} onChange={(e) => setReq("poc_email", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Bank Details">
+          <textarea value={(reqs.bank_details as string) ?? ""} onChange={(e) => setReq("bank_details", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+        <Field label="GST No.">
+          <input type="text" value={(reqs.gst_no as string) ?? ""} onChange={(e) => setReq("gst_no", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="TAN No.">
+          <input type="text" value={(reqs.tan_no as string) ?? ""} onChange={(e) => setReq("tan_no", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="PAN No.">
+          <input type="text" value={(reqs.pan_no as string) ?? ""} onChange={(e) => setReq("pan_no", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Signing Authority & Address">
+          <textarea value={(reqs.signing_authority_address as string) ?? ""} onChange={(e) => setReq("signing_authority_address", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+        <Field label="Courier Address">
+          <textarea value={(reqs.courier_address as string) ?? ""} onChange={(e) => setReq("courier_address", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+        <Field label="Vendor Registration Form">
+          <select value={(reqs.vendor_registration_form as string) ?? ""} onChange={(e) => setReq("vendor_registration_form", e.target.value || null)} className="carved input">
+            <option value="">Select…</option>
+            {VENDOR_REGISTRATION_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </Field>
+      </div>
+    </section>
+  );
+}

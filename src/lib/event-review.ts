@@ -82,6 +82,16 @@ function formatReviewLabel(key: string): string {
     recording_type: "Recording Type",
     camera_count: "No. of Cameras",
     program_officer_phone: "Program Officer Contact",
+    poc_name: "POC Name",
+    poc_contact_number: "Contact Number",
+    poc_email: "Email",
+    bank_details: "Bank Details",
+    gst_no: "GST No.",
+    tan_no: "TAN No.",
+    pan_no: "PAN No.",
+    signing_authority_address: "Signing Authority & Address",
+    courier_address: "Courier Address",
+    vendor_registration_form: "Vendor Registration Form",
   };
   return explicitLabels[key] ?? titleCaseWords(key);
 }

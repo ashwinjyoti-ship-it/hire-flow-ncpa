@@ -29,6 +29,8 @@ import {
   syncAdditionalRequirementsChecklist,
   syncAutomaticTaskOwnerForEvent,
   syncEventReferenceChecklist,
+  syncPocChecklist,
+  mergePocRequirementsForRead,
   updateChecklistItem,
 } from "../lib/operations";
 import { z } from "zod";
@@ -330,7 +332,20 @@ eventRoutes.get("/:id", requireUser, async (c) => {
      WHERE a.event_id = ? ORDER BY a.created_at DESC LIMIT 100`
   ).bind(id).all();
 
-  return c.json({ event, venue_bookings: bookings, activity });
+  const mergedRequirements = await mergePocRequirementsForRead(
+    c.env.DB,
+    id,
+    (event as { requirements?: string | null }).requirements,
+  );
+
+  return c.json({
+    event: {
+      ...(event as Record<string, unknown>),
+      requirements: Object.keys(mergedRequirements).length > 0 ? mergedRequirements : null,
+    },
+    venue_bookings: bookings,
+    activity,
+  });
 });
 
 // POST / — create with nested venue bookings + schedule entries
@@ -403,6 +418,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   // values into the Operations checklist so newly captured requirements show
   // up on the Operations tab instead of the seeded "Not Required" defaults.
   await syncAdditionalRequirementsChecklist(db, id);
+  await syncPocChecklist(db, id);
   return c.json({ id }, 201);
 });
 
@@ -498,6 +514,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   // form carries a value it wins; form-silent fields leave manual ops edits in
   // place (see syncAdditionalRequirementsChecklist for the field mapping).
   await syncAdditionalRequirementsChecklist(db, id);
+  await syncPocChecklist(db, id);
   return c.json({ ok: true });
 });
 

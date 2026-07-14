@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -428,6 +428,7 @@ describe("checklist item status from value", () => {
     expect(itemStatusForValue({ field_type: "dropdown", value: "" })).toBe("not_started");
     expect(itemStatusForValue({ field_type: "dropdown", value: "Not Applicable" })).toBe("not_applicable");
     expect(itemStatusForValue({ field_type: "dropdown", value: "N/A" })).toBe("not_applicable");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "No Applicable" })).toBe("not_applicable");
   });
 
   it("a non-default, non-done dropdown value stays in_progress", () => {
@@ -784,5 +785,111 @@ describe("VFH approval Not Required skips dependent checklist fields", () => {
     expect(byId.cli_sent).toBe("not_started");
     expect(byId.cli_recv).toBe("completed");
     expect(byId.cli_genre).toBe("not_started");
+  });
+});
+
+describe("point of contact <-> checklist sync", () => {
+  type Upd = { sql: string; binds: unknown[] };
+
+  it("copies POC form values into checklist rows", async () => {
+    const updates: Upd[] = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT requirements FROM events")) {
+              return { requirements: JSON.stringify({ poc_name: "Karina Arora", vendor_registration_form: "No Applicable" }) };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM checklist_definitions")) {
+              return {
+                results: [
+                  { field_key: "poc_name", field_type: "text" },
+                  { field_key: "vendor_registration_form", field_type: "dropdown" },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncPocChecklist(db, "ev_poc");
+
+    const checklistUpdates = updates.filter((u) => u.sql.includes("UPDATE checklist_items"));
+    expect(checklistUpdates).toHaveLength(2);
+    expect(checklistUpdates.some((u) => u.binds[0] === "Karina Arora" && u.binds[4] === "poc_name")).toBe(true);
+    expect(checklistUpdates.some((u) => u.binds[0] === "No Applicable" && u.binds[1] === "not_applicable")).toBe(true);
+  });
+
+  it("mirrors checklist POC edits back into events.requirements", async () => {
+    const updates: Upd[] = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT requirements FROM events")) return { requirements: "{}" };
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncPocFromChecklistItem(db, "ev_poc", "poc_email", "karina.arora@cathedral-school.com");
+
+    const eventUpdate = updates.find((u) => u.sql.startsWith("UPDATE events"));
+    expect(eventUpdate).toBeDefined();
+    expect(JSON.parse(eventUpdate!.binds[0] as string)).toEqual({ poc_email: "karina.arora@cathedral-school.com" });
+  });
+
+  it("hydrates missing form POC values from checklist on read", async () => {
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() { return null; },
+          async all() {
+            if (sql.includes("FROM checklist_items")) {
+              return {
+                results: [
+                  { field_key: "poc_name", value: "Karina Arora" },
+                  { field_key: "gst_no", value: "27AAATT3454F1ZI" },
+                ],
+              };
+            }
+            return { results: [] };
+          },
+          async run() { return { success: true }; },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const merged = await mergePocRequirementsForRead(db, "ev_poc", JSON.stringify({ poc_email: "karina.arora@cathedral-school.com" }));
+    expect(merged).toEqual({
+      poc_email: "karina.arora@cathedral-school.com",
+      poc_name: "Karina Arora",
+      gst_no: "27AAATT3454F1ZI",
+    });
   });
 });

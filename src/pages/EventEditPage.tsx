@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementsFields } from "../components/event-form/RequirementsFields";
+import { PocFields } from "../components/event-form/PocFields";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import {
   buildEventRequirementsPayload,
@@ -557,6 +558,8 @@ export function EventEditPage() {
               )}
             </Field>
           </div>
+
+          <PocFields value={reqs} onChange={(next) => update({ requirements: next })} />
 
           <p className="text-[11px] text-ink-muted etched">
             The operating window is the full duration the organisation is at NCPA. Specific venue dates/AC timings are captured in Step 2.

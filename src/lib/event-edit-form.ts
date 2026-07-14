@@ -5,7 +5,19 @@ type VenueBookingLike = Pick<EventInputT["venue_bookings"][number], "venue">;
 type RequirementsRecord = Record<string, unknown>;
 
 /** Keys that stay on the event (Step 1), not on each venue booking. */
-export const EVENT_LEVEL_REQUIREMENT_KEYS = ["program_officer_phone"] as const;
+export const EVENT_LEVEL_REQUIREMENT_KEYS = [
+  "program_officer_phone",
+  "poc_name",
+  "poc_contact_number",
+  "poc_email",
+  "bank_details",
+  "gst_no",
+  "tan_no",
+  "pan_no",
+  "signing_authority_address",
+  "courier_address",
+  "vendor_registration_form",
+] as const;
 
 const AFFIRMATIVE_VALUES = new Set(["Yes", "Required", "Keep"]);
 const JOINABLE_TEXT_KEYS = new Set([
