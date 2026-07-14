@@ -364,7 +364,7 @@ export function SettingsPage() {
             <CollapsibleSection
               id="event-owners"
               title="Event Owners (Accounts)"
-              description="Each event owner is a login. Adding one generates a one-time temporary password — share it with the owner securely. They will be prompted to choose their own password on first sign-in."
+              description="Each event owner is a login. Add a contact number and tick Programme officer when they should appear on the event form. Adding one generates a one-time temporary password — share it with the owner securely. They will be prompted to choose their own password on first sign-in."
               defaultOpen
             >
               <EventOwnersSection />
@@ -696,6 +696,8 @@ type OwnerUser = {
   name: string;
   permissions: Permission[];
   organisation: string | null;
+  contact_number: string | null;
+  is_programme_officer: boolean;
   is_active: number;
   must_change_password: number;
   mfa_enrolled: number;
@@ -760,11 +762,19 @@ function EventOwnersSection() {
   const { user: me } = useAuth();
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [newIsProgrammeOfficer, setNewIsProgrammeOfficer] = useState(false);
   const [newPermissions, setNewPermissions] = useState<Permission[]>([...DEFAULT_NEW_PERMISSIONS]);
   const [showNewPermissions, setShowNewPermissions] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [created, setCreated] = useState<{ name: string; email: string; temporaryPassword: string } | null>(null);
-  const [editing, setEditing] = useState<Record<string, { name: string; email: string; permissions: Permission[] }>>({});
+  const [editing, setEditing] = useState<Record<string, {
+    name: string;
+    email: string;
+    contact_number: string;
+    is_programme_officer: boolean;
+    permissions: Permission[];
+  }>>({});
 
   const { data, isLoading } = useQuery<{ users: OwnerUser[] }>({
     queryKey: ["users"],
@@ -772,11 +782,18 @@ function EventOwnersSection() {
   });
 
   const create = useMutation({
-    mutationFn: async (input: { name: string; email: string; permissions: Permission[] }) =>
+    mutationFn: async (input: {
+      name: string;
+      email: string;
+      contact_number?: string | null;
+      is_programme_officer?: boolean;
+      permissions: Permission[];
+    }) =>
       apiPost<{ id: string; email: string; name: string; temporaryPassword: string }>("/users", input),
     onSuccess: (res) => {
       setCreated({ name: res.name, email: res.email, temporaryPassword: res.temporaryPassword });
-      setNewName(""); setNewEmail(""); setNewPermissions([...DEFAULT_NEW_PERMISSIONS]); setShowNewPermissions(false);
+      setNewName(""); setNewEmail(""); setNewContact(""); setNewIsProgrammeOfficer(false);
+      setNewPermissions([...DEFAULT_NEW_PERMISSIONS]); setShowNewPermissions(false);
       setErr(null);
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["lookups"] });
@@ -785,7 +802,13 @@ function EventOwnersSection() {
   });
 
   const update = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: { name?: string; email?: string; permissions?: Permission[] } }) =>
+    mutationFn: async ({ id, patch }: { id: string; patch: {
+      name?: string;
+      email?: string;
+      contact_number?: string | null;
+      is_programme_officer?: boolean;
+      permissions?: Permission[];
+    } }) =>
       apiPut(`/users/${id}`, patch),
     onSuccess: () => {
       setEditing({});
@@ -835,7 +858,8 @@ function EventOwnersSection() {
 
       {/* Add team member */}
       <div className="mb-5 rounded-xl bg-marble-shadow/30 p-3">
-        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
+        <div className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_auto_auto]">
+          <input value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="Contact no." className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="person@example.com" type="email" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <button
@@ -848,12 +872,27 @@ function EventOwnersSection() {
           <button
             type="button"
             disabled={create.isPending || !newName.trim() || !newEmail.trim() || newPermissions.length === 0}
-            onClick={() => create.mutate({ name: newName.trim(), email: newEmail.trim().toLowerCase(), permissions: newPermissions })}
+            onClick={() => create.mutate({
+              name: newName.trim(),
+              email: newEmail.trim().toLowerCase(),
+              contact_number: newContact.trim() || null,
+              is_programme_officer: newIsProgrammeOfficer,
+              permissions: newPermissions,
+            })}
             className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-xs font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
           >
             {create.isPending ? "Creating…" : "+ Add person"}
           </button>
         </div>
+        <label className="mt-2 flex items-center gap-2 text-xs text-ink-secondary etched">
+          <input
+            type="checkbox"
+            checked={newIsProgrammeOfficer}
+            onChange={(e) => setNewIsProgrammeOfficer(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-ink-muted"
+          />
+          Programme officer?
+        </label>
         {showNewPermissions && (
           <div className="mt-2">
             <PermissionEditor value={newPermissions} onChange={setNewPermissions} />
@@ -876,18 +915,30 @@ function EventOwnersSection() {
                 {ed ? (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3">
+                      <input value={ed.contact_number} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, contact_number: e.target.value } }))} placeholder="Contact no." className="carved w-36 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
                       <input value={ed.name} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, name: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
                       <input value={ed.email} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, email: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                      <button type="button" disabled={update.isPending || ed.permissions.length === 0} onClick={() => update.mutate({ id: u.id, patch: ed })} className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40">Save</button>
+                      <button type="button" disabled={update.isPending || ed.permissions.length === 0} onClick={() => update.mutate({ id: u.id, patch: { ...ed, contact_number: ed.contact_number.trim() || null } })} className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40">Save</button>
                       <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[u.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
                     </div>
+                    <label className="flex items-center gap-2 text-xs text-ink-secondary etched">
+                      <input
+                        type="checkbox"
+                        checked={ed.is_programme_officer}
+                        onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_programme_officer: e.target.checked } }))}
+                        className="h-3.5 w-3.5 rounded border-ink-muted"
+                      />
+                      Programme officer?
+                    </label>
                     <PermissionEditor value={ed.permissions} onChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, permissions: next } }))} />
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
+                        {u.contact_number && <span className="text-sm tabular-nums text-ink-secondary etched">{u.contact_number}</span>}
                         <span className={"text-sm font-medium " + (u.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{u.name}</span>
+                        {u.is_programme_officer && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">programme officer</span>}
                         {isSelf && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">you</span>}
                         {u.permissions.includes("user.manage") && <span className="rounded-full bg-status-awaitingApproval/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval">manages accounts</span>}
                         {Boolean(u.must_change_password) && <span className="rounded-full bg-status-cancelled/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled">must reset</span>}
@@ -896,7 +947,16 @@ function EventOwnersSection() {
                       <div className="mt-0.5 truncate text-xs text-ink-muted etched">{u.email} · {describeAccess(u.permissions)}</div>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
-                      <button type="button" onClick={() => setEditing((s) => ({ ...s, [u.id]: { name: u.name, email: u.email, permissions: [...u.permissions] } }))} className="text-xs text-sage-text hover:underline">Edit</button>
+                      <button type="button" onClick={() => setEditing((s) => ({
+                        ...s,
+                        [u.id]: {
+                          name: u.name,
+                          email: u.email,
+                          contact_number: u.contact_number ?? "",
+                          is_programme_officer: u.is_programme_officer,
+                          permissions: [...u.permissions],
+                        },
+                      }))} className="text-xs text-sage-text hover:underline">Edit</button>
                       <button type="button" disabled={reset.isPending} onClick={() => { if (window.confirm(`Reset ${u.name}'s password? This signs them out everywhere.`)) reset.mutate(u.id); }} className="text-xs text-ink-secondary hover:underline">Reset password</button>
                       {u.is_active ? (
                         <button type="button" disabled={toggle.isPending || isSelf} onClick={() => toggle.mutate({ id: u.id, active: false })} className="text-xs text-ink-secondary hover:underline disabled:opacity-40">Deactivate</button>

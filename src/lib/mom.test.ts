@@ -32,6 +32,9 @@ const sample = {
     catering_hi_tea_pax: "80",
     interval: "Yes",
     stage_setup: "Props, sofas & chairs by organisers. Black cyclorama & wings ready by 2:30pm.",
+    foyer_setup: "Registration desk in the lobby; two digital standees at the entrance.",
+    licenses_status: "Received",
+    licenses: "PPL, IPRS",
     digital_standee: "Yes",
     digital_standee_note: "2 Standees",
     parking: "1 Parking space for tempo required",
@@ -109,6 +112,8 @@ describe("buildMomDocument", () => {
     expect(doc).toContain("2 Standees");
     expect(doc).toContain("12 chairs");
     expect(doc).toContain("Props, sofas & chairs by organisers");
+    expect(doc).toContain("Registration desk in the lobby");
+    expect(doc).toContain("Licences: Received — PPL, IPRS");
     expect(doc).toContain("Lunch: 120 pax");
     expect(doc).toContain("Hi-Tea: 80 pax");
     expect(doc).toContain("Interval – Yes");

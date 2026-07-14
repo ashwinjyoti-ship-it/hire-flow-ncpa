@@ -25,13 +25,16 @@ import { audit } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { generateTemporaryPassword, hashPassword } from "../lib/crypto";
 import { revokeAllSessions } from "../lib/sessions";
-import { ALL_PERMISSIONS, LEGACY_ROLE_PERMISSIONS, normalisePermissions, permissionsFromRow, type Permission } from "../lib/rbac";
+import { ALL_PERMISSIONS, LEGACY_ROLE_PERMISSIONS, can, normalisePermissions, permissionsFromRow, type Permission } from "../lib/rbac";
 import { createUser } from "./auth";
 
 export const userRoutes = new Hono<AuthEnv>();
 
-// Gatekeeper-only across the board. User management is a sensitive surface.
-userRoutes.use("*", requirePermission("user.manage"));
+function canListUsers(permissions: readonly string[]): boolean {
+  return can(permissions, "user.manage")
+    || can(permissions, "event.create")
+    || can(permissions, "event.edit");
+}
 
 const PermissionList = z.array(z.enum(ALL_PERMISSIONS as [Permission, ...Permission[]]));
 
@@ -49,20 +52,50 @@ async function otherGatekeepers(db: D1Database, exceptId: string): Promise<numbe
   return row?.c ?? 0;
 }
 
-// ---- GET / — list all accounts ----
+// ---- GET / — list accounts (full for user.manage; limited fields for event editors) ----
 userRoutes.get("/", async (c) => {
+  const actor = c.get("user");
+  if (!actor) return c.json({ error: "Authentication required" }, 401);
+  if (!canListUsers(actor.permissions)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+  const fullAccess = can(actor.permissions, "user.manage");
   const db = c.env.DB;
   const { results } = await db.prepare(
-    `SELECT id, email, name, role, permissions, organisation, is_active, must_change_password,
-            totp_secret IS NOT NULL AS mfa_enrolled, created_at, updated_at
-     FROM users ORDER BY is_active DESC, name`
-  ).all<{ id: string; email: string; name: string; role: string | null; permissions: string | null } & Record<string, unknown>>();
+    fullAccess
+      ? `SELECT id, email, name, role, permissions, organisation, contact_number,
+                is_programme_officer, is_active, must_change_password,
+                totp_secret IS NOT NULL AS mfa_enrolled, created_at, updated_at
+         FROM users ORDER BY is_active DESC, name`
+      : `SELECT id, name, contact_number, is_programme_officer, is_active
+         FROM users WHERE is_active = 1 ORDER BY name`
+  ).all<Record<string, unknown>>();
   const users = (results ?? []).map((u) => {
-    const { role, permissions, ...rest } = u;
-    return { ...rest, permissions: permissionsFromRow(permissions, role) };
+    if (!fullAccess) {
+      return {
+        id: u.id,
+        name: u.name,
+        contact_number: u.contact_number ?? null,
+        is_programme_officer: Number(u.is_programme_officer) === 1,
+        is_active: u.is_active,
+      };
+    }
+    const { role, permissions, is_programme_officer, ...rest } = u as {
+      role: string | null;
+      permissions: string | null;
+      is_programme_officer: number;
+    } & Record<string, unknown>;
+    return {
+      ...rest,
+      is_programme_officer: Number(is_programme_officer) === 1,
+      permissions: permissionsFromRow(permissions, role),
+    };
   });
   return c.json({ users });
 });
+
+// Gatekeeper-only for mutating routes. User management is a sensitive surface.
+userRoutes.use("*", requirePermission("user.manage"));
 
 // ---- POST / — create an account ----
 // Creates a users row AND a matching handled_by dropdown option atomically, so
@@ -72,12 +105,14 @@ const CreateBody = z.object({
   email: z.string().email(),
   permissions: PermissionList.default([...LEGACY_ROLE_PERMISSIONS.venue_manager!]),
   organisation: z.string().nullish(),
+  contact_number: z.string().max(50).nullish(),
+  is_programme_officer: z.boolean().optional(),
 });
 
 userRoutes.post("/", async (c) => {
   const parsed = CreateBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
-  const { name, email, organisation } = parsed.data;
+  const { name, email, organisation, contact_number, is_programme_officer } = parsed.data;
   const permissions = normalisePermissions(parsed.data.permissions);
   const db = c.env.DB;
   const admin = c.get("user")!;
@@ -97,7 +132,15 @@ userRoutes.post("/", async (c) => {
   const userId = (await createUser(db, { email, name: name.trim(), permissions, password: temporaryPassword, organisation: organisation ?? null })).id;
 
   // Force a password change on first sign-in (createUser doesn't set this).
-  await db.prepare("UPDATE users SET must_change_password = 1, updated_at = ? WHERE id = ?").bind(now, userId).run();
+  await db.prepare(
+    `UPDATE users SET must_change_password = 1, contact_number = ?, is_programme_officer = ?, updated_at = ?
+     WHERE id = ?`
+  ).bind(
+    contact_number?.trim() || null,
+    is_programme_officer ? 1 : 0,
+    now,
+    userId,
+  ).run();
 
   // Create the matching dropdown option so the owner appears in the Event Owner dropdown.
   const optionId = makeId("dd_handled_by");
@@ -126,6 +169,8 @@ const UpdateBody = z.object({
   email: z.string().email().optional(),
   permissions: PermissionList.optional(),
   organisation: z.string().nullish(),
+  contact_number: z.string().max(50).nullish(),
+  is_programme_officer: z.boolean().optional(),
 });
 
 userRoutes.put("/:id", async (c) => {
@@ -158,10 +203,33 @@ userRoutes.put("/:id", async (c) => {
     if (clash) return c.json({ error: "That email is already in use" }, 409);
   }
 
-  await db.prepare(
-    `UPDATE users SET name = ?, email = ?, permissions = COALESCE(?, permissions),
-       organisation = COALESCE(?, organisation), updated_at = ? WHERE id = ?`
-  ).bind(nextName, nextEmail, nextPermissions ? JSON.stringify(nextPermissions) : null, d.organisation ?? null, now, id).run();
+  const nextContact = d.contact_number !== undefined ? (d.contact_number?.trim() || null) : undefined;
+  const nextProgrammeOfficer = d.is_programme_officer !== undefined ? (d.is_programme_officer ? 1 : 0) : undefined;
+
+  const setClauses = [
+    "name = ?",
+    "email = ?",
+    "permissions = COALESCE(?, permissions)",
+    "organisation = COALESCE(?, organisation)",
+    "updated_at = ?",
+  ];
+  const binds: unknown[] = [
+    nextName,
+    nextEmail,
+    nextPermissions ? JSON.stringify(nextPermissions) : null,
+    d.organisation ?? null,
+    now,
+  ];
+  if (nextContact !== undefined) {
+    setClauses.push("contact_number = ?");
+    binds.push(nextContact);
+  }
+  if (nextProgrammeOfficer !== undefined) {
+    setClauses.push("is_programme_officer = ?");
+    binds.push(nextProgrammeOfficer);
+  }
+  binds.push(id);
+  await db.prepare(`UPDATE users SET ${setClauses.join(", ")} WHERE id = ?`).bind(...binds).run();
 
   // Keep the handled_by option label in sync with the user's name.
   if (d.name) {

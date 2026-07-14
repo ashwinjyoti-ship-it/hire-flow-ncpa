@@ -191,6 +191,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "no_of_crew_cards": return String(8 + (event.index % 18));
     case "house_seats": return String(4 + (event.index % 10));
     case "licenses": return event.index % 3 === 0 ? "PPL, IPRS" : "Standard venue permissions";
+    case "licenses_status": return event.index % 3 === 0 ? "Received" : "Not received";
     case "decorator_name": return ["Bloom & Beam", "StageCraft", "Ivory Events"][event.index % 3]!;
     case "decorator_tier": return ["A", "B", "C"][event.index % 3]!;
     case "caterer_name": return ["Copper Plate", "Saffron Kitchen", "Bay Leaf"][event.index % 3]!;

@@ -23,7 +23,7 @@ export const EVENT_LEVEL_REQUIREMENT_KEYS = [
 const AFFIRMATIVE_VALUES = new Set(["Yes", "Required", "Keep"]);
 const JOINABLE_TEXT_KEYS = new Set([
   "sound", "light", "green_room_amenities", "parking", "security", "housekeeping",
-  "licenses", "stage_setup", "orchestra_pit_chairs_note", "digital_standee_note",
+  "licenses", "licenses_status", "stage_setup", "foyer_setup", "orchestra_pit_chairs_note", "digital_standee_note",
   "car_display_note", "bike_display_note", "stalls_note", "telecasting_media_note",
   "liquor_licence_details", "catering_provider", "decorator_name", "recording_type",
 ]);

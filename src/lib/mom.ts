@@ -207,6 +207,7 @@ export function getMomMissingFields(input: MomEventInput): MomMissingField[] {
   push("security", "Security Notes", filled(reqs.security) || filled(reqs.parking));
   push("housekeeping", "Housekeeping", filled(reqs.housekeeping));
   push("stage_setup", "Stage Setup", filled(reqs.stage_setup));
+  push("foyer_setup", "Foyer Setup", filled(reqs.foyer_setup));
 
   if (isYes(reqs.catering_required, "Yes")) {
     push("catering_provider", "Caterer", filled(reqs.catering_provider));
@@ -396,6 +397,14 @@ function buildVendorLinesForReqs(reqs: Record<string, unknown>): string[] {
     lines.push(`Decorator - ${text(reqs.decorator_name) ?? TBC}`);
   }
 
+  const licenseStatus = text(reqs.licenses_status);
+  const licenseTypes = text(reqs.licenses);
+  if (licenseStatus || licenseTypes) {
+    if (licenseStatus && licenseTypes) lines.push(`Licences: ${licenseStatus} — ${licenseTypes}`);
+    else if (licenseStatus) lines.push(`Licences: ${licenseStatus}`);
+    else lines.push(`Licences: ${licenseTypes}`);
+  }
+
   return lines;
 }
 
@@ -454,6 +463,8 @@ function buildFoyerLines(bookings: MomVenueBooking[], eventReqs: Record<string, 
 
 function buildFoyerLinesForReqs(reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
+  const foyer = text(reqs.foyer_setup);
+  if (foyer) lines.push(foyer);
   const standee = yesNoLine("Digital standee", reqs.digital_standee, reqs.digital_standee_note);
   if (standee) lines.push(standee);
   const stalls = yesNoLine("Stalls", reqs.stalls, reqs.stalls_note);

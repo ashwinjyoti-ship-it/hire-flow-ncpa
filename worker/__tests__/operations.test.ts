@@ -516,7 +516,7 @@ describe("additional requirements <-> checklist sync", () => {
         // Now a Yes/No dropdown (was free text)
         piano_required: "Yes",
         // Passthrough
-        crew_cards: "12", licenses: "PPL, IPRS",
+        crew_cards: "12", licenses_status: "Received", licenses: "PPL, IPRS",
       });
 
       await syncAdditionalRequirementsChecklist(db, "ev_ankh");
@@ -531,6 +531,7 @@ describe("additional requirements <-> checklist sync", () => {
       expect(byField.get("req_sound")).toBe("Required");
       expect(byField.get("req_piano")).toBe("Required");
       expect(byField.get("no_of_crew_cards")).toBe("12");
+      expect(byField.get("licenses_status")).toBe("Received");
       expect(byField.get("licenses")).toBe("PPL, IPRS");
     });
 
@@ -604,6 +605,7 @@ describe("additional requirements <-> checklist sync", () => {
         ["req_piano", "Not Required", "piano_required", "No"],
         ["req_telecasting_media", "Not Required", "telecasting_media", "No"],
         ["no_of_crew_cards", "42", "crew_cards", "42"],
+        ["licenses_status", "Received", "licenses_status", "Received"],
         ["licenses", "PPL, IPRS", "licenses", "PPL, IPRS"],
       ];
       for (const [fieldKey, value, formKey, expected] of cases) {
