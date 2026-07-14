@@ -170,7 +170,8 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "confirmation_made": return "No";
     case "confirmation_couriered": return null;
     case "confirmation_signed_received": return "No";
-    case "req_sound": return event.index % 2 === 0 ? "Required" : "Not Required";
+    case "exec_sound_light": return event.index % 2 === 0 ? "Captured on form" : "Not started";
+    case "exec_catering_decorator": return event.index % 3 === 0 ? "Verified" : "Not started";
     case "req_piano": return event.nature.includes("Music") ? "Required" : "Not Required";
     case "req_liquor_license": return event.eventType === "EE" ? "Required" : "Not Required";
     case "req_orchestra_pit_chairs": return event.venues.includes("TATA") ? "Required" : "Not Required";
@@ -179,8 +180,8 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "req_bike_display": return "Not Required";
     case "req_stalls": return event.index % 5 === 0 ? "Required" : "Not Required";
     case "req_telecasting_media": return event.eventType === "EE" ? "Required" : "Not Required";
-    case "noc_sent_on": return null;
-    case "noc_status": return "Not Sent";
+    case "noc_sent": return event.index % 4 === 0 ? "Yes" : "No";
+    case "noc_sent_on": return event.index % 4 === 0 ? addDays(event.startDate, -14) : null;
     case "onstage_asked_client": return active ? addDays(event.startDate, -12) : null;
     case "onstage_received_from_client": return null;
     case "onstage_sent_to_team": return null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -393,10 +393,30 @@ describe("event reference checklist sync", () => {
     expect(nameUpd?.binds[0]).toBe("Ankh");
     const natureUpd = updates.find((u) => u.binds[u.binds.length - 1] === "nature_of_event");
     expect(natureUpd?.binds[0]).toBe("Hindi play, ticketed event");
-    // Only empty rows are written.
+    // event_name always mirrors title; other reference fields only fill empty rows.
     for (const u of updates) {
-      expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
+      const fieldKey = u.binds[u.binds.length - 1];
+      if (fieldKey === "event_name") {
+        expect(u.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
+      } else {
+        expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
+      }
     }
+  });
+
+  it("overwrites event_name when the event title is renamed", async () => {
+    const { db, updates } = buildDb({
+      title: "Renamed Concert",
+      eventType: "EE",
+      description: "Updated",
+      venues: ["JBT"],
+    });
+
+    await syncEventReferenceChecklist(db, "ev_ankh");
+
+    const nameUpd = updates.find((u) => u.binds[u.binds.length - 1] === "event_name");
+    expect(nameUpd?.binds[0]).toBe("Renamed Concert");
+    expect(nameUpd?.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
   });
 
   it("does not write for fields whose source is empty (no description => no nature_of_event update)", async () => {
@@ -442,6 +462,12 @@ describe("checklist item status from value", () => {
     expect(itemStatusForValue({ field_type: "dropdown", value: "No Applicable" })).toBe("not_applicable");
   });
 
+  it("treats Verified and Captured on form as completed / in progress", () => {
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Verified" })).toBe("completed");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Captured on form" })).toBe("in_progress");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Not started" })).toBe("not_started");
+  });
+
   it("a non-default, non-done dropdown value stays in_progress", () => {
     // e.g. a custom intermediate choice that is neither a known default nor done.
     expect(itemStatusForValue({ field_type: "dropdown", value: "Partially done" })).toBe("in_progress");
@@ -454,17 +480,13 @@ describe("checklist item status from value", () => {
   });
 });
 
-describe("additional requirements <-> checklist sync", () => {
-  // The event form (events.requirements JSON) and the Operations checklist
-  // (checklist_items) must round-trip. Forward map: form value ->
-  // checklist Required/Not Required. Reverse map: checklist value -> form
-  // vocabulary. Sound is forward-only (free text the checklist can't represent).
-
-  // A mock D1Database. Forward sync updates checklist_items; reverse sync
-  // updates events.requirements. Both call recalculateEventCompletion, whose
-  // checklist_items reads return empty so completion stays 0 (a no-op UPDATE).
+describe("requirements <-> checklist sync", () => {
   type Upd = { sql: string; binds: unknown[] };
-  function buildReqDb(eventsRequirements: Record<string, unknown> | null, venueRequirements: Array<Record<string, unknown> | null> = []) {
+  function buildReqDb(
+    eventsRequirements: Record<string, unknown> | null,
+    venueRequirements: Array<Record<string, unknown> | null> = [],
+    checklistValues: Record<string, string | null> = {},
+  ) {
     const updates: Upd[] = [];
     const db = {
       prepare(sql: string) {
@@ -472,9 +494,12 @@ describe("additional requirements <-> checklist sync", () => {
           binds: [] as unknown[],
           bind(...values: unknown[]) { this.binds = values; return this; },
           async first() {
-            // Both sync functions SELECT requirements FROM events.
             if (sql.includes("SELECT requirements FROM events")) {
               return { requirements: eventsRequirements ? JSON.stringify(eventsRequirements) : null };
+            }
+            if (sql.includes("SELECT value FROM checklist_items")) {
+              const fieldKey = statement.binds[1] as string;
+              return { value: checklistValues[fieldKey] ?? null };
             }
             return null;
           },
@@ -502,21 +527,24 @@ describe("additional requirements <-> checklist sync", () => {
   }
 
   describe("forward: syncAdditionalRequirementsChecklist", () => {
-    it("maps dropdown form values to Required/Not Required, writing each row", async () => {
+    it("rolls form cards up into exec_* section rows and syncs Operations Details", async () => {
       const { db, updates } = buildReqDb({
-        // Yes-vocabulary fields
-        digital_standee: "Yes", car_display: "Yes", bike_display: "Yes",
-        stalls: "Yes", telecasting_media: "Yes",
-        // Inverted vocabulary
-        orchestra_pit_chairs: "Keep",
-        // Already Required/Not Required
-        liquor_licence: "Required",
-        // Free-text -> Required when non-empty
         sound: "8-channel PA",
-        // Now a Yes/No dropdown (was free text)
-        piano_required: "Yes",
-        // Passthrough
-        crew_cards: "12", licenses_status: "Received", licenses: "PPL, IPRS",
+        light: "LED wash",
+        green_rooms_required: "Required",
+        catering_required: "Yes",
+        catering_provider: "Royal Caterers",
+        decorator_required: "Yes",
+        decorator_name: "StageCraft",
+        parking: "VIP bay",
+        digital_standee: "Yes",
+        crew_cards: "12",
+        licenses_status: "Received",
+        licenses: "PPL, IPRS",
+        catering_lunch_required: "Yes",
+        catering_lunch_pax: "100",
+        catering_dinner_required: "Yes",
+        catering_dinner_pax: "50",
       });
 
       await syncAdditionalRequirementsChecklist(db, "ev_ankh");
@@ -524,21 +552,21 @@ describe("additional requirements <-> checklist sync", () => {
       const byField = new Map(updates
         .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
         .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-      expect(byField.get("req_digital_standee")).toBe("Required");
-      expect(byField.get("req_car_display")).toBe("Required");
-      expect(byField.get("req_orchestra_pit_chairs")).toBe("Required");
-      expect(byField.get("req_liquor_license")).toBe("Required");
-      expect(byField.get("req_sound")).toBe("Required");
-      expect(byField.get("req_piano")).toBe("Required");
+      expect(byField.get("exec_sound_light")).toBe("Captured on form");
+      expect(byField.get("exec_staffing")).toBe("Captured on form");
+      expect(byField.get("exec_catering_decorator")).toBe("Captured on form");
+      expect(byField.get("exec_operations")).toBe("Captured on form");
+      expect(byField.get("exec_additional")).toBe("Captured on form");
       expect(byField.get("no_of_crew_cards")).toBe("12");
-      expect(byField.get("licenses_status")).toBe("Received");
-      expect(byField.get("licenses")).toBe("PPL, IPRS");
+      expect(byField.get("caterer_name")).toBe("Royal Caterers");
+      expect(byField.get("type_of_catering")).toBe("Lunch, Dinner");
+      expect(byField.get("no_of_pax")).toBe("150");
     });
 
-    it("aggregates requirements across venue bookings when events.requirements is empty", async () => {
+    it("aggregates venue bookings and marks captured sections from merged requirements", async () => {
       const { db, updates } = buildReqDb(null, [
-        { piano_required: "No", sound: "" },
-        { piano_required: "Yes", sound: "Line array" },
+        { sound: "" },
+        { sound: "Line array" },
       ]);
 
       await syncAdditionalRequirementsChecklist(db, "ev_ankh");
@@ -546,18 +574,14 @@ describe("additional requirements <-> checklist sync", () => {
       const byField = new Map(updates
         .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
         .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-      expect(byField.get("req_piano")).toBe("Required");
-      expect(byField.get("req_sound")).toBe("Required");
+      expect(byField.get("exec_sound_light")).toBe("Captured on form");
     });
 
-    it("maps negative/empty form values: No/Remove -> Not Required, blank -> skip", async () => {
+    it("leaves sections Not started when only placeholder defaults are present", async () => {
       const { db, updates } = buildReqDb({
-        digital_standee: "No", car_display: "No",
-        orchestra_pit_chairs: "Remove",
-        liquor_licence: "Not Required",
+        digital_standee: "No",
         piano_required: "No",
-        crew_cards: "12", // set, should still write
-        // bike_display / stalls / telecasting_media / sound / licenses omitted entirely
+        crew_cards: "12",
       });
 
       await syncAdditionalRequirementsChecklist(db, "ev_ankh");
@@ -565,48 +589,47 @@ describe("additional requirements <-> checklist sync", () => {
       const byField = new Map(updates
         .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
         .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-      expect(byField.get("req_digital_standee")).toBe("Not Required");
-      expect(byField.get("req_car_display")).toBe("Not Required");
-      expect(byField.get("req_orchestra_pit_chairs")).toBe("Not Required");
-      expect(byField.get("req_liquor_license")).toBe("Not Required");
-      expect(byField.get("req_piano")).toBe("Not Required");
+      expect(byField.get("exec_additional")).toBe("Not started");
+      expect(byField.get("exec_recording_special")).toBe("Not started");
       expect(byField.get("no_of_crew_cards")).toBe("12");
-      // Omitted form keys are "silent" and must not produce a checklist write.
-      expect(byField.has("req_bike_display")).toBe(false);
-      expect(byField.has("req_stalls")).toBe(false);
-      expect(byField.has("req_telecasting_media")).toBe(false);
-      expect(byField.has("req_sound")).toBe(false);
-      expect(byField.has("licenses")).toBe(false);
+    });
+
+    it("does not overwrite Verified or Not applicable section rows", async () => {
+      const { db, updates } = buildReqDb(
+        { sound: "PA", parking: "VIP" },
+        [],
+        { exec_sound_light: "Verified", exec_operations: "Not applicable" },
+      );
+
+      await syncAdditionalRequirementsChecklist(db, "ev_ankh");
+
+      const fieldKeys = updates
+        .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+        .map((u) => u.binds[u.binds.length - 1] as string);
+      expect(fieldKeys).not.toContain("exec_sound_light");
+      expect(fieldKeys).not.toContain("exec_operations");
     });
   });
 
   describe("reverse: syncRequirementsFromChecklistItem", () => {
-    it("maps checklist Required/Not Required back into the form vocabulary", async () => {
+    it("passthroughs Operations Details into the form requirements JSON", async () => {
       const { db, updates } = buildReqDb({ existing_field: "keep me" });
 
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Required");
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "caterer_name", "Royal Caterers");
 
-      // Single UPDATE events SET requirements = ? ...; binds[0] is the JSON.
       const evUpd = updates.find((u) => u.sql.startsWith("UPDATE events"));
       expect(evUpd).toBeDefined();
       const written = JSON.parse(evUpd!.binds[0] as string) as Record<string, unknown>;
-      expect(written.car_display).toBe("Yes");
-      // Existing keys must survive the read-modify-write.
+      expect(written.catering_provider).toBe("Royal Caterers");
       expect(written.existing_field).toBe("keep me");
     });
 
-    it("handles Keep/Remove and liquor vocabulary, plus passthrough fields", async () => {
+    it("handles passthrough detail fields", async () => {
       const cases: Array<[string, string | null, string, string]> = [
-        ["req_orchestra_pit_chairs", "Required", "orchestra_pit_chairs", "Keep"],
-        ["req_orchestra_pit_chairs", "Not Required", "orchestra_pit_chairs", "Remove"],
-        ["req_liquor_license", "Required", "liquor_licence", "Required"],
-        ["req_liquor_license", "Not Required", "liquor_licence", "Not Required"],
-        ["req_piano", "Required", "piano_required", "Yes"],
-        ["req_piano", "Not Required", "piano_required", "No"],
-        ["req_telecasting_media", "Not Required", "telecasting_media", "No"],
         ["no_of_crew_cards", "42", "crew_cards", "42"],
         ["licenses_status", "Received", "licenses_status", "Received"],
         ["licenses", "PPL, IPRS", "licenses", "PPL, IPRS"],
+        ["decorator_name", "StageCraft", "decorator_name", "StageCraft"],
       ];
       for (const [fieldKey, value, formKey, expected] of cases) {
         const { db, updates } = buildReqDb({});
@@ -618,103 +641,71 @@ describe("additional requirements <-> checklist sync", () => {
       }
     });
 
-    it("is a no-op for req_sound (form->checklist only) and unknown fields", async () => {
+    it("is a no-op for exec_* section rows and unknown fields", async () => {
       const { db, updates } = buildReqDb({ sound: "8-channel PA" });
 
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_sound", "Not Required");
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "exec_sound_light", "Verified");
       await syncRequirementsFromChecklistItem(db, "ev_ankh", "event_name", "Some Title");
 
-      // No UPDATE events should be issued.
-      expect(updates.find((u) => u.sql.startsWith("UPDATE events"))).toBeUndefined();
+      expect(updates.filter((u) => u.sql.startsWith("UPDATE events"))).toHaveLength(0);
     });
 
-    it("is a no-op when a dropdown value is neither Required nor Not Required", async () => {
-      const { db, updates } = buildReqDb({});
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", null);
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "");
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Pending");
-      expect(updates.find((u) => u.sql.startsWith("UPDATE events"))).toBeUndefined();
-    });
+    it("is a no-op when a passthrough value is empty", async () => {
+      const { db, updates } = buildReqDb({ crew_cards: "5" });
 
-    it("survives a malformed requirements JSON (starts fresh, still writes)", async () => {
-      const updates: Upd[] = [];
-      const db = {
-        prepare(sql: string) {
-          const statement = {
-            binds: [] as unknown[],
-            bind(...values: unknown[]) { this.binds = values; return this; },
-            async first() {
-              if (sql.includes("SELECT requirements FROM events")) return { requirements: "{not json" };
-              return null;
-            },
-            async all() { return { results: [] }; },
-            async run() {
-              updates.push({ sql, binds: [...this.binds] });
-              return { success: true };
-            },
-          };
-          return statement;
-        },
-      } as unknown as D1Database;
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "no_of_crew_cards", null);
+      await syncRequirementsFromChecklistItem(db, "ev_ankh", "no_of_crew_cards", "");
 
-      await syncRequirementsFromChecklistItem(db, "ev_ankh", "req_car_display", "Required");
-      // Should not throw; parse failed so we start from {} and still write the
-      // single mirrored key.
-      const evUpd = updates.find((u) => u.sql.startsWith("UPDATE events"));
-      expect(evUpd).toBeDefined();
-      const written = JSON.parse(evUpd!.binds[0] as string) as Record<string, unknown>;
-      expect(written).toEqual({ car_display: "Yes" });
+      expect(updates.filter((u) => u.sql.startsWith("UPDATE events"))).toHaveLength(0);
     });
   });
+});
 
-  describe("round-trip stability", () => {
-    // For each Yes/No-style field, checklist -> form -> checklist must yield the
-    // same checklist value. This is the invariant that prevents a slow drift
-    // when the user edits the checklist, then saves the event form.
-    it("checklist -> form -> checklist is idempotent for every mapped dropdown", async () => {
-      const roundTrip: Array<[string, string, string, string[]]> = [
-        // [fieldKey, checklistVal, formKey, forward yesValues]
-        ["req_piano", "Required", "piano_required", ["Yes"]],
-        ["req_piano", "Not Required", "piano_required", ["Yes"]],
-        ["req_liquor_license", "Required", "liquor_licence", ["Required"]],
-        ["req_liquor_license", "Not Required", "liquor_licence", ["Required"]],
-        ["req_orchestra_pit_chairs", "Required", "orchestra_pit_chairs", ["Keep"]],
-        ["req_orchestra_pit_chairs", "Not Required", "orchestra_pit_chairs", ["Keep"]],
-        ["req_digital_standee", "Required", "digital_standee", ["Yes"]],
-        ["req_digital_standee", "Not Required", "digital_standee", ["Yes"]],
-        ["req_car_display", "Required", "car_display", ["Yes"]],
-        ["req_car_display", "Not Required", "car_display", ["Yes"]],
-        ["req_bike_display", "Required", "bike_display", ["Yes"]],
-        ["req_bike_display", "Not Required", "bike_display", ["Yes"]],
-        ["req_stalls", "Required", "stalls", ["Yes"]],
-        ["req_stalls", "Not Required", "stalls", ["Yes"]],
-        ["req_telecasting_media", "Required", "telecasting_media", ["Yes"]],
-        ["req_telecasting_media", "Not Required", "telecasting_media", ["Yes"]],
-      ];
-      for (const [fieldKey, checklistVal, _formKey, yesValues] of roundTrip) {
-        // Reverse: checklist value -> form value.
-        const revDb = buildReqDb({});
-        await syncRequirementsFromChecklistItem(revDb.db, "ev_ankh", fieldKey, checklistVal);
-        const revWritten = JSON.parse(
-          revDb.updates.find((u) => u.sql.startsWith("UPDATE events"))!.binds[0] as string,
-        ) as Record<string, unknown>;
-        const formValue = revWritten[_formKey] as string;
+describe("event requirements section seed", () => {
+  it("defines six Event Requirements section rows and no granular req_* fields", () => {
+    const execRows = CHECKLIST_DEFINITIONS.filter((d) => d.section === "Event Requirements");
+    expect(execRows).toHaveLength(6);
+    expect(CHECKLIST_DEFINITIONS.some((d) => d.field_key === "req_sound")).toBe(false);
+  });
+});
 
-        // Forward: form value -> checklist value.
-        const fwdDb = buildReqDb({ [_formKey]: formValue });
-        await syncAdditionalRequirementsChecklist(fwdDb.db, "ev_ankh");
-        const fwdWritten = fwdDb.updates
-          .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
-          .map((u) => u.binds[u.binds.length - 1] as string);
-        expect(fwdWritten).toContain(fieldKey);
-        const fwdValue = fwdDb.updates
-          .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
-          .map((u) => u.binds[0] as string);
-        expect(fwdValue).toContain(checklistVal);
-        // Sanity: yesValues membership reproduces the original derivation.
-        expect(yesValues.includes(formValue)).toBe(checklistVal === "Required");
-      }
-    });
+describe("NOC dependent checklist fields", () => {
+  it("seeds visibility_rule so date sent only shows when NOC Sent? = Yes", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.noc_sent?.field_type).toBe("dropdown");
+    expect(byKey.noc_sent?.options).toEqual(["No", "Yes"]);
+    expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Yes)");
+    expect(byKey.noc_status).toBeUndefined();
+  });
+
+  it("marks Date Sent not_applicable when NOC Sent? = No", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncNocDependentChecklist(db, "ev_1", "No");
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = ?");
+    expect(updates[0]?.binds[0]).toBe("not_applicable");
+    expect(updates[0]?.binds[updates[0]!.binds.length - 1]).toBe("noc_sent_on");
   });
 });
 
