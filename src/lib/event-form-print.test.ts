@@ -76,6 +76,8 @@ describe("event-form-print", () => {
     expect(body).toContain("Show");
     expect(body).toContain("NCPA basic sound");
     expect(body).toContain("14:30");
+    expect(body).toContain("Venues, Schedule &amp; Requirements");
+    expect(body).toContain("Program officer contact");
     expect(body).toContain("Confirmation_Letter.pdf (Confirmation letter)");
     expect(body).toContain("Floor_Plan.png (Floor plan)");
     expect(body).toContain("House seats held until Friday.");
@@ -83,7 +85,47 @@ describe("event-form-print", () => {
     expect(body).toContain("Prepared by");
   });
 
-  it("lists blank requirement labels as em dashes and omits document names when none uploaded", () => {
+  it("prints per-venue requirements when bookings carry their own values", () => {
+    const body = buildEventFormPrintBody({
+      ...sample,
+      requirements: { program_officer_phone: "022 1" },
+      venue_bookings: [
+        {
+          venue: "JBT",
+          booking_status: "confirmed",
+          number_of_shows: 1,
+          requirements: { sound: "JBT PA" },
+          schedule_entries: [],
+        },
+        {
+          venue: "TATA",
+          booking_status: "tentative",
+          number_of_shows: 1,
+          requirements: { sound: "TATA array" },
+          schedule_entries: [],
+        },
+      ],
+    });
+
+    expect(body).toContain("JBT PA");
+    expect(body).toContain("TATA array");
+    expect(body).toContain("<h4>Requirements</h4>");
+  });
+
+  it("lists blank requirement labels under venues and omits document names when none uploaded", () => {
+    const body = buildEventFormPrintBody({
+      title: "Draft event",
+      requirements: {},
+      venue_bookings: [{ venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: {}, schedule_entries: [] }],
+      documents: [],
+    });
+
+    expect(body).toContain("Sound Requirements");
+    expect(body).toContain("—");
+    expect(body).toContain("No documents uploaded.");
+  });
+
+  it("notes when no venue bookings are recorded", () => {
     const body = buildEventFormPrintBody({
       title: "Draft event",
       requirements: {},
@@ -91,10 +133,8 @@ describe("event-form-print", () => {
       documents: [],
     });
 
-    expect(body).toContain("Sound Requirements");
-    expect(body).toContain("—");
-    expect(body).toContain("No documents uploaded.");
     expect(body).toContain("No venue bookings recorded.");
+    expect(body).toContain("No documents uploaded.");
   });
 
   it("builds print-ready HTML with separate Print and Export to PDF toolbar actions", () => {

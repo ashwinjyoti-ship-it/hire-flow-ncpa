@@ -350,7 +350,10 @@ export function CalendarPage() {
 }
 
 function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose: () => void }) {
-  const reqs = parseRequirements(entry.event_requirements);
+  const eventReqs = parseRequirements(entry.event_requirements);
+  const venueReqs = parseRequirements(entry.requirements);
+  // Prefer this venue's requirements; fall back to event-level for legacy rows.
+  const reqs = Object.keys(venueReqs).length > 0 ? { ...eventReqs, ...venueReqs } : eventReqs;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
       <aside className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
@@ -442,7 +445,7 @@ function DetailGroup({ title, children }: { title: string; children: React.React
   );
 }
 
-function parseRequirements(value: CalEntry["event_requirements"]): Record<string, unknown> {
+function parseRequirements(value: CalEntry["event_requirements"] | CalEntry["requirements"]): Record<string, unknown> {
   if (!value) return {};
   if (typeof value === "string") {
     try {

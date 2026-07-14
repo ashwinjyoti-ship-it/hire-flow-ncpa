@@ -4,6 +4,7 @@
  */
 
 import { escapeHtml } from "./export";
+import { omitEventLevelRequirements } from "./event-edit-form";
 import { formatDate, formatDuration, formatTime, formatTimeRange } from "./use-lookups";
 
 export type EventFormPrintScheduleEntry = {
@@ -25,6 +26,7 @@ export type EventFormPrintVenueBooking = {
   booking_status?: string | null;
   number_of_shows?: number | null;
   notes?: string | null;
+  requirements?: Record<string, unknown> | string | null;
   schedule_entries?: EventFormPrintScheduleEntry[] | null;
 };
 
@@ -57,9 +59,8 @@ export type EventFormPrintInput = {
 
 const BLANK = "—";
 
-/** Ordered requirement fields matching the Add/Edit Event form. */
+/** Ordered venue requirement fields matching the Add/Edit Event form (excludes event-level contact). */
 const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
-  { key: "program_officer_phone", label: "Program Officer Contact" },
   { key: "sound", label: "Sound Requirements" },
   { key: "sound_call_time", label: "Sound Call Time" },
   { key: "light", label: "Light Requirements" },
@@ -252,7 +253,7 @@ export function eventFormPrintFileBase(input: EventFormPrintInput): string {
 
 /** Build the filled-form HTML body sections (without document chrome). */
 export function buildEventFormPrintBody(input: EventFormPrintInput): string {
-  const reqs = parseRequirements(input.requirements);
+  const eventReqs = parseRequirements(input.requirements);
   const bookings = input.venue_bookings ?? [];
   const documents = (input.documents ?? []).filter((doc) => text(doc.file_name));
 
@@ -267,11 +268,14 @@ export function buildEventFormPrintBody(input: EventFormPrintInput): string {
     ["Enquiry source", display(input.enquiry_source)],
     ["Priority", formatStatus(input.priority)],
     ["Program officer", display(input.program_officer)],
+    ["Program officer contact", display(eventReqs.program_officer_phone)],
     ["Event owner", display(input.event_owner)],
     ["Approval", formatStatus(input.approval_status)],
     ["Signed confirmation", formatStatus(input.confirmation_status)],
     ["Description", display(input.description)],
   ];
+
+  const knownKeys = new Set(REQUIREMENT_FIELDS.map((field) => field.key));
 
   const venueSections = bookings.length === 0
     ? "<p class=\"empty\">No venue bookings recorded.</p>"
@@ -280,6 +284,19 @@ export function buildEventFormPrintBody(input: EventFormPrintInput): string {
         const scheduleHtml = schedule.length === 0
           ? "<p class=\"empty\">No schedule entries.</p>"
           : `<ol class="schedule">${schedule.map((entry) => `<li>${escapeHtml(formatScheduleEntry(entry))}</li>`).join("")}</ol>`;
+        const venueReqs = parseRequirements(booking.requirements);
+        // Legacy events: fall back to event-level requirements when the booking has none.
+        const reqs = Object.keys(venueReqs).length > 0 ? venueReqs : omitEventLevelRequirements(eventReqs);
+        const requirementRows = REQUIREMENT_FIELDS.map((field): [string, string] => [
+          field.label,
+          formatRequirementValue(field.key, reqs[field.key]),
+        ]);
+        const extraKeys = Object.keys(reqs)
+          .filter((key) => key !== "program_officer_phone" && !knownKeys.has(key) && text(reqs[key]))
+          .sort();
+        for (const key of extraKeys) {
+          requirementRows.push([titleCaseWords(key), formatRequirementValue(key, reqs[key])]);
+        }
         return `<div class="venue-block">
 <h3>Venue ${index + 1}</h3>
 ${fieldTable([
@@ -290,21 +307,10 @@ ${fieldTable([
 ])}
 <h4>Schedule</h4>
 ${scheduleHtml}
+<h4>Requirements</h4>
+${fieldTable(requirementRows)}
 </div>`;
       }).join("");
-
-  const requirementRows = REQUIREMENT_FIELDS.map((field): [string, string] => [
-    field.label,
-    formatRequirementValue(field.key, reqs[field.key]),
-  ]);
-
-  const knownKeys = new Set(REQUIREMENT_FIELDS.map((field) => field.key));
-  const extraKeys = Object.keys(reqs)
-    .filter((key) => !knownKeys.has(key) && text(reqs[key]))
-    .sort();
-  for (const key of extraKeys) {
-    requirementRows.push([titleCaseWords(key), formatRequirementValue(key, reqs[key])]);
-  }
 
   const documentsHtml = documents.length === 0
     ? "<p class=\"empty\">No documents uploaded.</p>"
@@ -332,8 +338,7 @@ ${scheduleHtml}
 
   return [
     section("Event & Client", fieldTable(clientRows)),
-    section("Venues & Schedule", venueSections),
-    section("Requirements", fieldTable(requirementRows)),
+    section("Venues, Schedule & Requirements", venueSections),
     section("Documents", documentsHtml),
     notesSection,
     signatureSection,

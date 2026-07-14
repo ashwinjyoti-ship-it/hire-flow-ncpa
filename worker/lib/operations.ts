@@ -458,12 +458,16 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  * matching checklist row; where the form is silent (blank/null) we leave the
  * checklist untouched, preserving any value entered on the Operations tab.
  *
+ * Requirements may live on each venue booking and/or as a denormalised union on
+ * events.requirements. Checklist items remain event-scoped, so we aggregate
+ * across venues (affirmative wins; free-text joins; numbers take max).
+ *
  * Checklist dropdown fields only accept "Required" / "Not Required", so the
  * form's varied values (Yes/No, Keep/Remove, non-empty text for sound/piano)
  * are normalised. The form's note fields (qty/model text) are intentionally
- * not synced — they live only in events.requirements.
+ * not synced — they live only in the requirements JSON.
  *
- *   field_key                  source (events.requirements)     -> checklist value
+ *   field_key                  source (requirements)           -> checklist value
  *   req_sound                  sound (free text)               -> Required if set
  *   req_piano                  piano_required (Yes/No)         -> Required/Not Required
  *   req_liquor_license         liquor_licence                  -> as-is
@@ -480,17 +484,68 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
  * Safe to call repeatedly (idempotent).
  */
+function parseRequirementsJson(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+const AFFIRMATIVE = new Set(["Yes", "Required", "Keep"]);
+const JOINABLE = new Set([
+  "sound", "light", "green_room_amenities", "parking", "security", "housekeeping",
+  "licenses", "stage_setup", "orchestra_pit_chairs_note", "digital_standee_note",
+  "car_display_note", "bike_display_note", "stalls_note", "telecasting_media_note",
+  "liquor_licence_details", "catering_provider", "decorator_name", "recording_type",
+]);
+
+function aggregateRequirementSources(
+  sources: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const src of sources) {
+    for (const [key, value] of Object.entries(src)) {
+      if (value == null || (typeof value === "string" && value.trim() === "")) continue;
+      const current = out[key];
+      if (current == null || (typeof current === "string" && current.trim() === "")) {
+        out[key] = value;
+        continue;
+      }
+      if (typeof value === "string" && AFFIRMATIVE.has(value) && !(typeof current === "string" && AFFIRMATIVE.has(current))) {
+        out[key] = value;
+        continue;
+      }
+      if (key === "crew_cards" || key === "camera_count" || key === "no_of_pax") {
+        out[key] = String(Math.max(Number(current) || 0, Number(value) || 0));
+        continue;
+      }
+      if (JOINABLE.has(key) && typeof current === "string" && typeof value === "string" && current !== value) {
+        const parts = current.split(" · ").map((p) => p.trim()).filter(Boolean);
+        if (!parts.includes(value.trim())) out[key] = [...parts, value.trim()].join(" · ");
+      }
+    }
+  }
+  return out;
+}
+
 export async function syncAdditionalRequirementsChecklist(db: D1Database, eventId: string): Promise<void> {
   const row = await db.prepare("SELECT requirements FROM events WHERE id = ?")
     .bind(eventId).first<{ requirements: string | null }>();
-  if (!row?.requirements) return;
+  const { results: bookingRows } = await db.prepare(
+    "SELECT requirements FROM venue_bookings WHERE event_id = ?"
+  ).bind(eventId).all<{ requirements: string | null }>();
 
-  let reqs: Record<string, unknown>;
-  try {
-    reqs = JSON.parse(row.requirements) as Record<string, unknown>;
-  } catch {
-    return;
-  }
+  const sources = [
+    parseRequirementsJson(row?.requirements),
+    ...(bookingRows ?? []).map((b) => parseRequirementsJson(b.requirements)),
+  ];
+  const reqs = aggregateRequirementSources(sources);
+  if (Object.keys(reqs).length === 0) return;
 
   const str = (v: unknown): string | null => {
     const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
@@ -618,15 +673,24 @@ export async function syncRequirementsFromChecklistItem(
     .bind(eventId).first<{ requirements: string | null }>();
   if (!row) return;
 
-  let reqs: Record<string, unknown>;
-  try {
-    reqs = row.requirements ? (JSON.parse(row.requirements) as Record<string, unknown>) : {};
-  } catch {
-    reqs = {};
-  }
+  const reqs = parseRequirementsJson(row.requirements);
   reqs[formKey] = formValue;
+  const now = new Date().toISOString();
   await db.prepare("UPDATE events SET requirements = ?, updated_at = ? WHERE id = ?")
-    .bind(JSON.stringify(reqs), new Date().toISOString(), eventId).run();
+    .bind(JSON.stringify(reqs), now, eventId).run();
+
+  // Mirror into each venue booking so the per-venue form stays in sync with ops.
+  // Checklist is event-scoped, so the same decision applies to every hall.
+  const { results: bookings } = await db.prepare(
+    "SELECT id, requirements FROM venue_bookings WHERE event_id = ?"
+  ).bind(eventId).all<{ id: string; requirements: string | null }>();
+  for (const booking of bookings ?? []) {
+    const venueReqs = parseRequirementsJson(booking.requirements);
+    venueReqs[formKey] = formValue;
+    await db.prepare(
+      "UPDATE venue_bookings SET requirements = ?, updated_at = ? WHERE id = ? AND event_id = ?"
+    ).bind(JSON.stringify(venueReqs), now, booking.id, eventId).run();
+  }
 }
 
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {

@@ -53,6 +53,7 @@ type DetailResponse = {
     booking_status?: string | null;
     number_of_shows?: number | null;
     notes?: string | null;
+    requirements?: Record<string, unknown> | string | null;
     schedule_entries: unknown[];
   }>;
   activity: Array<Record<string, unknown>>;
@@ -281,6 +282,7 @@ export function EventDetailPage() {
       venue: vb.venue ?? null,
       number_of_shows: vb.number_of_shows ?? null,
       notes: vb.notes ?? null,
+      requirements: vb.requirements ?? null,
       schedule_entries: (vb.schedule_entries ?? []) as NonNullable<MomEventInput["venue_bookings"]>[number]["schedule_entries"],
     })),
   };
@@ -357,6 +359,7 @@ export function EventDetailPage() {
       booking_status: vb.booking_status ?? null,
       number_of_shows: vb.number_of_shows ?? null,
       notes: vb.notes ?? null,
+      requirements: vb.requirements ?? null,
       schedule_entries: (vb.schedule_entries ?? []) as NonNullable<EventFormPrintInput["venue_bookings"]>[number]["schedule_entries"],
     })),
     documents: (documentsData?.documents ?? []).map((doc) => ({
