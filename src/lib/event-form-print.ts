@@ -4,6 +4,7 @@
  */
 
 import { escapeHtml } from "./export";
+import { omitEventLevelRequirements } from "./event-edit-form";
 import { formatDate, formatDuration, formatTime, formatTimeRange } from "./use-lookups";
 
 export type EventFormPrintScheduleEntry = {
@@ -285,10 +286,7 @@ export function buildEventFormPrintBody(input: EventFormPrintInput): string {
           : `<ol class="schedule">${schedule.map((entry) => `<li>${escapeHtml(formatScheduleEntry(entry))}</li>`).join("")}</ol>`;
         const venueReqs = parseRequirements(booking.requirements);
         // Legacy events: fall back to event-level requirements when the booking has none.
-        const reqs = Object.keys(venueReqs).length > 0 ? venueReqs : (() => {
-          const { program_officer_phone: _phone, ...rest } = eventReqs;
-          return rest;
-        })();
+        const reqs = Object.keys(venueReqs).length > 0 ? venueReqs : omitEventLevelRequirements(eventReqs);
         const requirementRows = REQUIREMENT_FIELDS.map((field): [string, string] => [
           field.label,
           formatRequirementValue(field.key, reqs[field.key]),

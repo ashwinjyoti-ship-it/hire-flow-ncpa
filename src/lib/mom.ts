@@ -7,6 +7,8 @@
  * Empty sections / lines render as "TBC".
  */
 
+import { omitEventLevelRequirements } from "./event-edit-form";
+
 export type MomScheduleEntry = {
   activity_type?: string | null;
   activity_date?: string | null;
@@ -69,8 +71,7 @@ function resolveVenueRequirements(
 ): Record<string, unknown> {
   const venueReqs = parseRequirements(booking.requirements);
   if (!isEmptyReqs(venueReqs)) return venueReqs;
-  const { program_officer_phone: _phone, ...rest } = eventReqs;
-  return rest;
+  return omitEventLevelRequirements(eventReqs);
 }
 
 /** Union of event + all venue requirements (for missing-field checks and single-blob sections). */
