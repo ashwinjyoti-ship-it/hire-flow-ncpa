@@ -7,6 +7,7 @@
  * Empty sections / lines render as "TBC".
  */
 
+import { formatActivityType } from "../../worker/lib/types";
 import {
   CATERING_MEAL_TYPES,
   cateringMealPaxKey,
@@ -168,7 +169,7 @@ function formatMomTimeRange(start: string | null | undefined, end: string | null
 
 function activityLabel(type: string | null | undefined): string {
   if (!type) return "Activity";
-  return type.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return formatActivityType(type);
 }
 
 function section(title: string, bodyLines: string[]): string {

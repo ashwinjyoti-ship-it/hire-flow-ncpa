@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CATERING_MEAL_TYPES,
+  cateringMealPaxKey,
+  cateringMealRequiredKey,
+} from "../../worker/lib/catering-meals";
+import {
   buildMomDocument,
   buildMomAutoText,
   formatMomLongDate,
@@ -129,5 +134,120 @@ describe("buildMomDocument", () => {
     expect(auto).toContain("Setup on Stage: -");
     expect(auto).toContain("TBC");
     expect(auto).toContain("Program Officer: -");
+  });
+
+  it("renders zero show entries in the timings section", () => {
+    const auto = buildMomAutoText({
+      title: "Zero Show Event",
+      organisation_name: "Org",
+      event_start_date: "2026-07-30",
+      venue_bookings: [{
+        venue: "JBT",
+        number_of_shows: 0,
+        schedule_entries: [{
+          activity_type: "zero_show",
+          activity_date: "2026-07-30",
+          start_time: "10:00",
+          end_time: "11:00",
+        }],
+      }],
+      requirements: {},
+    });
+    expect(auto).toContain("Zero Show: 10am to 11am");
+  });
+});
+
+describe("catering meal MoM mapping", () => {
+  function cateringRequirements(overrides: Record<string, string> = {}): Record<string, string> {
+    return {
+      catering_required: "Yes",
+      catering_provider: "NCPA Canteen",
+      interval: "Yes",
+      ...overrides,
+    };
+  }
+
+  it("maps every meal pax into the vendors section when marked required", () => {
+    const requirements = cateringRequirements();
+    for (const meal of CATERING_MEAL_TYPES) {
+      requirements[cateringMealRequiredKey(meal.key)] = "Yes";
+      requirements[cateringMealPaxKey(meal.key)] = String(50 + CATERING_MEAL_TYPES.indexOf(meal));
+    }
+
+    const auto = buildMomAutoText({
+      title: "Catering Event",
+      organisation_name: "Org",
+      event_start_date: "2026-07-30",
+      venue_bookings: [{ venue: "JBT", number_of_shows: 1, schedule_entries: [] }],
+      requirements,
+    });
+
+    expect(auto).toContain("Caterer - NCPA Canteen");
+    for (const meal of CATERING_MEAL_TYPES) {
+      const pax = requirements[cateringMealPaxKey(meal.key)];
+      expect(auto).toContain(`${meal.label}: ${pax} pax`);
+    }
+    expect(auto).toContain(". Interval: Yes");
+  });
+
+  it("omits meals not marked required from the vendors section", () => {
+    const auto = buildMomAutoText({
+      title: "Catering Event",
+      organisation_name: "Org",
+      event_start_date: "2026-07-30",
+      venue_bookings: [{ venue: "JBT", number_of_shows: 1, schedule_entries: [] }],
+      requirements: cateringRequirements({
+        catering_lunch_required: "Yes",
+        catering_lunch_pax: "120",
+        catering_dinner_required: "No",
+        catering_dinner_pax: "999",
+      }),
+    });
+
+    expect(auto).toContain("Lunch: 120 pax");
+    expect(auto).not.toContain("Dinner:");
+    expect(auto).not.toContain("999 pax");
+  });
+
+  it("flags missing pax for each meal marked required", () => {
+    for (const meal of CATERING_MEAL_TYPES) {
+      const requirements = cateringRequirements({
+        [cateringMealRequiredKey(meal.key)]: "Yes",
+      });
+      const missing = getMomMissingFields({
+        title: "Catering Event",
+        organisation_name: "Org",
+        event_start_date: "2026-07-30",
+        program_officer: "Officer",
+        venue_bookings: [{
+          venue: "JBT",
+          number_of_shows: 1,
+          schedule_entries: [{ activity_type: "show", activity_date: "2026-07-30", start_time: "19:00", end_time: "21:00" }],
+        }],
+        requirements: {
+          program_officer_phone: "022 1",
+          sound: "PA",
+          light: "Basic",
+          security: "Standard",
+          housekeeping: "Standard",
+          stage_setup: "Standard",
+          ...requirements,
+        },
+      });
+      expect(missing.map((field) => field.key)).toContain(cateringMealPaxKey(meal.key));
+    }
+  });
+
+  it("shows TBC in vendors when a required meal has no pax but generation continues", () => {
+    const auto = buildMomAutoText({
+      title: "Catering Event",
+      organisation_name: "Org",
+      event_start_date: "2026-07-30",
+      venue_bookings: [{ venue: "JBT", number_of_shows: 1, schedule_entries: [] }],
+      requirements: cateringRequirements({
+        catering_breakfast_required: "Yes",
+      }),
+    });
+    expect(auto).toContain("Breakfast: TBC");
   });
 });
