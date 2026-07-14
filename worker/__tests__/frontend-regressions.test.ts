@@ -212,6 +212,8 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("event_requirements");
     expect(calendar).toContain("Object.keys(venueReqs).length > 0");
     expect(calendar).toContain("to={`/events/${entry.event_id}/edit`}");
+    expect(calendar).toContain("getEventOperationsLink(entry.event_id)");
+    expect(calendar).toMatch(/>\s*Ops\s*</);
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
     expect(calendar).not.toContain("Open Record");
@@ -219,6 +221,13 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("formatShowDetailValue");
     expect(calendar).not.toContain("tab=venues");
     expect(calendar).not.toContain("Open full record →");
+  });
+
+  it("hides confirmed events from the lifecycle calendar status filter and legend", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain('if (view === "lifecycle") return k !== "confirmed"');
+    expect(calendar).toContain('.filter(([key]) => key !== "confirmed")');
   });
 
   it("lets lifecycle calendar open overflowed day entries in a dedicated panel", () => {
