@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { AnnouncementBanner } from "../components/AnnouncementBanner";
+import { PocStatusBadge } from "../components/PocIncompleteBanner";
 import { apiGet } from "../lib/api";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { eventDisplayName } from "../lib/event-display";
@@ -20,8 +21,16 @@ type LifecycleEntry = {
   status: EventStatus;
   organisation_name: string | null;
   venues: string | null;
+  poc_complete?: boolean;
+  poc_filled_count?: number;
+  poc_total_count?: number;
+  poc_missing_labels?: string[];
 };
-type LifecycleResponse = { entries: LifecycleEntry[]; byDate: Record<string, LifecycleEntry[]> };
+type LifecycleResponse = {
+  entries: LifecycleEntry[];
+  byDate: Record<string, LifecycleEntry[]>;
+  poc_incomplete_count?: number;
+};
 type TasksResponse = {
   tasks: Array<{
     id: string;
@@ -65,6 +74,11 @@ export function DashboardPage() {
   }
   const lifecycleQueue = [...lifecycleEntries]
     .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
+  const pocIncompleteEntries = lifecycleEntries.filter((entry) =>
+    (entry.status === "enquiry" || entry.status === "tentative" || entry.status === "approved")
+    && entry.poc_complete === false,
+  );
+  const pocIncompleteCount = lifecycleData?.poc_incomplete_count ?? pocIncompleteEntries.length;
 
   return (
     <div>
@@ -72,18 +86,71 @@ export function DashboardPage() {
 
       <AnnouncementBanner />
 
+      {pocIncompleteCount > 0 && (
+        <div role="alert" className="mb-6 rounded-2xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/12 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-status-awaitingApproval etched-deep">
+                {pocIncompleteCount} active event{pocIncompleteCount === 1 ? "" : "s"} still need Point of Contact details
+              </p>
+              <p className="mt-1 text-xs text-ink-secondary etched">
+                POC must be fully completed before an event can be confirmed.
+              </p>
+            </div>
+            <Link to="/calendar?view=lifecycle&poc_incomplete=1" className="carved-btn rounded-full bg-status-awaitingApproval/15 px-4 py-2 text-xs font-semibold text-status-awaitingApproval etched">
+              View on calendar
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
         <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" />
         <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" />
         <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" />
         <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" />
         <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" />
         <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" />
+        <PocSummaryCard value={pocIncompleteCount} />
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 lg:gap-6">
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+      <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-status-awaitingApproval etched">POC Still Missing</h2>
+            <Link to="/calendar?view=lifecycle&poc_incomplete=1" className="text-xs text-sage-text hover:underline">Filter calendar →</Link>
+          </div>
+          {pocIncompleteEntries.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">All active events have a complete Point of Contact.</p>
+          ) : (
+            <ul className="space-y-2">
+              {pocIncompleteEntries.slice(0, 8).map((entry) => (
+                <li key={entry.id}>
+                  <Link to={`/events/${entry.event_id}?tab=operations&field=poc_name`} className="flex items-center gap-3 rounded-lg bg-status-awaitingApproval/10 px-3 py-2 hover:bg-status-awaitingApproval/15">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                        {entry.organisation_name ?? entry.title}
+                      </span>
+                      {entry.organisation_name && entry.title !== entry.organisation_name && (
+                        <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                          {eventDisplayName(entry.title, entry.organisation_name)}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">
+                        {entry.poc_filled_count ?? 0}/{entry.poc_total_count ?? 10} fields
+                        {entry.poc_missing_labels?.length ? ` · need ${entry.poc_missing_labels.slice(0, 2).join(", ")}${entry.poc_missing_labels.length > 2 ? "…" : ""}` : ""}
+                      </span>
+                    </span>
+                    <PocStatusBadge complete={false} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle Queue</h2>
             <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
@@ -114,7 +181,7 @@ export function DashboardPage() {
           )}
         </section>
 
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Work Needing Attention</h2>
             <Link to="/tasks" className="text-xs text-sage-text hover:underline">Tasks →</Link>
@@ -181,6 +248,18 @@ function SummaryCard({ label, value, status }: { label: string; value: number; s
         <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + surface.dot} aria-hidden="true" />
       </div>
       <div className="text-3xl font-semibold text-ink-primary etched-deep">{value}</div>
+    </div>
+  );
+}
+
+function PocSummaryCard({ value }: { value: number }) {
+  return (
+    <div className="carved-card rounded-2xl bg-status-awaitingApproval/10 p-4">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-status-awaitingApproval etched">POC Missing</span>
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-awaitingApproval" aria-hidden="true" />
+      </div>
+      <div className="text-3xl font-semibold text-status-awaitingApproval etched-deep">{value}</div>
     </div>
   );
 }

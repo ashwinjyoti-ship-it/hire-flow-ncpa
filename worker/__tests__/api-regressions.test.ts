@@ -477,6 +477,23 @@ describe("API regressions", () => {
           }),
         };
       }
+      // POC keys are bind parameters, not SQL literals — match the 10-placeholder IN clause.
+      if (sql.includes("field_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+        return {
+          all: () => ({
+            results: [
+              "poc_name", "poc_contact_number", "poc_email", "bank_details", "gst_no",
+              "tan_no", "pan_no", "signing_authority_address", "courier_address", "vendor_registration_form",
+            ].map((field_key) => ({
+              field_key,
+              value: field_key === "vendor_registration_form" ? "Received" : "ok",
+            })),
+          }),
+        };
+      }
+      if (sql.includes("SELECT requirements FROM events")) {
+        return { first: () => ({ requirements: null }) };
+      }
       if (sql.startsWith("UPDATE events SET status")) {
         return {
           run: () => {
@@ -1257,6 +1274,12 @@ describe("API regressions", () => {
       if (sql.includes("FROM checklist_definitions")) return { all: () => ({ results: [] }) };
       if (sql.includes("FROM checklist_items")) return { all: () => ({ results: [] }) };
       if (sql.includes("SELECT venue FROM venue_bookings")) return { all: () => ({ results: [{ venue: "JBT" }, { venue: "TATA" }] }) };
+      if (sql.includes("SELECT id, status, event_owner_id FROM events")) {
+        return { first: () => ({ id: "ev_new", status: "enquiry", event_owner_id: null }) };
+      }
+      if (sql.includes("INSERT INTO tasks")) {
+        return { run: () => ({ meta: { changes: 1 } }) };
+      }
       return {};
     });
 

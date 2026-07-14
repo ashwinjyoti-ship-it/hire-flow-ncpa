@@ -251,6 +251,7 @@ function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_fiel
   if (haystack.includes("technical") || haystack.includes("meeting")) return { module: "operations", fieldKey: "technical_meeting_date" };
   if (haystack.includes("onstage") || haystack.includes("stage")) return { module: "operations", fieldKey: "onstage_received_from_client" };
   if (haystack.includes("feedback")) return { module: "operations", fieldKey: "feedback_received" };
+  if (task.source_rule === "poc_incomplete") return { module: "operations", fieldKey: "poc_name" };
   return { module: "operations", fieldKey: null };
 }
 

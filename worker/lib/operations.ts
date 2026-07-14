@@ -4,6 +4,12 @@ import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-interval
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { makeId } from "./id";
 import { POC_FIELD_KEYS } from "./poc-fields";
+import {
+  evaluatePocCompletionForEvent,
+  POC_CONFIRMATION_BLOCKER,
+  POC_TASK_RULE,
+  POC_TASK_TITLE,
+} from "./poc-completion";
 import { canConfirm, canTransition, STATUS_LABELS, type EventStatus } from "./state-machine";
 
 export type ChecklistModule = "operations" | "accounts";
@@ -38,6 +44,7 @@ export type EventLifecycleRow = {
   event_type: string | null;
   approval_status: string | null;
   confirmation_status: string | null;
+  poc_complete?: boolean;
   /**
    * Financials gate values pulled from checklist fields (costing_email,
    * payment_status). Surfaced here so the confirmation gate can require them
@@ -281,6 +288,7 @@ export async function updateChecklistItem(args: {
   // non-requirement fields (and for req_sound, which is form->checklist only).
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
+  await reconcilePocTaskForEvent(db, current.event_id);
   await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
   await recalculateEventCompletion(db, current.event_id);
@@ -776,6 +784,71 @@ export async function mergePocRequirementsForRead(
   return reqs;
 }
 
+/** Keep a single automatic task open until every POC field is filled. */
+export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, today = todayIso()): Promise<number> {
+  const event = await db.prepare(
+    `SELECT id, status, event_owner_id FROM events WHERE id = ? AND is_archived = 0`
+  ).bind(eventId).first<{ id: string; status: EventStatus; event_owner_id: string | null }>();
+  if (!event) return 0;
+
+  const poc = await evaluatePocCompletionForEvent(db, eventId);
+  const idempotency = `poc:${eventId}:complete-poc`;
+  const now = new Date().toISOString();
+  const terminal = event.status === "cancelled" || event.status === "regret";
+
+  if (terminal || event.status === "confirmed") {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled', completion_note = ?, updated_at = ?
+       WHERE idempotency_key = ? AND status IN ('open','in_progress')`
+    ).bind("Cancelled automatically because the POC reminder no longer applies.", now, idempotency).run();
+    return 0;
+  }
+
+  if (poc.complete) {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'completed', completed_at = COALESCE(completed_at, ?), completion_note = ?, updated_at = ?
+       WHERE idempotency_key = ? AND status IN ('open','in_progress')`
+    ).bind(now, "Completed automatically because Point of Contact is fully filled.", now, idempotency).run();
+    return 0;
+  }
+
+  const pocItem = await db.prepare(
+    "SELECT id FROM checklist_items WHERE event_id = ? AND field_key = 'poc_name' LIMIT 1"
+  ).bind(eventId).first<{ id: string }>();
+
+  const inserted = await db.prepare(
+    `INSERT INTO tasks
+     (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
+      idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'high', 'open', NULL, ?, ?)
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       title = excluded.title,
+       description = excluded.description,
+       assignee_id = excluded.assignee_id,
+       priority = excluded.priority,
+       status = CASE WHEN tasks.status IN ('open','in_progress') THEN 'open' ELSE tasks.status END,
+       completion_note = CASE WHEN tasks.status IN ('open','in_progress') THEN NULL ELSE tasks.completion_note END,
+       completed_at = CASE WHEN tasks.status IN ('open','in_progress') THEN NULL ELSE tasks.completed_at END,
+       updated_at = excluded.updated_at`
+  ).bind(
+    makeId("task"),
+    POC_TASK_TITLE,
+    `Point of Contact is incomplete (${poc.filledCount}/${poc.totalCount} fields). Missing: ${poc.missingLabels.join(", ")}.`,
+    eventId,
+    pocItem?.id ?? null,
+    POC_TASK_RULE,
+    idempotency,
+    event.event_owner_id,
+    today,
+    now,
+    now,
+  ).run();
+
+  return (inserted.meta?.changes ?? 1) > 0 ? 1 : 0;
+}
+
 export async function maybeCreateTaskForChecklistItem(db: D1Database, item: ChecklistItemRow, createdBy: string | null): Promise<void> {
   if (!item.triggers_task || !normalise(item.value)) return;
   let rule: { rule: string; title: string; due_after_days: number } | null = null;
@@ -1020,7 +1093,7 @@ async function createFileToAccountsReminders(db: D1Database, today: string): Pro
   return changed;
 }
 
-export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness }> {
+export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness; poc: import("./poc-completion").PocCompletionStatus }> {
   const event = await db.prepare(
     `SELECT id, title, status, event_type, approval_status, confirmation_status,
             ops_completion, accounts_completion, overall_completion
@@ -1039,7 +1112,9 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
     if (row.field_key === "costing_email") event.costing_email = row.value ?? null;
     if (row.field_key === "payment_status") event.payment_status = row.value ?? null;
   }
-  return { event, readiness: buildLifecycleReadiness(event) };
+  const poc = await evaluatePocCompletionForEvent(db, eventId);
+  event.poc_complete = poc.complete;
+  return { event, readiness: buildLifecycleReadiness(event), poc };
 }
 
 export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleReadiness {
@@ -1105,6 +1180,9 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     // marked Not Required.
     if (event.event_type === "VFH" && event.approval_status !== "not_required" && !["received", "approved"].includes(event.approval_status ?? "")) {
       blockers.push("VFH approval must be received or approved.");
+    }
+    if (event.poc_complete === false) {
+      blockers.push(POC_CONFIRMATION_BLOCKER);
     }
   }
   return blockers;
