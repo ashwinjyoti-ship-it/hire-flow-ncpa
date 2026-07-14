@@ -284,8 +284,25 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
           <Field label="No. of Crew Cards">
             <input type="number" min={0} value={(reqs.crew_cards as string) ?? ""} onChange={(e) => setReq("crew_cards", e.target.value || null)} className="carved input" />
           </Field>
-          <Field label="Licenses (PPL/IPRS etc.)">
-            <textarea value={(reqs.licenses as string) ?? ""} onChange={(e) => setReq("licenses", e.target.value || null)} className="carved input" rows={1} />
+          <Field label="Licences — Received">
+            <select
+              value={(reqs.licenses_status as string) ?? ""}
+              onChange={(e) => setReq("licenses_status", e.target.value || null)}
+              className="carved input"
+            >
+              <option value="">Select…</option>
+              <option value="Not received">Not received</option>
+              <option value="Received">Received</option>
+            </select>
+          </Field>
+          <Field label="Licence Types (PPL/IPRS etc.)">
+            <textarea
+              value={(reqs.licenses as string) ?? ""}
+              onChange={(e) => setReq("licenses", e.target.value || null)}
+              className="carved input"
+              rows={2}
+              placeholder="e.g. PPL, IPRS, PRS…"
+            />
           </Field>
         </div>
       </section>
@@ -351,6 +368,17 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
               <input type="text" value={(reqs.telecasting_media_note as string) ?? ""} onChange={(e) => setReq("telecasting_media_note", e.target.value || null)} className="carved input" />
             </Field>
           </div>
+        </div>
+        <div className="mt-4">
+          <Field label="Foyer Setup">
+            <textarea
+              value={(reqs.foyer_setup as string) ?? ""}
+              onChange={(e) => setReq("foyer_setup", e.target.value || null)}
+              className="carved input"
+              rows={3}
+              placeholder="Digital standee, stalls, foyer décor, registration desk…"
+            />
+          </Field>
         </div>
       </section>
     </div>

@@ -256,18 +256,26 @@ export function EventEditPage() {
   });
 
   const venues = lookups?.lookups.venue ?? [];
-  const programOfficers = lookups?.lookups.program_officer ?? [];
   const sources = lookups?.lookups.enquiry_source ?? [];
   const isVfh = form.event_type === "VFH";
 
   // Phase 8b: the Event Owner dropdown is sourced from real accounts. Choosing
   // one sets both the display label (event_owner) and the identity FK
   // (event_owner_id), so tasks auto-route and "My events" works.
-  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; is_active: number }> }>({
+  const { data: usersData } = useQuery<{
+    users: Array<{
+      id: string;
+      name: string;
+      contact_number?: string | null;
+      is_programme_officer?: boolean;
+      is_active: number;
+    }>;
+  }>({
     queryKey: ["users"],
     queryFn: () => apiGet("/users"),
   });
   const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
+  const programmeOfficers = activeOwners.filter((u) => u.is_programme_officer);
   const trimmedTitle = form.title.trim();
   const selectedDuplicateVenues = useMemo(
     () => Array.from(new Set(pruneEmptyVenueBookings(form.venue_bookings).map((booking) => booking.venue.trim()).filter(Boolean))),
@@ -527,9 +535,20 @@ export function EventEditPage() {
               </select>
             </Field>
             <Field label="Program Officer">
-              <select value={form.program_officer ?? ""} onChange={(e) => update({ program_officer: e.target.value || null })} className="carved input">
+              <select
+                value={form.program_officer ?? ""}
+                onChange={(e) => {
+                  const name = e.target.value || null;
+                  const officer = programmeOfficers.find((o) => o.name === name);
+                  update({ program_officer: name });
+                  if (officer?.contact_number) {
+                    setReq("program_officer_phone", officer.contact_number);
+                  }
+                }}
+                className="carved input"
+              >
                 <option value="">Select…</option>
-                {programOfficers.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
+                {programmeOfficers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
               </select>
             </Field>
             <Field label="Program Officer Contact">

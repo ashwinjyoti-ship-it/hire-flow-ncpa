@@ -126,7 +126,8 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   // 12. OPERATIONS DETAILS
   { module: "operations", section: "Operations Details", field_key: "no_of_crew_cards", label: "No. of Crew Cards", field_type: "number" },
   { module: "operations", section: "Operations Details", field_key: "house_seats", label: "House Seats", field_type: "number" },
-  { module: "operations", section: "Operations Details", field_key: "licenses", label: "Licenses", field_type: "textarea" },
+  { module: "operations", section: "Operations Details", field_key: "licenses_status", label: "Licenses — Received", field_type: "dropdown", options: ["Not received", "Received"], default_value: "Not received" },
+  { module: "operations", section: "Operations Details", field_key: "licenses", label: "Licenses — Types (PPL/IPRS etc.)", field_type: "textarea" },
   { module: "operations", section: "Operations Details", field_key: "decorator_name", label: "Decorator — Name", field_type: "text" },
   { module: "operations", section: "Operations Details", field_key: "decorator_tier", label: "Decorator — Tier", field_type: "dropdown", options: ["A", "B", "C", "D", "E"] },
   { module: "operations", section: "Operations Details", field_key: "caterer_name", label: "Caterer — Name", field_type: "text" },

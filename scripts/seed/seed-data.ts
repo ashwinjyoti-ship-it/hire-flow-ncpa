@@ -57,7 +57,7 @@ export const DROPDOWN_LISTS: DropdownSeed[] = [
   { list_key: "event_status", value: "regret", sort_order: 5, metadata: { terminal: true } },
   { list_key: "event_status", value: "cancelled", sort_order: 6, metadata: { terminal: true } },
 
-  // Staff: Program Officer (Dropdown_Master ProgramOfficer)
+  // Staff: Program Officer — legacy seed list; programme officers are now flagged on owner accounts.
   { list_key: "program_officer", value: "Farha", sort_order: 1 },
   { list_key: "program_officer", value: "Nasha", sort_order: 2 },
   { list_key: "program_officer", value: "Delzeen", sort_order: 3 },

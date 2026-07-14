@@ -488,7 +488,8 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
  *   req_stalls                 stalls (Yes/No)                 -> Required/Not Required
  *   req_telecasting_media      telecasting_media (Yes/No)      -> Required/Not Required
  *   no_of_crew_cards           crew_cards (number)             -> the number string
- *   licenses                   licenses (text)                 -> the text
+ *   licenses_status            licenses_status (dropdown)      -> Received/Not received
+ *   licenses                   licenses (text)                 -> licence types
  *
  * Status is re-derived via itemStatusForValue so completion rollups stay
  * accurate (e.g. "Not Required" => not_applicable, off the pending-work list).
@@ -511,7 +512,7 @@ function parseRequirementsJson(raw: string | null | undefined): Record<string, u
 const AFFIRMATIVE = new Set(["Yes", "Required", "Keep"]);
 const JOINABLE = new Set([
   "sound", "light", "green_room_amenities", "parking", "security", "housekeeping",
-  "licenses", "stage_setup", "orchestra_pit_chairs_note", "digital_standee_note",
+  "licenses", "licenses_status", "stage_setup", "foyer_setup", "orchestra_pit_chairs_note", "digital_standee_note",
   "car_display_note", "bike_display_note", "stalls_note", "telecasting_media_note",
   "liquor_licence_details", "catering_provider", "decorator_name", "recording_type",
 ]);
@@ -585,6 +586,7 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     { fieldKey: "req_telecasting_media", fieldType: "dropdown", value: toReq(reqs.telecasting_media, ["Yes"]) },
     // Operations Details: pass the raw value through.
     { fieldKey: "no_of_crew_cards", fieldType: "number", value: str(reqs.crew_cards) },
+    { fieldKey: "licenses_status", fieldType: "dropdown", value: str(reqs.licenses_status) },
     { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
   ];
 
@@ -623,6 +625,7 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
  *   req_stalls                   -> stalls                   Yes/No
  *   req_telecasting_media        -> telecasting_media        Yes/No
  *   no_of_crew_cards             -> crew_cards               passthrough (number)
+ *   licenses_status              -> licenses_status          passthrough (Received/Not received)
  *   licenses                     -> licenses                 passthrough (text)
  *
  * `req_sound` is intentionally NOT reverse-synced: the form field is free text
@@ -653,6 +656,7 @@ export async function syncRequirementsFromChecklistItem(
   };
   const PASSTHROUGH: Record<string, string> = {
     no_of_crew_cards: "crew_cards",
+    licenses_status: "licenses_status",
     licenses: "licenses",
   };
 

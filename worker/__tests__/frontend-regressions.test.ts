@@ -455,6 +455,12 @@ describe("frontend regression guards", () => {
 
     expect(fields).toContain('Field label="Stage Setup"');
     expect(fields).toContain('setReq("stage_setup"');
+    expect(fields).toContain('Field label="Foyer Setup"');
+    expect(fields).toContain('setReq("foyer_setup"');
+    expect(fields).toContain('Field label="Licences — Received"');
+    expect(fields).toContain('setReq("licenses_status"');
+    expect(eventForm).toContain("programmeOfficers");
+    expect(eventForm).not.toContain("lookups?.lookups.program_officer");
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
     expect(fields).toContain('Field label="Interval"');
