@@ -489,18 +489,13 @@ async function syncNocDependentChecklistFromEvent(db: D1Database, eventId: strin
   await syncNocDependentChecklist(db, eventId, row.value);
 }
 
-/** OnStage pipeline + Emailer only apply when OnStage Required? = Required. */
+/** OnStage pipeline only applies when OnStage Required? = Required. */
 export const ONSTAGE_DEPENDENT_FIELD_KEYS = [
   "onstage_asked_client",
   "onstage_received_from_client",
   "onstage_sent_to_team",
   "onstage_verified",
   "onstage_complete",
-  "emailer",
-  "emailer_asked_client",
-  "emailer_received_from_client",
-  "emailer_sent_to_team",
-  "emailer_sent",
 ] as const;
 
 /** Emailer date fields only apply when Emailer = Yes. */
@@ -512,9 +507,8 @@ export const EMAILER_DEPENDENT_FIELD_KEYS = [
 ] as const;
 
 /**
- * When OnStage Required? is Not Required, mark the dependent OnStage / Emailer
- * fields not_applicable. When Required, re-derive each field's status, then
- * re-apply the Emailer Yes/No gate so date fields stay in sync.
+ * When OnStage Required? is Not Required, mark the OnStage pipeline fields
+ * not_applicable. Emailer is independent and keeps its own Yes/No gate.
  */
 export async function syncOnstageDependentChecklist(
   db: D1Database,
@@ -532,12 +526,7 @@ export async function syncOnstageDependentChecklist(
            'onstage_received_from_client',
            'onstage_sent_to_team',
            'onstage_verified',
-           'onstage_complete',
-           'emailer',
-           'emailer_asked_client',
-           'emailer_received_from_client',
-           'emailer_sent_to_team',
-           'emailer_sent'
+           'onstage_complete'
          )
          AND status != 'not_applicable'`
     ).bind(now, eventId).run();
@@ -554,8 +543,7 @@ export async function syncOnstageDependentChecklist(
          'onstage_received_from_client',
          'onstage_sent_to_team',
          'onstage_verified',
-         'onstage_complete',
-         'emailer'
+         'onstage_complete'
        )`
   ).bind(eventId).all<{ id: string; field_key: string; value: string | null; field_type: string; is_computed: number }>();
 
@@ -569,9 +557,6 @@ export async function syncOnstageDependentChecklist(
       "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
     ).bind(status, now, row.id).run();
   }
-
-  const emailer = (results ?? []).find((row) => row.field_key === "emailer");
-  await syncEmailerDependentChecklist(db, eventId, emailer?.value ?? "No");
 }
 
 async function syncOnstageDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
@@ -634,13 +619,6 @@ export async function syncEmailerDependentChecklist(
 }
 
 async function syncEmailerDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
-  const onstage = await db.prepare(
-    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'onstage_required'"
-  ).bind(eventId).first<{ value: string | null }>();
-  if (onstage && normalise(onstage.value) === "not required") {
-    await syncEmailerDependentChecklist(db, eventId, "No");
-    return;
-  }
   const row = await db.prepare(
     "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'emailer'"
   ).bind(eventId).first<{ value: string | null }>();

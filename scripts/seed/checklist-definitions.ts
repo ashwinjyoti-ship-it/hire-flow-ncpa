@@ -108,21 +108,21 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["Not Applicable", "Not sent", "Sent"], default_value: "Not sent" },
   { module: "operations", section: "NOC", field_key: "noc_sent_on", label: "Date Sent", field_type: "date", visibility_rule: "onlyWhen(noc_sent == Sent)" },
 
-  // 9. ONSTAGE (Required gate + sequential pipeline + Emailer)
-  // When OnStage Required? = Not Required, the rest of this section is skipped.
-  { module: "operations", section: "OnStage", field_key: "onstage_required", label: "OnStage Required?", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Required" },
-  { module: "operations", section: "OnStage", field_key: "onstage_asked_client", label: "OnStage — Asked Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)", triggers_task: { rule: "onstage", title: "Follow up for OnStage information", due_after_days: 3, complete_when: "marked Received" } },
-  { module: "operations", section: "OnStage", field_key: "onstage_received_from_client", label: "OnStage — Received from Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
-  { module: "operations", section: "OnStage", field_key: "onstage_sent_to_team", label: "OnStage — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
-  { module: "operations", section: "OnStage", field_key: "onstage_verified", label: "OnStage — Verified", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
-  { module: "operations", section: "OnStage", field_key: "onstage_complete", label: "OnStage — Complete", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
-  { module: "operations", section: "OnStage", field_key: "emailer", label: "Emailer", field_type: "dropdown", options: ["No", "Yes"], default_value: "No", visibility_rule: "onlyWhen(onstage_required == Required)" },
-  { module: "operations", section: "OnStage", field_key: "emailer_asked_client", label: "Emailer — Asked Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
-  { module: "operations", section: "OnStage", field_key: "emailer_received_from_client", label: "Emailer — Received from Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
-  { module: "operations", section: "OnStage", field_key: "emailer_sent_to_team", label: "Emailer — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
-  { module: "operations", section: "OnStage", field_key: "emailer_sent", label: "Emailer — Sent", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  // 9. ONSTAGE / EMAILER (one section; independent Yes/No gates)
+  // OnStage Required? only collapses the OnStage pipeline — Emailer is separate.
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_required", label: "OnStage Required?", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Required" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_asked_client", label: "OnStage — Asked Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)", triggers_task: { rule: "onstage", title: "Follow up for OnStage information", due_after_days: 3, complete_when: "marked Received" } },
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_received_from_client", label: "OnStage — Received from Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_sent_to_team", label: "OnStage — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_verified", label: "OnStage — Verified", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "onstage_complete", label: "OnStage — Complete", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "emailer", label: "Emailer", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "emailer_asked_client", label: "Emailer — Asked Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "emailer_received_from_client", label: "Emailer — Received from Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "emailer_sent_to_team", label: "Emailer — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "Onstage/Emailer", field_key: "emailer_sent", label: "Emailer — Sent", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
 
-  // 10. MONTHLY CHART (separate from OnStage)
+  // 10. MONTHLY CHART (directly below Onstage/Emailer)
   { module: "operations", section: "Monthly Chart", field_key: "monthly_chart_sent", label: "SENT for Monthly Chart", field_type: "dropdown", options: ["Not sent", "Sent"], default_value: "Not sent" },
 
   // 11. TECHNICAL MEETING & MINUTES
@@ -141,7 +141,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   // 12b. CATERING (ops follow-up status)
   { module: "operations", section: "Catering", field_key: "catering_details", label: "Catering Details", field_type: "dropdown", options: ["Not Received", "Received"], default_value: "Received" },
 
-  // 13. POST-EVENT CLOSURE
+  // 13. POST-EVENT CLOSURE (last operations section)
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_sent", label: "Feedback Form — Sent", field_type: "date", triggers_task: { rule: "feedback", title: "Follow up on Feedback", due_after_days: 5, complete_when: "marked Received" } },
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_received", label: "Feedback Form — Received", field_type: "date" },
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },

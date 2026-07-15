@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GoToTopButton } from "../components/GoToTopButton";
@@ -1031,12 +1031,16 @@ function ChecklistModuleView({
             )}
             <div className="grid gap-3 md:grid-cols-2">
               {visibleItems.map((item) => (
-                <div
-                  key={item.id}
-                  className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}
-                >
-                  <ChecklistField item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
-                </div>
+                <Fragment key={item.id}>
+                  {section === "Onstage/Emailer" && item.field_key === "emailer" && (
+                    <div className="md:col-span-2 mt-1 border-t border-marble-shadow/50 pt-4">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Emailer</h4>
+                    </div>
+                  )}
+                  <div className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}>
+                    <ChecklistField item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
+                  </div>
+                </Fragment>
               ))}
             </div>
           </section>
@@ -1059,9 +1063,7 @@ function isFullWidthChecklistField(fieldKey: string): boolean {
 /**
  * Resolves a field's conditional visibility. Rules use the grammar
  * `onlyWhen(<fieldKey> == <value>)`; a field with no visibility_rule is always
- * visible. Controllers that are themselves hidden (nested gates) also hide
- * their dependents — e.g. Emailer dates stay collapsed when OnStage is
- * Not Required even if Emailer was previously Yes.
+ * visible. Controllers that are themselves hidden also hide their dependents.
  */
 function isFieldVisible(item: ChecklistItem, itemByKey: Map<string, ChecklistItem>, seen = new Set<string>()): boolean {
   const rule = item.visibility_rule?.trim();

@@ -697,15 +697,17 @@ describe("operations timings removed", () => {
 });
 
 describe("OnStage required + Emailer checklist fields", () => {
-  it("seeds OnStage Required gate, Emailer sub-fields, and Monthly Chart section", () => {
+  it("seeds Onstage/Emailer section with independent gates and Monthly Chart below", () => {
     const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.onstage_required?.section).toBe("Onstage/Emailer");
     expect(byKey.onstage_required?.options).toEqual(["Not Required", "Required"]);
     expect(byKey.onstage_required?.default_value).toBe("Required");
     expect(byKey.onstage_asked_client?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
     expect(byKey.onstage_complete?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
+    expect(byKey.emailer?.section).toBe("Onstage/Emailer");
     expect(byKey.emailer?.options).toEqual(["No", "Yes"]);
     expect(byKey.emailer?.default_value).toBe("No");
-    expect(byKey.emailer?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
+    expect(byKey.emailer?.visibility_rule).toBeUndefined();
     expect(byKey.emailer_asked_client?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
     expect(byKey.emailer_received_from_client?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
     expect(byKey.emailer_sent_to_team?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
@@ -713,9 +715,16 @@ describe("OnStage required + Emailer checklist fields", () => {
     expect(byKey.monthly_chart_sent?.section).toBe("Monthly Chart");
     expect(byKey.monthly_chart_sent?.label).toBe("SENT for Monthly Chart");
     expect(byKey.monthly_chart_sent?.options).toEqual(["Not sent", "Sent"]);
+    expect(byKey.box_office_statement?.section).toBe("Post-Event Closure");
+
+    const ops = CHECKLIST_DEFINITIONS.filter((d) => d.module === "operations");
+    const sectionOrder = [...new Set(ops.map((d) => d.section))];
+    expect(sectionOrder.indexOf("Onstage/Emailer")).toBeLessThan(sectionOrder.indexOf("Monthly Chart"));
+    expect(sectionOrder.indexOf("Monthly Chart")).toBeLessThan(sectionOrder.indexOf("Technical Meeting & Minutes"));
+    expect(sectionOrder.at(-1)).toBe("Post-Event Closure");
   });
 
-  it("marks OnStage dependents not_applicable when OnStage Required? = Not Required", async () => {
+  it("marks only OnStage pipeline fields not_applicable when OnStage Required? = Not Required", async () => {
     const updates: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
       prepare(sql: string) {
