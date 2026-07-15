@@ -118,6 +118,15 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("onGoToTop={clearFocusedField}");
   });
 
+  it("applies optimistic checklist updates instead of blocking on a full event refetch", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(detail).toContain("applyOptimisticChecklistUpdate");
+    expect(detail).toContain("onMutate:");
+    expect(detail).toContain("savingItemId={savingChecklistItemId}");
+    expect(detail).not.toMatch(/checklistUpdate[\s\S]*fetchFreshEventState/);
+  });
+
   it("wires the topbar global search to organisations and events", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 

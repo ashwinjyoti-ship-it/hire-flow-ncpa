@@ -27,6 +27,7 @@ import {
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
+import { applyOptimisticChecklistUpdate } from "../lib/checklist-cache";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -250,13 +251,37 @@ export function EventDetailPage() {
 
   const checklistUpdate = useMutation({
     mutationFn: async (args: { item: ChecklistItem; value: string | null; status?: string; correctionReason?: string | null }) => {
-      await apiPatch(`/events/${id}/checklist/${args.item.id}`, { value: args.value, status: args.status, correction_reason: args.correctionReason });
-      return fetchFreshEventState();
+      await apiPatch(`/events/${id}/checklist/${args.item.id}`, {
+        value: args.value,
+        status: args.status,
+        correction_reason: args.correctionReason,
+      });
     },
-    onSuccess: (fresh) => {
-      applyFreshEventState(fresh);
+    onMutate: async (args) => {
+      await qc.cancelQueries({ queryKey: ["event", id, "checklist"] });
+      const previous = qc.getQueryData<ChecklistResponse>(["event", id, "checklist"]);
+      if (previous) {
+        qc.setQueryData(
+          ["event", id, "checklist"],
+          applyOptimisticChecklistUpdate(previous, args.item, args.value, args.status),
+        );
+      }
+      return { previous };
+    },
+    onSuccess: async () => {
+      // One lightweight refetch for dependent rows + lifecycle; optimistic UI already updated.
+      const freshChecklist = await apiGet<ChecklistResponse>(`/events/${id}/checklist`);
+      qc.setQueryData(["event", id, "checklist"], freshChecklist);
+      qc.invalidateQueries({ queryKey: ["event", id] });
+      qc.invalidateQueries({ queryKey: ["tasks", id] });
+      qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
+    },
+    onError: (_err, _args, context) => {
+      if (context?.previous) qc.setQueryData(["event", id, "checklist"], context.previous);
     },
   });
+
+  const savingChecklistItemId = checklistUpdate.isPending ? checklistUpdate.variables?.item.id ?? null : null;
 
   const createTask = useMutation({
     mutationFn: async (title: string) => apiPost("/tasks", { title, event_id: id, priority: "medium" }),
@@ -572,7 +597,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.operations ?? {}}
           finalShowDate={e.event_end_date ?? e.event_start_date}
           canEdit={canUpdateChecklist}
-          isSaving={checklistUpdate.isPending}
+          savingItemId={savingChecklistItemId}
           focusedFieldKey={focusedFieldKey}
           pocCompletion={showPocAlert ? pocCompletion : undefined}
           showGoToTop
@@ -586,7 +611,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.accounts ?? {}}
           finalShowDate={null}
           canEdit={canUpdateChecklist}
-          isSaving={checklistUpdate.isPending}
+          savingItemId={savingChecklistItemId}
           focusedFieldKey={focusedFieldKey}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
@@ -979,7 +1004,7 @@ function LifecyclePanel({
 function ChecklistModuleView({
   sections,
   canEdit,
-  isSaving,
+  savingItemId,
   focusedFieldKey,
   finalShowDate,
   pocCompletion,
@@ -989,7 +1014,7 @@ function ChecklistModuleView({
 }: {
   sections: Record<string, ChecklistItem[]>;
   canEdit: boolean;
-  isSaving: boolean;
+  savingItemId: string | null;
   focusedFieldKey: string | null;
   finalShowDate: string | null;
   pocCompletion?: PocCompletionStatus;
@@ -1038,7 +1063,14 @@ function ChecklistModuleView({
                     </div>
                   )}
                   <div className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}>
-                    <ChecklistField item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
+                    <ChecklistField
+                      key={`${item.id}:${item.value ?? ""}:${item.status}`}
+                      item={item}
+                      focused={focusedFieldKey === item.field_key}
+                      canEdit={canEdit && savingItemId !== item.id}
+                      finalShowDate={finalShowDate}
+                      onUpdate={onUpdate}
+                    />
                   </div>
                 </Fragment>
               ))}
