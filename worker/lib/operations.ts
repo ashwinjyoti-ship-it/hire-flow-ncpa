@@ -5,6 +5,7 @@ import {
   buildTimingsWithAcText,
   buildTimingsWithoutAcText,
   formatHoursTotal,
+  parseMinutesFromTimingsText,
   sumAcMinutes,
   sumWithoutAcMinutes,
   type ScheduleTimingRow,
@@ -113,7 +114,11 @@ function normalise(value: string | null | undefined): string {
 }
 
 export function itemStatusForValue(item: { field_type: string; value: string | null; is_computed?: number }, today = todayIso()): string {
-  if (item.is_computed) return "not_applicable";
+  if (item.is_computed) {
+    const computed = (item.value ?? "").trim();
+    if (!computed || computed === "—") return "not_started";
+    return "completed";
+  }
   const value = normalise(item.value);
   if (!value) return "not_started";
   if (NOT_APPLICABLE_VALUES.has(value)) return "not_applicable";
@@ -204,6 +209,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
 
 export async function getChecklistItems(db: D1Database, eventId: string): Promise<ChecklistItemRow[]> {
   await ensureChecklistForEvent(db, eventId);
+  await syncTimingsChecklist(db, eventId);
   const { results } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
@@ -308,6 +314,9 @@ export async function updateChecklistItem(args: {
   // rollup rows (exec_*) are checklist-only.
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
+  if (current.field_key === "timings_with_ac" || current.field_key === "timings_without_ac") {
+    await syncTimingsChecklist(db, current.event_id);
+  }
   await reconcilePocTaskForEvent(db, current.event_id);
   await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
@@ -745,26 +754,47 @@ export async function syncTimingsChecklist(db: D1Database, eventId: string): Pro
      ORDER BY vb.sort_order, vb.rowid, se.activity_date, se.sort_order, se.rowid`
   ).bind(eventId).all<ScheduleTimingRow>();
 
-  if (!results?.length) return;
+  const scheduleRows = results ?? [];
+  const withAcFromSchedule = scheduleRows.length > 0 ? buildTimingsWithAcText(scheduleRows) : null;
+  const withoutAcFromSchedule = scheduleRows.length > 0 ? buildTimingsWithoutAcText(scheduleRows) : null;
+  let acMinutes = scheduleRows.length > 0 ? sumAcMinutes(scheduleRows) : 0;
+  let withoutAcMinutes = scheduleRows.length > 0 ? sumWithoutAcMinutes(scheduleRows) : 0;
 
-  const withAc = buildTimingsWithAcText(results);
-  const withoutAc = buildTimingsWithoutAcText(results);
-  const acMinutes = sumAcMinutes(results);
-  const withoutAcMinutes = sumWithoutAcMinutes(results);
-  if (!withAc && !withoutAc && acMinutes <= 0 && withoutAcMinutes <= 0) return;
+  const { results: timingItems } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('timings_with_ac', 'timings_without_ac')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+  const existingText = new Map(timingItems.map((row) => [row.field_key, row.value]));
+  const existingWithAc = existingText.get("timings_with_ac") ?? null;
+  const existingWithoutAc = existingText.get("timings_without_ac") ?? null;
+
+  // Event-form schedule is the source of truth when present; otherwise keep manual ops text.
+  const timingsWithAc = withAcFromSchedule ?? existingWithAc;
+  const timingsWithoutAc = withoutAcFromSchedule ?? existingWithoutAc;
+
+  if (acMinutes <= 0 && timingsWithAc) {
+    acMinutes = parseMinutesFromTimingsText(timingsWithAc);
+  }
+  if (withoutAcMinutes <= 0 && timingsWithoutAc) {
+    withoutAcMinutes = parseMinutesFromTimingsText(timingsWithoutAc);
+  }
+
+  if (!withAcFromSchedule && !withoutAcFromSchedule && acMinutes <= 0 && withoutAcMinutes <= 0) {
+    return;
+  }
 
   const now = new Date().toISOString();
   const updates: Array<{ fieldKey: string; fieldType: string; value: string }> = [];
-  if (withAc) {
-    updates.push({ fieldKey: "timings_with_ac", fieldType: "textarea", value: withAc });
+  if (withAcFromSchedule) {
+    updates.push({ fieldKey: "timings_with_ac", fieldType: "textarea", value: withAcFromSchedule });
   }
-  if (withAc || acMinutes > 0) {
+  if (withoutAcFromSchedule) {
+    updates.push({ fieldKey: "timings_without_ac", fieldType: "textarea", value: withoutAcFromSchedule });
+  }
+  if (withAcFromSchedule || acMinutes > 0 || timingsWithAc) {
     updates.push({ fieldKey: "ac_hours", fieldType: "computed", value: formatHoursTotal(acMinutes) });
   }
-  if (withoutAc) {
-    updates.push({ fieldKey: "timings_without_ac", fieldType: "textarea", value: withoutAc });
-  }
-  if (withoutAc || withoutAcMinutes > 0) {
+  if (withoutAcFromSchedule || withoutAcMinutes > 0 || timingsWithoutAc) {
     updates.push({ fieldKey: "non_ac_hours", fieldType: "computed", value: formatHoursTotal(withoutAcMinutes) });
   }
 

@@ -126,3 +126,57 @@ export function formatHoursTotal(minutes: number): string {
   if (minutes <= 0) return "—";
   return formatDurationMinutes(minutes);
 }
+
+/** Sum minutes from legacy/manual ops timing text (e.g. "14:00 to 16:00"). */
+export function parseMinutesFromTimingsText(text: string | null | undefined): number {
+  if (!text?.trim()) return 0;
+  let total = 0;
+  const rangePattern = /(\d{1,2}:\d{2})\s*(?:to|-)\s*(\d{1,2}:\d{2})/gi;
+  for (const match of text.matchAll(rangePattern)) {
+    const mins = minutesBetween(match[1], match[2]);
+    if (mins != null) total += mins;
+  }
+  return total;
+}
+
+export function sumTimingMinutesFromVenueBookings(
+  venueBookings: Array<{
+    venue: string;
+    schedule_entries?: Array<{
+      activity_type: string;
+      activity_date: string;
+      start_time?: string | null;
+      end_time?: string | null;
+      with_ac_start?: string | null;
+      with_ac_end?: string | null;
+      with_ac_minutes?: number | null;
+      without_ac_start?: string | null;
+      without_ac_end?: string | null;
+      without_ac_minutes?: number | null;
+      notes?: string | null;
+    }>;
+  }>,
+): { acMinutes: number; withoutAcMinutes: number } {
+  const rows: ScheduleTimingRow[] = [];
+  for (const booking of venueBookings) {
+    for (const [index, entry] of (booking.schedule_entries ?? []).entries()) {
+      if (!entry.activity_date?.trim()) continue;
+      rows.push({
+        venue: booking.venue.trim() || "Venue",
+        activity_type: entry.activity_type,
+        activity_date: entry.activity_date,
+        start_time: entry.start_time,
+        end_time: entry.end_time,
+        with_ac_start: entry.with_ac_start,
+        with_ac_end: entry.with_ac_end,
+        with_ac_minutes: entry.with_ac_minutes,
+        without_ac_start: entry.without_ac_start,
+        without_ac_end: entry.without_ac_end,
+        without_ac_minutes: entry.without_ac_minutes,
+        notes: entry.notes,
+        sort_order: index + 1,
+      });
+    }
+  }
+  return { acMinutes: sumAcMinutes(rows), withoutAcMinutes: sumWithoutAcMinutes(rows) };
+}

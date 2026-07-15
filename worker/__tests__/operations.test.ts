@@ -478,6 +478,11 @@ describe("checklist item status from value", () => {
     expect(itemStatusForValue({ field_type: "date", value: "2026-07-12" }, "2026-07-12")).toBe("completed");
     expect(itemStatusForValue({ field_type: "date", value: "2026-07-01" }, "2026-07-12")).toBe("completed");
   });
+
+  it("marks computed timing totals completed when a value is present", () => {
+    expect(itemStatusForValue({ field_type: "computed", value: "—", is_computed: 1 })).toBe("not_started");
+    expect(itemStatusForValue({ field_type: "computed", value: "2h", is_computed: 1 })).toBe("completed");
+  });
 });
 
 describe("requirements <-> checklist sync", () => {
@@ -800,6 +805,47 @@ describe("syncTimingsChecklist", () => {
       .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
       .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
     expect(byField.get("ac_hours")).toBe("3h");
+    expect(byField.has("timings_with_ac")).toBe(false);
+  });
+
+  it("derives ac_hours from legacy manual ops timing text when schedule is empty", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("FROM schedule_entries se")) return { results: [] };
+            if (sql.includes("field_key IN ('timings_with_ac', 'timings_without_ac')")) {
+              return {
+                results: [
+                  { field_key: "timings_with_ac", value: "14:00 to 16:00" },
+                  { field_key: "timings_without_ac", value: "16:00 to 22:00" },
+                ],
+              };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncTimingsChecklist(db, "ev_manual");
+
+    const byField = new Map(updates
+      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+    expect(byField.get("ac_hours")).toBe("2h");
+    expect(byField.get("non_ac_hours")).toBe("6h");
     expect(byField.has("timings_with_ac")).toBe(false);
   });
 });

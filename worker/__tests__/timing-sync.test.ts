@@ -3,6 +3,7 @@ import {
   buildTimingsWithAcText,
   buildTimingsWithoutAcText,
   formatHoursTotal,
+  parseMinutesFromTimingsText,
   sumAcMinutes,
   type ScheduleTimingRow,
 } from "../lib/timing-sync";
@@ -52,5 +53,11 @@ describe("timing-sync", () => {
   it("sums AC minutes across venues", () => {
     expect(sumAcMinutes(rows)).toBe(420);
     expect(formatHoursTotal(420)).toBe("7h");
+  });
+
+  it("parses legacy manual ops timing text", () => {
+    expect(parseMinutesFromTimingsText("14:00 to 16:00")).toBe(120);
+    expect(parseMinutesFromTimingsText("16:00 to 22:00")).toBe(360);
+    expect(parseMinutesFromTimingsText("14:00-16:00\n16:00 to 22:00")).toBe(480);
   });
 });

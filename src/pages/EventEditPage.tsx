@@ -22,6 +22,7 @@ import {
 } from "../lib/event-edit-form";
 import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
+import { formatHoursTotal, sumTimingMinutesFromVenueBookings } from "../../worker/lib/timing-sync";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES, formatActivityType } from "../../worker/lib/types";
@@ -403,6 +404,15 @@ export function EventEditPage() {
   const reqs = withDefaultEventLevelRequirements(form.requirements as Record<string, unknown> | null);
   const setReq = (key: string, value: unknown) => update({ requirements: { ...reqs, [key]: value } });
   const venueCount = form.venue_bookings.length;
+  const timingTotals = useMemo(() => {
+    const prepared = prepareVenueBookingsForSave(form.venue_bookings);
+    const { acMinutes, withoutAcMinutes } = sumTimingMinutesFromVenueBookings(prepared);
+    return {
+      acHours: formatHoursTotal(acMinutes),
+      nonAcHours: formatHoursTotal(withoutAcMinutes),
+      hasData: acMinutes > 0 || withoutAcMinutes > 0,
+    };
+  }, [form.venue_bookings]);
   const activeRequirementsVenue = Math.min(requirementsVenueTab, Math.max(0, venueCount - 1));
   const updateVenueRequirements = (vIdx: number, next: Record<string, unknown>) => {
     setForm((f) => ({
@@ -601,6 +611,22 @@ export function EventEditPage() {
       {/* Step 2: Venues & Schedule — AC timing captured per activity (with-AC + without-AC windows) */}
       {step === 1 && (
         <div className="space-y-4">
+          {timingTotals.hasData && (
+            <div className="carved-card rounded-2xl bg-sage/10 p-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-sage etched">Event timing totals (synced to Operations)</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Total AC hours</span>
+                  <p className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{timingTotals.acHours}</p>
+                </div>
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Total non-AC hours</span>
+                  <p className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{timingTotals.nonAcHours}</p>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-muted etched">Save the event to sync these totals into the Operations → Timings checklist.</p>
+            </div>
+          )}
           {form.venue_bookings.map((vb, vIdx) => (
             <div key={vIdx} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
               <div className="mb-3 flex items-center justify-between">
