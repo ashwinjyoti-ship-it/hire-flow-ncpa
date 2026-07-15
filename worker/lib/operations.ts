@@ -2,15 +2,6 @@ import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
 import { isCateringMealPaxKey } from "./catering-meals";
 import {
-  buildTimingsWithAcText,
-  buildTimingsWithoutAcText,
-  formatHoursTotal,
-  parseMinutesFromTimingsText,
-  sumAcMinutes,
-  sumWithoutAcMinutes,
-  type ScheduleTimingRow,
-} from "./timing-sync";
-import {
   deriveExecutionSectionStatus,
   EXECUTION_SECTIONS,
   shouldPreserveExecutionSectionValue,
@@ -173,6 +164,8 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     await syncApprovalDependentChecklistFromEvent(db, eventId);
     await syncNocDependentChecklistFromEvent(db, eventId);
     await syncTdsDependentChecklistFromEvent(db, eventId);
+    await syncOnstageDependentChecklistFromEvent(db, eventId);
+    await syncEmailerDependentChecklistFromEvent(db, eventId);
     return;
   }
 
@@ -204,12 +197,13 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   await syncApprovalDependentChecklistFromEvent(db, eventId);
   await syncNocDependentChecklistFromEvent(db, eventId);
   await syncTdsDependentChecklistFromEvent(db, eventId);
+  await syncOnstageDependentChecklistFromEvent(db, eventId);
+  await syncEmailerDependentChecklistFromEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
 export async function getChecklistItems(db: D1Database, eventId: string): Promise<ChecklistItemRow[]> {
   await ensureChecklistForEvent(db, eventId);
-  await syncTimingsChecklist(db, eventId);
   const { results } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
@@ -314,9 +308,6 @@ export async function updateChecklistItem(args: {
   // rollup rows (exec_*) are checklist-only.
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
-  if (current.field_key === "timings_with_ac" || current.field_key === "timings_without_ac") {
-    await syncTimingsChecklist(db, current.event_id);
-  }
   await reconcilePocTaskForEvent(db, current.event_id);
   await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
@@ -383,6 +374,12 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
   }
   if (fieldKey === "tds_certificate_from_client") {
     await syncTdsDependentChecklist(db, eventId, value);
+  }
+  if (fieldKey === "onstage_required") {
+    await syncOnstageDependentChecklist(db, eventId, value);
+  }
+  if (fieldKey === "emailer") {
+    await syncEmailerDependentChecklist(db, eventId, value);
   }
 }
 
@@ -490,6 +487,165 @@ async function syncNocDependentChecklistFromEvent(db: D1Database, eventId: strin
   ).bind(eventId).first<{ value: string | null }>();
   if (!row) return;
   await syncNocDependentChecklist(db, eventId, row.value);
+}
+
+/** OnStage pipeline + Emailer only apply when OnStage Required? = Required. */
+export const ONSTAGE_DEPENDENT_FIELD_KEYS = [
+  "onstage_asked_client",
+  "onstage_received_from_client",
+  "onstage_sent_to_team",
+  "onstage_verified",
+  "onstage_complete",
+  "emailer",
+  "emailer_asked_client",
+  "emailer_received_from_client",
+  "emailer_sent_to_team",
+  "emailer_sent",
+] as const;
+
+/** Emailer date fields only apply when Emailer = Yes. */
+export const EMAILER_DEPENDENT_FIELD_KEYS = [
+  "emailer_asked_client",
+  "emailer_received_from_client",
+  "emailer_sent_to_team",
+  "emailer_sent",
+] as const;
+
+/**
+ * When OnStage Required? is Not Required, mark the dependent OnStage / Emailer
+ * fields not_applicable. When Required, re-derive each field's status, then
+ * re-apply the Emailer Yes/No gate so date fields stay in sync.
+ */
+export async function syncOnstageDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  onstageRequiredValue: string | null | undefined,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (normalise(onstageRequiredValue) === "not required") {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = 'not_applicable', last_updated_at = ?
+       WHERE event_id = ?
+         AND field_key IN (
+           'onstage_asked_client',
+           'onstage_received_from_client',
+           'onstage_sent_to_team',
+           'onstage_verified',
+           'onstage_complete',
+           'emailer',
+           'emailer_asked_client',
+           'emailer_received_from_client',
+           'emailer_sent_to_team',
+           'emailer_sent'
+         )
+         AND status != 'not_applicable'`
+    ).bind(now, eventId).run();
+    return;
+  }
+
+  const { results } = await db.prepare(
+    `SELECT ci.id, ci.field_key, ci.value, cd.field_type, cd.is_computed
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND ci.field_key IN (
+         'onstage_asked_client',
+         'onstage_received_from_client',
+         'onstage_sent_to_team',
+         'onstage_verified',
+         'onstage_complete',
+         'emailer'
+       )`
+  ).bind(eventId).all<{ id: string; field_key: string; value: string | null; field_type: string; is_computed: number }>();
+
+  for (const row of results ?? []) {
+    const status = itemStatusForValue({
+      field_type: row.field_type,
+      value: row.value,
+      is_computed: row.is_computed,
+    });
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
+    ).bind(status, now, row.id).run();
+  }
+
+  const emailer = (results ?? []).find((row) => row.field_key === "emailer");
+  await syncEmailerDependentChecklist(db, eventId, emailer?.value ?? "No");
+}
+
+async function syncOnstageDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'onstage_required'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncOnstageDependentChecklist(db, eventId, row.value);
+}
+
+/**
+ * When Emailer is No, mark the Emailer date fields not_applicable.
+ * When Yes, re-derive each date field's status from its current value.
+ */
+export async function syncEmailerDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  emailerValue: string | null | undefined,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (normalise(emailerValue) !== "yes") {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = 'not_applicable', last_updated_at = ?
+       WHERE event_id = ?
+         AND field_key IN (
+           'emailer_asked_client',
+           'emailer_received_from_client',
+           'emailer_sent_to_team',
+           'emailer_sent'
+         )
+         AND status != 'not_applicable'`
+    ).bind(now, eventId).run();
+    return;
+  }
+
+  const { results } = await db.prepare(
+    `SELECT ci.id, ci.value, cd.field_type, cd.is_computed
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND ci.field_key IN (
+         'emailer_asked_client',
+         'emailer_received_from_client',
+         'emailer_sent_to_team',
+         'emailer_sent'
+       )`
+  ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
+
+  for (const row of results ?? []) {
+    const status = itemStatusForValue({
+      field_type: row.field_type,
+      value: row.value,
+      is_computed: row.is_computed,
+    });
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
+    ).bind(status, now, row.id).run();
+  }
+}
+
+async function syncEmailerDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const onstage = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'onstage_required'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (onstage && normalise(onstage.value) === "not required") {
+    await syncEmailerDependentChecklist(db, eventId, "No");
+    return;
+  }
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'emailer'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncEmailerDependentChecklist(db, eventId, row.value);
 }
 
 /**
@@ -727,79 +883,6 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
   for (const { fieldKey, fieldType, value } of detailUpdates) {
     if (value === null) continue;
     const status = itemStatusForValue({ field_type: fieldType, value });
-    await db.prepare(
-      `UPDATE checklist_items
-       SET value = ?, status = ?, last_updated_at = ?
-       WHERE event_id = ? AND field_key = ?`
-    ).bind(value, status, now, eventId, fieldKey).run();
-  }
-  await recalculateEventCompletion(db, eventId);
-}
-
-/**
- * Mirror venue schedule AC windows from the event form into the Operations
- * Timings section. Multi-venue events are grouped by hall in the text blocks.
- * Only overwrites when the form carries schedule rows with AC windows — manual
- * ops edits are left in place when the form has no timing data yet.
- */
-export async function syncTimingsChecklist(db: D1Database, eventId: string): Promise<void> {
-  const { results } = await db.prepare(
-    `SELECT vb.venue, se.activity_type, se.activity_date, se.start_time, se.end_time,
-            se.with_ac_start, se.with_ac_end, se.with_ac_minutes,
-            se.without_ac_start, se.without_ac_end, se.without_ac_minutes,
-            se.notes, se.sort_order
-     FROM schedule_entries se
-     JOIN venue_bookings vb ON vb.id = se.venue_booking_id
-     WHERE se.event_id = ?
-     ORDER BY vb.sort_order, vb.rowid, se.activity_date, se.sort_order, se.rowid`
-  ).bind(eventId).all<ScheduleTimingRow>();
-
-  const scheduleRows = results ?? [];
-  const withAcFromSchedule = scheduleRows.length > 0 ? buildTimingsWithAcText(scheduleRows) : null;
-  const withoutAcFromSchedule = scheduleRows.length > 0 ? buildTimingsWithoutAcText(scheduleRows) : null;
-  let acMinutes = scheduleRows.length > 0 ? sumAcMinutes(scheduleRows) : 0;
-  let withoutAcMinutes = scheduleRows.length > 0 ? sumWithoutAcMinutes(scheduleRows) : 0;
-
-  const { results: timingItems } = await db.prepare(
-    `SELECT field_key, value FROM checklist_items
-     WHERE event_id = ? AND field_key IN ('timings_with_ac', 'timings_without_ac')`
-  ).bind(eventId).all<{ field_key: string; value: string | null }>();
-  const existingText = new Map(timingItems.map((row) => [row.field_key, row.value]));
-  const existingWithAc = existingText.get("timings_with_ac") ?? null;
-  const existingWithoutAc = existingText.get("timings_without_ac") ?? null;
-
-  // Event-form schedule is the source of truth when present; otherwise keep manual ops text.
-  const timingsWithAc = withAcFromSchedule ?? existingWithAc;
-  const timingsWithoutAc = withoutAcFromSchedule ?? existingWithoutAc;
-
-  if (acMinutes <= 0 && timingsWithAc) {
-    acMinutes = parseMinutesFromTimingsText(timingsWithAc);
-  }
-  if (withoutAcMinutes <= 0 && timingsWithoutAc) {
-    withoutAcMinutes = parseMinutesFromTimingsText(timingsWithoutAc);
-  }
-
-  if (!withAcFromSchedule && !withoutAcFromSchedule && acMinutes <= 0 && withoutAcMinutes <= 0) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const updates: Array<{ fieldKey: string; fieldType: string; value: string }> = [];
-  if (withAcFromSchedule) {
-    updates.push({ fieldKey: "timings_with_ac", fieldType: "textarea", value: withAcFromSchedule });
-  }
-  if (withoutAcFromSchedule) {
-    updates.push({ fieldKey: "timings_without_ac", fieldType: "textarea", value: withoutAcFromSchedule });
-  }
-  if (withAcFromSchedule || acMinutes > 0 || timingsWithAc) {
-    updates.push({ fieldKey: "ac_hours", fieldType: "computed", value: formatHoursTotal(acMinutes) });
-  }
-  if (withoutAcFromSchedule || withoutAcMinutes > 0 || timingsWithoutAc) {
-    updates.push({ fieldKey: "non_ac_hours", fieldType: "computed", value: formatHoursTotal(withoutAcMinutes) });
-  }
-
-  for (const { fieldKey, fieldType, value } of updates) {
-    const status = itemStatusForValue({ field_type: fieldType, value, is_computed: fieldType === "computed" ? 1 : 0 });
     await db.prepare(
       `UPDATE checklist_items
        SET value = ?, status = ?, last_updated_at = ?
@@ -1087,6 +1170,7 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
     approval_required: { rule: "approval_followup", complete: v === "not required" },
     approval_received_on: { rule: "approval_followup", complete: Boolean(v) },
     confirmation_signed_received: { rule: "confirmation_letter", complete: v === "yes" },
+    onstage_required: { rule: "onstage", complete: v === "not required" },
     onstage_received_from_client: { rule: "onstage", complete: Boolean(v) },
     feedback_received: { rule: "feedback", complete: Boolean(v) },
     minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },

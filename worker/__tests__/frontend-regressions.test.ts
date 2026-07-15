@@ -228,7 +228,8 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("Object.keys(venueReqs).length > 0");
     expect(calendar).toContain("to={`/events/${entry.event_id}/edit`}");
     expect(calendar).toContain("getEventOperationsLink(entry.event_id)");
-    expect(calendar).toMatch(/>\s*Ops\s*</);
+    expect(calendar).toMatch(/>\s*Edit Checklist\s*</);
+    expect(calendar).toMatch(/>\s*Edit Event Data\s*</);
     expect(calendar).toContain("View show details");
     expect(calendar).toContain("with_ac_start");
     expect(calendar).not.toContain("Open Record");

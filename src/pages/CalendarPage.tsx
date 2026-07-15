@@ -428,10 +428,10 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Link to={getEventOperationsLink(entry.event_id)} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
-              Ops
+              Edit Checklist
             </Link>
             <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
-              Edit
+              Edit Event Data
             </Link>
             <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
           </div>

@@ -72,13 +72,9 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Event Dates", field_key: "event_dates", label: "Event Date(s)", field_type: "text" },
   { module: "operations", section: "Event Dates", field_key: "dismantling_date", label: "Dismantling Date", field_type: "date" },
 
-  // 5. TIMINGS (AC/Non-AC with auto hours)
-  { module: "operations", section: "Timings", field_key: "timings_with_ac", label: "Timings — With AC", field_type: "textarea" },
-  { module: "operations", section: "Timings", field_key: "ac_hours", label: "AC Hours (auto)", field_type: "computed", is_computed: true, default_value: "—" },
-  { module: "operations", section: "Timings", field_key: "timings_without_ac", label: "Timings — Without AC", field_type: "textarea" },
-  { module: "operations", section: "Timings", field_key: "non_ac_hours", label: "Non-AC Hours (auto)", field_type: "computed", is_computed: true, default_value: "—" },
+  // AC timings live only on the event form (venue schedule entries) — not in Operations.
 
-  // 6. FINANCIALS
+  // 5. FINANCIALS
   // The Costing Email is the first post-inquiry financial step and a hard gate
   // to confirmation. Each field defaults to "not done"; a positive entry (Yes /
   // Sent / Completed) marks progress. Payment Status = Completed is the only
@@ -95,12 +91,12 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Financials", field_key: "installment_5_expected_date", label: "Installment 5 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 5", due_after_days: 0, complete_when: "payment is received" } },
   { module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", field_type: "dropdown", options: ["Incomplete", "Completed"], default_value: "Incomplete" },
 
-  // 7. CONFIRMATION LETTER
+  // 6. CONFIRMATION LETTER
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_made", label: "Made", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_couriered", label: "Couriered", field_type: "date", triggers_task: { rule: "confirmation_letter", title: "Follow up on Confirmation Letter", due_after_days: 3, complete_when: "signed confirmation is received" } },
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_signed_received", label: "Signed Copy Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
-  // 8. EVENT REQUIREMENTS (section rollup — mirrors event form cards)
+  // 7. EVENT REQUIREMENTS (section rollup — mirrors event form cards)
   { module: "operations", section: "Event Requirements", field_key: "exec_sound_light", label: "Sound & Light", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
   { module: "operations", section: "Event Requirements", field_key: "exec_staffing", label: "Staffing & Facilities", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
   { module: "operations", section: "Event Requirements", field_key: "exec_recording_special", label: "Recording & Special", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
@@ -108,17 +104,26 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Event Requirements", field_key: "exec_operations", label: "Operations", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
   { module: "operations", section: "Event Requirements", field_key: "exec_additional", label: "Additional Requirements", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
 
-  // 9. NOC
+  // 8. NOC
   { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["Not Applicable", "Not sent", "Sent"], default_value: "Not sent" },
   { module: "operations", section: "NOC", field_key: "noc_sent_on", label: "Date Sent", field_type: "date", visibility_rule: "onlyWhen(noc_sent == Sent)" },
 
-  // 10. ONSTAGE (sequential pipeline)
-  { module: "operations", section: "OnStage", field_key: "onstage_asked_client", label: "OnStage — Asked Client", field_type: "date", triggers_task: { rule: "onstage", title: "Follow up for OnStage information", due_after_days: 3, complete_when: "marked Received" } },
-  { module: "operations", section: "OnStage", field_key: "onstage_received_from_client", label: "OnStage — Received from Client", field_type: "date" },
-  { module: "operations", section: "OnStage", field_key: "onstage_sent_to_team", label: "OnStage — Sent to Team", field_type: "date" },
-  { module: "operations", section: "OnStage", field_key: "onstage_verified", label: "OnStage — Verified", field_type: "date" },
-  { module: "operations", section: "OnStage", field_key: "onstage_complete", label: "OnStage — Complete", field_type: "date" },
-  { module: "operations", section: "OnStage", field_key: "monthly_chart_sent", label: "SENT for Monthly Chart", field_type: "dropdown", options: ["Not sent", "Sent"], default_value: "Not sent" },
+  // 9. ONSTAGE (Required gate + sequential pipeline + Emailer)
+  // When OnStage Required? = Not Required, the rest of this section is skipped.
+  { module: "operations", section: "OnStage", field_key: "onstage_required", label: "OnStage Required?", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Required" },
+  { module: "operations", section: "OnStage", field_key: "onstage_asked_client", label: "OnStage — Asked Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)", triggers_task: { rule: "onstage", title: "Follow up for OnStage information", due_after_days: 3, complete_when: "marked Received" } },
+  { module: "operations", section: "OnStage", field_key: "onstage_received_from_client", label: "OnStage — Received from Client", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "OnStage", field_key: "onstage_sent_to_team", label: "OnStage — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "OnStage", field_key: "onstage_verified", label: "OnStage — Verified", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "OnStage", field_key: "onstage_complete", label: "OnStage — Complete", field_type: "date", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "OnStage", field_key: "emailer", label: "Emailer", field_type: "dropdown", options: ["No", "Yes"], default_value: "No", visibility_rule: "onlyWhen(onstage_required == Required)" },
+  { module: "operations", section: "OnStage", field_key: "emailer_asked_client", label: "Emailer — Asked Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "OnStage", field_key: "emailer_received_from_client", label: "Emailer — Received from Client", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "OnStage", field_key: "emailer_sent_to_team", label: "Emailer — Sent to Team", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+  { module: "operations", section: "OnStage", field_key: "emailer_sent", label: "Emailer — Sent", field_type: "date", visibility_rule: "onlyWhen(emailer == Yes)" },
+
+  // 10. MONTHLY CHART (separate from OnStage)
+  { module: "operations", section: "Monthly Chart", field_key: "monthly_chart_sent", label: "SENT for Monthly Chart", field_type: "dropdown", options: ["Not sent", "Sent"], default_value: "Not sent" },
 
   // 11. TECHNICAL MEETING & MINUTES
   { module: "operations", section: "Technical Meeting & Minutes", field_key: "technical_meeting_date", label: "Technical Meeting Date", field_type: "date", triggers_task: { rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0, complete_when: "the meeting date passes" } },

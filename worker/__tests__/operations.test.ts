@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, syncTimingsChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -685,79 +685,37 @@ describe("event requirements section seed", () => {
   });
 });
 
-describe("syncTimingsChecklist", () => {
-  it("writes grouped AC timing text for multi-venue schedules", async () => {
-    const updates: Array<{ sql: string; binds: unknown[] }> = [];
-    const db = {
-      prepare(sql: string) {
-        const statement = {
-          binds: [] as unknown[],
-          bind(...values: unknown[]) {
-            this.binds = values;
-            return this;
-          },
-          async all() {
-            if (sql.includes("FROM schedule_entries se")) {
-              return {
-                results: [
-                  {
-                    venue: "JBT",
-                    activity_type: "setup",
-                    activity_date: "2026-07-10",
-                    start_time: "10:00",
-                    end_time: "18:00",
-                    with_ac_start: "10:00",
-                    with_ac_end: "14:00",
-                    with_ac_minutes: 240,
-                    without_ac_start: "14:00",
-                    without_ac_end: "18:00",
-                    without_ac_minutes: 240,
-                    notes: null,
-                    sort_order: 1,
-                  },
-                  {
-                    venue: "TATA",
-                    activity_type: "show",
-                    activity_date: "2026-07-11",
-                    start_time: "19:00",
-                    end_time: "22:00",
-                    with_ac_start: "19:00",
-                    with_ac_end: "22:00",
-                    with_ac_minutes: 180,
-                    without_ac_start: null,
-                    without_ac_end: null,
-                    without_ac_minutes: null,
-                    notes: null,
-                    sort_order: 1,
-                  },
-                ],
-              };
-            }
-            if (sql.includes("FROM checklist_items ci")) return { results: [] };
-            return { results: [] };
-          },
-          async run() {
-            updates.push({ sql, binds: [...this.binds] });
-            return { success: true };
-          },
-        };
-        return statement;
-      },
-    } as unknown as D1Database;
+describe("operations timings removed", () => {
+  it("does not seed AC timings into the Operations checklist", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.timings_with_ac).toBeUndefined();
+    expect(byKey.ac_hours).toBeUndefined();
+    expect(byKey.timings_without_ac).toBeUndefined();
+    expect(byKey.non_ac_hours).toBeUndefined();
+    expect(CHECKLIST_DEFINITIONS.some((d) => d.section === "Timings")).toBe(false);
+  });
+});
 
-    await syncTimingsChecklist(db, "ev_multi");
-
-    const byField = new Map(updates
-      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
-      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-    expect(byField.get("timings_with_ac")).toContain("[JBT]");
-    expect(byField.get("timings_with_ac")).toContain("[TATA]");
-    expect(byField.get("ac_hours")).toBe("7h");
-    expect(byField.get("timings_without_ac")).toContain("[JBT]");
-    expect(byField.get("non_ac_hours")).toBe("4h");
+describe("OnStage required + Emailer checklist fields", () => {
+  it("seeds OnStage Required gate, Emailer sub-fields, and Monthly Chart section", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.onstage_required?.options).toEqual(["Not Required", "Required"]);
+    expect(byKey.onstage_required?.default_value).toBe("Required");
+    expect(byKey.onstage_asked_client?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
+    expect(byKey.onstage_complete?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
+    expect(byKey.emailer?.options).toEqual(["No", "Yes"]);
+    expect(byKey.emailer?.default_value).toBe("No");
+    expect(byKey.emailer?.visibility_rule).toBe("onlyWhen(onstage_required == Required)");
+    expect(byKey.emailer_asked_client?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
+    expect(byKey.emailer_received_from_client?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
+    expect(byKey.emailer_sent_to_team?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
+    expect(byKey.emailer_sent?.visibility_rule).toBe("onlyWhen(emailer == Yes)");
+    expect(byKey.monthly_chart_sent?.section).toBe("Monthly Chart");
+    expect(byKey.monthly_chart_sent?.label).toBe("SENT for Monthly Chart");
+    expect(byKey.monthly_chart_sent?.options).toEqual(["Not sent", "Sent"]);
   });
 
-  it("syncs ac_hours even when only stored minutes exist without display text windows", async () => {
+  it("marks OnStage dependents not_applicable when OnStage Required? = Not Required", async () => {
     const updates: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
       prepare(sql: string) {
@@ -768,26 +726,6 @@ describe("syncTimingsChecklist", () => {
             return this;
           },
           async all() {
-            if (sql.includes("FROM schedule_entries se")) {
-              return {
-                results: [{
-                  venue: "JBT",
-                  activity_type: "show",
-                  activity_date: "2026-07-10",
-                  start_time: null,
-                  end_time: null,
-                  with_ac_start: null,
-                  with_ac_end: null,
-                  with_ac_minutes: 180,
-                  without_ac_start: null,
-                  without_ac_end: null,
-                  without_ac_minutes: null,
-                  notes: null,
-                  sort_order: 1,
-                }],
-              };
-            }
-            if (sql.includes("FROM checklist_items ci")) return { results: [] };
             return { results: [] };
           },
           async run() {
@@ -799,16 +737,14 @@ describe("syncTimingsChecklist", () => {
       },
     } as unknown as D1Database;
 
-    await syncTimingsChecklist(db, "ev_minutes_only");
+    await syncOnstageDependentChecklist(db, "ev_1", "Not Required");
 
-    const byField = new Map(updates
-      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
-      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-    expect(byField.get("ac_hours")).toBe("3h");
-    expect(byField.has("timings_with_ac")).toBe(false);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = 'not_applicable'");
+    expect(updates[0]?.binds[1]).toBe("ev_1");
   });
 
-  it("derives ac_hours from legacy manual ops timing text when schedule is empty", async () => {
+  it("marks Emailer date fields not_applicable when Emailer = No", async () => {
     const updates: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
       prepare(sql: string) {
@@ -819,15 +755,6 @@ describe("syncTimingsChecklist", () => {
             return this;
           },
           async all() {
-            if (sql.includes("FROM schedule_entries se")) return { results: [] };
-            if (sql.includes("field_key IN ('timings_with_ac', 'timings_without_ac')")) {
-              return {
-                results: [
-                  { field_key: "timings_with_ac", value: "14:00 to 16:00" },
-                  { field_key: "timings_without_ac", value: "16:00 to 22:00" },
-                ],
-              };
-            }
             return { results: [] };
           },
           async run() {
@@ -839,14 +766,11 @@ describe("syncTimingsChecklist", () => {
       },
     } as unknown as D1Database;
 
-    await syncTimingsChecklist(db, "ev_manual");
+    await syncEmailerDependentChecklist(db, "ev_1", "No");
 
-    const byField = new Map(updates
-      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
-      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
-    expect(byField.get("ac_hours")).toBe("2h");
-    expect(byField.get("non_ac_hours")).toBe("6h");
-    expect(byField.has("timings_with_ac")).toBe(false);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = 'not_applicable'");
+    expect(updates[0]?.binds[1]).toBe("ev_1");
   });
 });
 
@@ -857,8 +781,6 @@ describe("NOC dependent checklist fields", () => {
     expect(byKey.noc_sent?.options).toEqual(["Not Applicable", "Not sent", "Sent"]);
     expect(byKey.noc_sent?.default_value).toBe("Not sent");
     expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Sent)");
-    expect(byKey.monthly_chart_sent?.label).toBe("SENT for Monthly Chart");
-    expect(byKey.monthly_chart_sent?.options).toEqual(["Not sent", "Sent"]);
     expect(byKey.noc_status).toBeUndefined();
   });
 

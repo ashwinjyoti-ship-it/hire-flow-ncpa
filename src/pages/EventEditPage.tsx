@@ -613,7 +613,7 @@ export function EventEditPage() {
         <div className="space-y-4">
           {timingTotals.hasData && (
             <div className="carved-card rounded-2xl bg-sage/10 p-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-sage etched">Event timing totals (synced to Operations)</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-sage etched">Event timing totals</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Total AC hours</span>
@@ -624,7 +624,6 @@ export function EventEditPage() {
                   <p className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{timingTotals.nonAcHours}</p>
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-ink-muted etched">Save the event to sync these totals into the Operations → Timings checklist.</p>
             </div>
           )}
           {form.venue_bookings.map((vb, vIdx) => (
