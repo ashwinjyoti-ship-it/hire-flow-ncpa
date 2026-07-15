@@ -837,7 +837,7 @@ function LifecyclePanel({
     : undefined;
 
   return (
-    <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
+    <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
       <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
@@ -997,8 +997,8 @@ function ChecklistModuleView({
     for (const item of items) valueByKey.set(item.field_key, item.value);
   }
   return (
-    <div id="checklist-form-top" className="space-y-4">
-      {showGoToTop && <GoToTopButton targetId="checklist-form-top" />}
+    <div className="space-y-4">
+      {showGoToTop && <GoToTopButton targetId="event-lifecycle" />}
       {entries.map(([section, items]) => {
         const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));
         if (!visibleItems.length) return null;
