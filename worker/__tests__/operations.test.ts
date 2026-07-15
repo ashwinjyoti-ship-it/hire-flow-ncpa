@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTimingsChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, syncTimingsChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -793,6 +793,98 @@ describe("NOC dependent checklist fields", () => {
     expect(updates[0]?.sql).toContain("status = ?");
     expect(updates[0]?.binds[0]).toBe("not_applicable");
     expect(updates[0]?.binds[updates[0]!.binds.length - 1]).toBe("noc_sent_on");
+  });
+});
+
+describe("accounts TDS certificate processing", () => {
+  it("seeds accounts fields without notify_after_3_days or tds_certificate_sent_to_client", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.notify_after_3_days).toBeUndefined();
+    expect(byKey.tds_certificate_sent_to_client).toBeUndefined();
+    expect(byKey.box_office_statement_sent?.options).toEqual(["Not Sent", "Sent", "Not Applicable"]);
+    expect(byKey.tds_received_from_client_date?.section).toBe("TDS Certificate Processing");
+    expect(byKey.tds_received_from_client_date?.visibility_rule).toBe("onlyWhen(tds_certificate_from_client == Received)");
+    expect(byKey.tds_received_from_client_date?.triggers_task?.rule).toBe("tds_send_to_accounts");
+    expect(byKey.tds_certificate_sent_to_accounts?.visibility_rule).toBe("onlyWhen(tds_certificate_from_client == Received)");
+    expect(byKey.tds_accounts_refund_or_action?.options).toEqual(["Awaiting", "Refunded", "Payment Processed", "N/A"]);
+    expect(byKey.tds_proof_sent_to_client?.options).toEqual(["Not Sent", "Sent"]);
+  });
+
+  it("marks TDS processing fields not_applicable when From Client is not Received", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncTdsDependentChecklist(db, "ev_1", "N.A.");
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = 'not_applicable'");
+    expect(updates[0]?.binds[1]).toBe("ev_1");
+  });
+
+  it("re-derives TDS processing field status when From Client becomes Received", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("SELECT ci.id, ci.value")) {
+              return {
+                results: [
+                  { id: "cli_date", value: null, field_type: "date", is_computed: 0 },
+                  { id: "cli_sent", value: "2026-07-01", field_type: "date", is_computed: 0 },
+                  { id: "cli_refund", value: "Awaiting", field_type: "dropdown", is_computed: 0 },
+                  { id: "cli_proof", value: "Sent", field_type: "dropdown", is_computed: 0 },
+                ],
+              };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncTdsDependentChecklist(db, "ev_1", "Received");
+
+    expect(updates).toHaveLength(4);
+    const byId = Object.fromEntries(updates.map((u) => [u.binds[u.binds.length - 1], u.binds[0]]));
+    expect(byId.cli_date).toBe("not_started");
+    expect(byId.cli_sent).toBe("completed");
+    expect(byId.cli_refund).toBe("not_started");
+    expect(byId.cli_proof).toBe("completed");
+  });
+
+  it("treats Not Applicable and Refunded / Payment Processed as terminal statuses", () => {
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Not Applicable" })).toBe("not_applicable");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Refunded" })).toBe("completed");
+    expect(itemStatusForValue({ field_type: "dropdown", value: "Payment Processed" })).toBe("completed");
   });
 });
 

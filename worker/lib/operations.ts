@@ -87,7 +87,7 @@ export type LifecycleReadiness = {
   actions: LifecycleAction[];
 };
 
-const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received", "verified"]);
+const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received", "verified", "refunded", "payment processed"]);
 const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable", "no applicable"]);
 // Negative / placeholder defaults. A checklist field sitting at one of these is
 // "not done" (not_started), not "in progress" — it only counts as done once the
@@ -167,6 +167,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     // Heal Approval dependents for existing VFH events (idempotent).
     await syncApprovalDependentChecklistFromEvent(db, eventId);
     await syncNocDependentChecklistFromEvent(db, eventId);
+    await syncTdsDependentChecklistFromEvent(db, eventId);
     return;
   }
 
@@ -197,6 +198,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   // After seeding, mark Approval dependents N/A when default is Not Required.
   await syncApprovalDependentChecklistFromEvent(db, eventId);
   await syncNocDependentChecklistFromEvent(db, eventId);
+  await syncTdsDependentChecklistFromEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
@@ -370,10 +372,21 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
   if (fieldKey === "noc_sent") {
     await syncNocDependentChecklist(db, eventId, value);
   }
+  if (fieldKey === "tds_certificate_from_client") {
+    await syncTdsDependentChecklist(db, eventId, value);
+  }
 }
 
 /** NOC date only applies when NOC Sent? = Sent. */
 export const NOC_DEPENDENT_FIELD_KEYS = ["noc_sent_on"] as const;
+
+/** TDS processing fields only apply when TDS Certificate — From Client = Received. */
+export const TDS_DEPENDENT_FIELD_KEYS = [
+  "tds_received_from_client_date",
+  "tds_certificate_sent_to_accounts",
+  "tds_accounts_refund_or_action",
+  "tds_proof_sent_to_client",
+] as const;
 
 export async function syncNocDependentChecklist(
   db: D1Database,
@@ -468,6 +481,71 @@ async function syncNocDependentChecklistFromEvent(db: D1Database, eventId: strin
   ).bind(eventId).first<{ value: string | null }>();
   if (!row) return;
   await syncNocDependentChecklist(db, eventId, row.value);
+}
+
+/**
+ * When TDS Certificate — From Client is not Received, mark the processing
+ * fields not_applicable so they drop out of pending work / completion.
+ * When Received, re-derive each field's status from its current value.
+ */
+export async function syncTdsDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  tdsFromClient: string | null | undefined,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (normalise(tdsFromClient) !== "received") {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = 'not_applicable', last_updated_at = ?
+       WHERE event_id = ?
+         AND field_key IN (
+           'tds_received_from_client_date',
+           'tds_certificate_sent_to_accounts',
+           'tds_accounts_refund_or_action',
+           'tds_proof_sent_to_client'
+         )
+         AND status != 'not_applicable'`
+    ).bind(now, eventId).run();
+    return;
+  }
+
+  const { results } = await db.prepare(
+    `SELECT ci.id, ci.value, cd.field_type, cd.is_computed
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND ci.field_key IN (
+         'tds_received_from_client_date',
+         'tds_certificate_sent_to_accounts',
+         'tds_accounts_refund_or_action',
+         'tds_proof_sent_to_client'
+       )`
+  ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
+
+  for (const row of results ?? []) {
+    const status = itemStatusForValue({
+      field_type: row.field_type,
+      value: row.value,
+      is_computed: row.is_computed,
+    });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = ?,
+           completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, ?) ELSE NULL END,
+           completed_by = CASE WHEN ? = 'completed' THEN completed_by ELSE NULL END,
+           last_updated_at = ?
+       WHERE id = ?`
+    ).bind(status, status, now, status, now, row.id).run();
+  }
+}
+
+async function syncTdsDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'tds_certificate_from_client'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncTdsDependentChecklist(db, eventId, row.value);
 }
 
 /**
@@ -978,6 +1056,7 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
     minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },
     file_sent_to_accounts: { rule: "send_file_to_accounts", complete: Boolean(v) },
     final_file_received: { rule: "accounts_file", complete: v === "yes" },
+    tds_certificate_sent_to_accounts: { rule: "tds_send_to_accounts", complete: Boolean(v) },
     payment_status: { rule: "instalment", complete: v === "completed" },
   };
   const action = completionByField[fieldKey];

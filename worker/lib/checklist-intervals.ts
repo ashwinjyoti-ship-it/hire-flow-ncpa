@@ -14,6 +14,7 @@ export const CHECKLIST_INTERVAL_KEYS = [
   "feedback",
   "accounts_file",
   "send_file_to_accounts",
+  "tds_send_to_accounts",
 ] as const;
 
 export type ChecklistIntervalKey = (typeof CHECKLIST_INTERVAL_KEYS)[number];
@@ -29,6 +30,7 @@ export const DEFAULT_CHECKLIST_INTERVALS: ChecklistIntervals = {
   feedback: 5,
   accounts_file: 3,
   send_file_to_accounts: 1,
+  tds_send_to_accounts: 0,
 };
 
 /** UI metadata for Settings → Check List Intervals. */
@@ -76,6 +78,11 @@ export const CHECKLIST_INTERVAL_META: Array<{
     key: "send_file_to_accounts",
     label: "Send file to accounts",
     description: "Days after the final show date to create the Send file to accounts task.",
+  },
+  {
+    key: "tds_send_to_accounts",
+    label: "Send TDS certificate to Accounts",
+    description: "Days after TDS is received from the client before the send-to-Accounts task is due (0 = due on that date).",
   },
 ];
 

@@ -23,6 +23,7 @@ type ChecklistIntervals = {
   feedback: number;
   accounts_file: number;
   send_file_to_accounts: number;
+  tds_send_to_accounts: number;
 };
 
 type ChecklistIntervalMeta = {
@@ -40,6 +41,7 @@ const DEFAULT_CHECKLIST_INTERVALS: ChecklistIntervals = {
   feedback: 5,
   accounts_file: 3,
   send_file_to_accounts: 1,
+  tds_send_to_accounts: 0,
 };
 
 const DEFAULT_CHECKLIST_INTERVAL_META: ChecklistIntervalMeta[] = [
@@ -51,6 +53,7 @@ const DEFAULT_CHECKLIST_INTERVAL_META: ChecklistIntervalMeta[] = [
   { key: "feedback", label: "Feedback follow-up", description: "Days after the feedback form is sent." },
   { key: "accounts_file", label: "Accounts file follow-up", description: "Days after File Sent to Accounts before follow-up is due." },
   { key: "send_file_to_accounts", label: "Send file to accounts", description: "Days after the final show date to create the Send file to accounts task." },
+  { key: "tds_send_to_accounts", label: "Send TDS certificate to Accounts", description: "Days after TDS is received from the client before the send-to-Accounts task is due (0 = due on that date)." },
 ];
 
 async function fetchSettings(): Promise<Settings> {

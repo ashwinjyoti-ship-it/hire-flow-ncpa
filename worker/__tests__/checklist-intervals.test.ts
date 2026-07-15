@@ -16,6 +16,7 @@ describe("checklist intervals", () => {
       feedback: 5,
       accounts_file: 3,
       send_file_to_accounts: 1,
+      tds_send_to_accounts: 0,
     });
   });
 

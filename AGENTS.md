@@ -32,6 +32,9 @@ directly into local D1 using the same scrypt scheme as `scripts/bootstrap-admin.
 (`scrypt:<saltHex>:<hashHex>`, N=16384/r=8/p=1/dkLen=32, password `.normalize("NFKC")`) and
 `ALL_PERMISSIONS` from `worker/lib/rbac`. Log in at `/login`.
 
+A full-access admin is already seeded in the persisted local D1 (kept in the VM
+snapshot): `admin@ncpa.test` / `CloudAdmin!2026`. Reuse it rather than recreating one.
+
 ### Checks
 `npm run typecheck`, `npm run lint`, `npm run test` (vitest), `npm run build` — all match CI
 (`.github/workflows/ci.yml`).
