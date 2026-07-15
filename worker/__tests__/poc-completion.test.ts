@@ -14,7 +14,7 @@ describe("poc completion", () => {
     expect(isPocFieldValueFilled("vendor_registration_form", "No Applicable")).toBe(true);
   });
 
-  it("requires all thirteen fields before marking complete", () => {
+  it("requires only confirmation-critical POC fields before marking complete", () => {
     const partial = evaluatePocCompletion({
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
@@ -22,11 +22,52 @@ describe("poc completion", () => {
     });
     expect(partial.complete).toBe(false);
     expect(partial.filledCount).toBe(3);
+    expect(partial.totalCount).toBe(5);
     expect(partial.missing).toContain("bank_details");
-    expect(partial.missing).toContain("event_company_contact_name");
+    expect(partial.missing).not.toContain("event_company_contact_name");
   });
 
-  it("marks complete only when every field is filled", () => {
+  it("marks complete when required POC fields are filled", () => {
+    const complete = evaluatePocCompletion({
+      poc_name: "Karina Arora",
+      poc_contact_number: "9833205630",
+      poc_email: "karina.arora@cathedral-school.com",
+      bank_details: "ICICI Bank",
+      signing_authority_address: "Principal",
+    });
+    expect(complete.complete).toBe(true);
+    expect(complete.missing).toEqual([]);
+    expect(complete.totalCount).toBe(5);
+  });
+
+  it("requires organisation when confirmation readiness is evaluated", () => {
+    const values = {
+      poc_name: "Karina Arora",
+      poc_contact_number: "9833205630",
+      poc_email: "karina.arora@cathedral-school.com",
+      bank_details: "ICICI Bank",
+      signing_authority_address: "Principal",
+    };
+    expect(evaluatePocCompletion(values, { organisationId: null }).complete).toBe(false);
+    expect(evaluatePocCompletion(values, { organisationId: "org_1" }).complete).toBe(true);
+    expect(evaluatePocCompletion(values, { organisationId: null }).missingLabels).toContain("Organisation");
+  });
+
+  it("allows optional POC fields to remain empty", () => {
+    const complete = evaluatePocCompletion({
+      poc_name: "Karina Arora",
+      poc_contact_number: "9833205630",
+      poc_email: "karina.arora@cathedral-school.com",
+      bank_details: "ICICI Bank",
+      signing_authority_address: "Principal",
+      event_company_contact_name: "",
+      gst_no: "",
+      vendor_registration_form: "Pending",
+    });
+    expect(complete.complete).toBe(true);
+  });
+
+  it("still marks complete when all POC fields are filled", () => {
     const complete = evaluatePocCompletion({
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
@@ -69,8 +110,8 @@ describe("poc completion", () => {
             if (sql.includes("FROM events e") && sql.includes("e.status IN")) {
               return {
                 results: [
-                  { event_id: "ev_full", event_title: "Full POC", organisation_name: "Acme", event_start_date: "2026-08-01", status: "tentative" },
-                  { event_id: "ev_gap", event_title: "Gap POC", organisation_name: "Beta", event_start_date: "2026-08-02", status: "approved" },
+                  { event_id: "ev_full", event_title: "Full POC", organisation_name: "Acme", organisation_id: "org_full", event_start_date: "2026-08-01", status: "tentative" },
+                  { event_id: "ev_gap", event_title: "Gap POC", organisation_name: "Beta", organisation_id: "org_gap", event_start_date: "2026-08-02", status: "approved" },
                 ],
               };
             }
@@ -80,16 +121,8 @@ describe("poc completion", () => {
                   { event_id: "ev_full", field_key: "poc_name", value: "A" },
                   { event_id: "ev_full", field_key: "poc_contact_number", value: "1" },
                   { event_id: "ev_full", field_key: "poc_email", value: "a@b.c" },
-                  { event_id: "ev_full", field_key: "event_company_contact_name", value: "Org" },
-                  { event_id: "ev_full", field_key: "event_company_contact_number", value: "2" },
-                  { event_id: "ev_full", field_key: "event_company_email", value: "org@b.c" },
                   { event_id: "ev_full", field_key: "bank_details", value: "bank" },
-                  { event_id: "ev_full", field_key: "gst_no", value: "gst" },
-                  { event_id: "ev_full", field_key: "tan_no", value: "tan" },
-                  { event_id: "ev_full", field_key: "pan_no", value: "pan" },
                   { event_id: "ev_full", field_key: "signing_authority_address", value: "addr" },
-                  { event_id: "ev_full", field_key: "courier_address", value: "courier" },
-                  { event_id: "ev_full", field_key: "vendor_registration_form", value: "Received" },
                   { event_id: "ev_gap", field_key: "poc_name", value: "Only name" },
                 ],
               };
@@ -106,7 +139,7 @@ describe("poc completion", () => {
     const rows = await listEventsWithIncompletePoc(db);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.event_id).toBe("ev_gap");
-    expect(rows[0]?.filled_count).toBe(1);
+    expect(rows[0]?.filled_count).toBe(2);
     expect(rows[0]?.missing_labels.length).toBeGreaterThan(0);
   });
 });

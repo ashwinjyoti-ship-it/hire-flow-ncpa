@@ -146,7 +146,7 @@ export function DashboardPage() {
                         </span>
                       )}
                       <span className="mt-0.5 block text-[11px] text-ink-muted etched">
-                        {entry.poc_filled_count ?? 0}/{entry.poc_total_count ?? 10} fields
+                        {entry.poc_filled_count ?? 0}/{entry.poc_total_count ?? 6} fields
                         {entry.poc_missing_labels?.length ? ` · need ${entry.poc_missing_labels.slice(0, 2).join(", ")}${entry.poc_missing_labels.length > 2 ? "…" : ""}` : ""}
                       </span>
                     </span>

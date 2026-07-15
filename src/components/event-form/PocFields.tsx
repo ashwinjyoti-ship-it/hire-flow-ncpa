@@ -34,7 +34,7 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
           </span>
           {poc.missingLabels.length > 0 && (
             <span className="mt-1 block">
-              Still needed: {poc.missingLabels.join(", ")}. All fields must be complete before confirmation.
+              Still needed: {poc.missingLabels.join(", ")}. Required fields must be complete before confirmation.
             </span>
           )}
         </div>

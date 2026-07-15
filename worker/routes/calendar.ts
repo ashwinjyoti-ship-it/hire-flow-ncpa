@@ -146,10 +146,22 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
   const eventIds = Array.from(new Set((results ?? []).map((row) => (row as { event_id: string }).event_id)));
   const pocValuesByEvent = await getPocFieldValuesForEvents(c.env.DB, eventIds);
+  const orgByEvent = new Map<string, string | null>();
+  if (eventIds.length > 0) {
+    const placeholders = eventIds.map(() => "?").join(", ");
+    const { results: orgRows } = await c.env.DB.prepare(
+      `SELECT id, organisation_id FROM events WHERE id IN (${placeholders})`,
+    ).bind(...eventIds).all<{ id: string; organisation_id: string | null }>();
+    for (const row of orgRows ?? []) {
+      orgByEvent.set(row.id, row.organisation_id);
+    }
+  }
 
   const enriched = (results ?? []).map((row) => {
     const entry = row as Record<string, unknown> & { event_id: string; status: string };
-    const poc = evaluatePocCompletion(pocValuesByEvent.get(entry.event_id) ?? {});
+    const poc = evaluatePocCompletion(pocValuesByEvent.get(entry.event_id) ?? {}, {
+      organisationId: orgByEvent.get(entry.event_id) ?? null,
+    });
     return {
       ...entry,
       poc_complete: poc.complete,

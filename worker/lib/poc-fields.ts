@@ -1,3 +1,16 @@
+/** POC fields that must be filled before an event can move to confirmation. */
+export const POC_REQUIRED_FIELD_KEYS = [
+  "poc_name",
+  "poc_contact_number",
+  "poc_email",
+  "bank_details",
+  "signing_authority_address",
+] as const;
+
+export type PocRequiredFieldKey = (typeof POC_REQUIRED_FIELD_KEYS)[number];
+
+export const POC_ORGANISATION_LABEL = "Organisation";
+
 /** Point of Contact checklist keys mirrored on the add/edit event form. */
 export const POC_FIELD_KEYS = [
   "poc_name",
