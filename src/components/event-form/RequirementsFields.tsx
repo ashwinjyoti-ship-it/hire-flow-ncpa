@@ -292,6 +292,7 @@ export function RequirementsFields({ value, onChange }: RequirementsFieldsProps)
               className="carved input"
             >
               <option value="Not required">Not required</option>
+              <option value="Awaiting">Awaiting</option>
               <option value="Received">Received</option>
             </select>
           </Field>

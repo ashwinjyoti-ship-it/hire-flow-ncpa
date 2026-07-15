@@ -29,6 +29,11 @@ describe("execution section rollup", () => {
       .toBe(EXECUTION_SECTION_STATUS.notStarted);
   });
 
+  it("treats Licences Awaiting as operations captured", () => {
+    expect(isExecutionSectionCaptured("exec_operations", { licenses_status: "Awaiting" })).toBe(true);
+    expect(isExecutionSectionCaptured("exec_operations", { licenses_status: "Not required" })).toBe(false);
+  });
+
   it("preserves Verified and Not applicable during sync", () => {
     expect(shouldPreserveExecutionSectionValue("Verified")).toBe(true);
     expect(shouldPreserveExecutionSectionValue("Not applicable")).toBe(true);
