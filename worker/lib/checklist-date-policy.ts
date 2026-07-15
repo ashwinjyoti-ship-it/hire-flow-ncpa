@@ -15,6 +15,10 @@ const PRE_SHOW_OPERATION_DATE_FIELDS = new Set([
   "onstage_sent_to_team",
   "onstage_verified",
   "onstage_complete",
+  "emailer_asked_client",
+  "emailer_received_from_client",
+  "emailer_sent_to_team",
+  "emailer_sent",
   "technical_meeting_date",
 ]);
 

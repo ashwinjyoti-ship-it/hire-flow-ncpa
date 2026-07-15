@@ -1001,19 +1001,20 @@ function ChecklistModuleView({
   if (!entries.length) {
     return <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5 text-sm text-ink-muted etched">No checklist items yet.</div>;
   }
-  // Build a lookup of every field's current value across all sections, so a
-  // field's visibility_rule can resolve against a controller that lives in a
+  // Build a lookup of every field across all sections, so a field's
+  // visibility_rule can resolve against a controller that lives in a
   // different section (e.g. instalment dates are controlled by the Instalment
-  // toggle in the same Financials section).
-  const valueByKey = new Map<string, string | null>();
+  // toggle in the same Financials section). Also used for transitive
+  // visibility (Emailer dates hide when Emailer itself is hidden).
+  const itemByKey = new Map<string, ChecklistItem>();
   for (const items of Object.values(sections)) {
-    for (const item of items) valueByKey.set(item.field_key, item.value);
+    for (const item of items) itemByKey.set(item.field_key, item);
   }
   return (
     <div className="space-y-4">
       {showGoToTop && <GoToTopButton targetId="event-lifecycle" onBeforeScroll={onGoToTop} />}
       {entries.map(([section, items]) => {
-        const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));
+        const visibleItems = items.filter((item) => isFieldVisible(item, itemByKey));
         if (!visibleItems.length) return null;
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
@@ -1030,7 +1031,12 @@ function ChecklistModuleView({
             )}
             <div className="grid gap-3 md:grid-cols-2">
               {visibleItems.map((item) => (
-                <ChecklistField key={item.id} item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
+                <div
+                  key={item.id}
+                  className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}
+                >
+                  <ChecklistField item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
+                </div>
               ))}
             </div>
           </section>
@@ -1040,23 +1046,38 @@ function ChecklistModuleView({
   );
 }
 
+/** Gate / controller fields read better full-width above their dependents. */
+function isFullWidthChecklistField(fieldKey: string): boolean {
+  return fieldKey === "onstage_required"
+    || fieldKey === "emailer"
+    || fieldKey === "approval_required"
+    || fieldKey === "instalment"
+    || fieldKey === "noc_sent"
+    || fieldKey === "monthly_chart_sent";
+}
+
 /**
  * Resolves a field's conditional visibility. Rules use the grammar
  * `onlyWhen(<fieldKey> == <value>)`; a field with no visibility_rule is always
- * visible. A controller field that isn't present yet (new events) is treated as
- * its default, but since defaults are persisted on checklist instantiation the
- * map will already hold the default value. When in doubt, show the field.
+ * visible. Controllers that are themselves hidden (nested gates) also hide
+ * their dependents — e.g. Emailer dates stay collapsed when OnStage is
+ * Not Required even if Emailer was previously Yes.
  */
-function isFieldVisible(item: ChecklistItem, valueByKey: Map<string, string | null>): boolean {
+function isFieldVisible(item: ChecklistItem, itemByKey: Map<string, ChecklistItem>, seen = new Set<string>()): boolean {
   const rule = item.visibility_rule?.trim();
   if (!rule) return true;
   const match = rule.match(/^onlyWhen\(\s*([a-zA-Z0-9_]+)\s*==\s*(.+?)\s*\)$/i);
   if (!match || match.length < 3) return true;
   const controllerKey = match[1]!;
+  if (seen.has(controllerKey)) return true;
+  seen.add(controllerKey);
   const expected = (match[2] ?? "").trim();
-  const actual = (valueByKey.get(controllerKey) ?? "").trim();
+  const controller = itemByKey.get(controllerKey);
+  const actual = (controller?.value ?? "").trim();
   // Case-insensitive comparison — checklist values are free-text inputs.
-  return actual.toLowerCase() === expected.toLowerCase();
+  if (actual.toLowerCase() !== expected.toLowerCase()) return false;
+  if (controller && !isFieldVisible(controller, itemByKey, seen)) return false;
+  return true;
 }
 
 function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {

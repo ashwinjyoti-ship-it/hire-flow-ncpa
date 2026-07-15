@@ -158,10 +158,6 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "rehearsal_date": return event.duration > 1 ? showDate : null;
     case "event_dates": return event.duration > 1 ? `${event.startDate} to ${event.endDate}` : event.startDate;
     case "dismantling_date": return addDays(event.endDate, 1);
-    case "timings_with_ac": return "18:00-22:00";
-    case "ac_hours": return "4h";
-    case "timings_without_ac": return "10:00-18:00";
-    case "non_ac_hours": return "8h";
     case "costing_email": return active ? "Yes" : "No";
     case "proforma_invoice": return active ? "Sent" : "Not Sent";
     case "installment_1_expected_date": return addDays(event.enquiryDate, 7);
@@ -185,11 +181,17 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "req_telecasting_media": return event.eventType === "EE" ? "Required" : "Not Required";
     case "noc_sent": return event.index % 4 === 0 ? "Sent" : "Not sent";
     case "noc_sent_on": return event.index % 4 === 0 ? addDays(event.startDate, -14) : null;
+    case "onstage_required": return "Required";
     case "onstage_asked_client": return active ? addDays(event.startDate, -12) : null;
     case "onstage_received_from_client": return null;
     case "onstage_sent_to_team": return null;
     case "onstage_verified": return null;
     case "onstage_complete": return null;
+    case "emailer": return event.index % 4 === 0 ? "Yes" : "No";
+    case "emailer_asked_client": return event.index % 4 === 0 ? addDays(event.startDate, -10) : null;
+    case "emailer_received_from_client": return null;
+    case "emailer_sent_to_team": return null;
+    case "emailer_sent": return null;
     case "monthly_chart_sent": return event.index % 3 === 0 ? "Sent" : "Not sent";
     case "technical_meeting_date": return addDays(event.startDate, -5);
     case "minutes_of_meeting": return "No";
