@@ -96,10 +96,14 @@ describe("frontend regression guards", () => {
   });
 
   it("keeps notification flyout above routed page controls", () => {
-    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+    const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+    const shell = readFileSync(resolve(root, "src/components/shell/AppShell.tsx"), "utf8");
 
-    expect(source).toContain("sticky top-0 z-50");
-    expect(source).toContain("z-[70]");
+    expect(topbar).toContain("z-50");
+    expect(topbar).toContain("z-[70]");
+    expect(shell).toContain('id="app-main"');
+    expect(shell).toContain("overflow-y-auto");
+    expect(shell).toContain("h-dvh");
   });
 
   it("wires the topbar global search to organisations and events", () => {
