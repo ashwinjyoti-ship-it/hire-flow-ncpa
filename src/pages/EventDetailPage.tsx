@@ -5,7 +5,7 @@ import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
+import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
 import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
@@ -27,6 +27,8 @@ import {
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
+import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
+import { useChecklistUpdate } from "../lib/use-checklist-update";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -248,15 +250,8 @@ export function EventDetailPage() {
     },
   });
 
-  const checklistUpdate = useMutation({
-    mutationFn: async (args: { item: ChecklistItem; value: string | null; status?: string; correctionReason?: string | null }) => {
-      await apiPatch(`/events/${id}/checklist/${args.item.id}`, { value: args.value, status: args.status, correction_reason: args.correctionReason });
-      return fetchFreshEventState();
-    },
-    onSuccess: (fresh) => {
-      applyFreshEventState(fresh);
-    },
-  });
+  const checklistUpdate = useChecklistUpdate(id);
+  const savingChecklistItemId = checklistUpdate.savingItemId;
 
   const createTask = useMutation({
     mutationFn: async (title: string) => apiPost("/tasks", { title, event_id: id, priority: "medium" }),
@@ -572,7 +567,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.operations ?? {}}
           finalShowDate={e.event_end_date ?? e.event_start_date}
           canEdit={canUpdateChecklist}
-          isSaving={checklistUpdate.isPending}
+          savingItemId={savingChecklistItemId}
           focusedFieldKey={focusedFieldKey}
           pocCompletion={showPocAlert ? pocCompletion : undefined}
           showGoToTop
@@ -586,7 +581,7 @@ export function EventDetailPage() {
           sections={checklistData?.checklist.accounts ?? {}}
           finalShowDate={null}
           canEdit={canUpdateChecklist}
-          isSaving={checklistUpdate.isPending}
+          savingItemId={savingChecklistItemId}
           focusedFieldKey={focusedFieldKey}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
@@ -979,7 +974,7 @@ function LifecyclePanel({
 function ChecklistModuleView({
   sections,
   canEdit,
-  isSaving,
+  savingItemId,
   focusedFieldKey,
   finalShowDate,
   pocCompletion,
@@ -989,7 +984,7 @@ function ChecklistModuleView({
 }: {
   sections: Record<string, ChecklistItem[]>;
   canEdit: boolean;
-  isSaving: boolean;
+  savingItemId: string | null;
   focusedFieldKey: string | null;
   finalShowDate: string | null;
   pocCompletion?: PocCompletionStatus;
@@ -1014,7 +1009,7 @@ function ChecklistModuleView({
     <div className="space-y-4">
       {showGoToTop && <GoToTopButton targetId="event-lifecycle" onBeforeScroll={onGoToTop} />}
       {entries.map(([section, items]) => {
-        const visibleItems = items.filter((item) => isFieldVisible(item, itemByKey));
+        const visibleItems = items.filter((item) => isChecklistFieldVisible(item, itemByKey));
         if (!visibleItems.length) return null;
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
@@ -1038,7 +1033,14 @@ function ChecklistModuleView({
                     </div>
                   )}
                   <div className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}>
-                    <ChecklistField item={item} focused={focusedFieldKey === item.field_key} canEdit={canEdit && !isSaving} finalShowDate={finalShowDate} onUpdate={onUpdate} />
+                    <ChecklistField
+                      key={`${item.id}:${item.value ?? ""}:${item.status}`}
+                      item={item}
+                      focused={focusedFieldKey === item.field_key}
+                      canEdit={canEdit && savingItemId !== item.id}
+                      finalShowDate={finalShowDate}
+                      onUpdate={onUpdate}
+                    />
                   </div>
                 </Fragment>
               ))}
@@ -1048,38 +1050,6 @@ function ChecklistModuleView({
       })}
     </div>
   );
-}
-
-/** Gate / controller fields read better full-width above their dependents. */
-function isFullWidthChecklistField(fieldKey: string): boolean {
-  return fieldKey === "onstage_required"
-    || fieldKey === "emailer"
-    || fieldKey === "approval_required"
-    || fieldKey === "instalment"
-    || fieldKey === "noc_sent"
-    || fieldKey === "monthly_chart_sent";
-}
-
-/**
- * Resolves a field's conditional visibility. Rules use the grammar
- * `onlyWhen(<fieldKey> == <value>)`; a field with no visibility_rule is always
- * visible. Controllers that are themselves hidden also hide their dependents.
- */
-function isFieldVisible(item: ChecklistItem, itemByKey: Map<string, ChecklistItem>, seen = new Set<string>()): boolean {
-  const rule = item.visibility_rule?.trim();
-  if (!rule) return true;
-  const match = rule.match(/^onlyWhen\(\s*([a-zA-Z0-9_]+)\s*==\s*(.+?)\s*\)$/i);
-  if (!match || match.length < 3) return true;
-  const controllerKey = match[1]!;
-  if (seen.has(controllerKey)) return true;
-  seen.add(controllerKey);
-  const expected = (match[2] ?? "").trim();
-  const controller = itemByKey.get(controllerKey);
-  const actual = (controller?.value ?? "").trim();
-  // Case-insensitive comparison — checklist values are free-text inputs.
-  if (actual.toLowerCase() !== expected.toLowerCase()) return false;
-  if (controller && !isFieldVisible(controller, itemByKey, seen)) return false;
-  return true;
 }
 
 function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {

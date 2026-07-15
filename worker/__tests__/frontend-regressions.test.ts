@@ -118,6 +118,18 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("onGoToTop={clearFocusedField}");
   });
 
+  it("applies optimistic checklist updates via shared hook instead of full event refetch", () => {
+    const hook = readFileSync(resolve(root, "src/lib/use-checklist-update.ts"), "utf8");
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(hook).toContain("applyOptimisticChecklistUpdate");
+    expect(hook).toContain("onMutate:");
+    expect(hook).not.toContain("fetchFreshEventState");
+    expect(detail).toContain("useChecklistUpdate");
+    expect(detail).toContain("savingItemId={savingChecklistItemId}");
+    expect(detail).not.toMatch(/checklistUpdate[\s\S]*fetchFreshEventState/);
+  });
+
   it("wires the topbar global search to organisations and events", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
