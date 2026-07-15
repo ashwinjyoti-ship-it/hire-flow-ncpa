@@ -6,6 +6,11 @@ export function GoToTopButton({ targetId }: { targetId: string }) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
+    const main = document.getElementById("app-main");
+    if (main) {
+      main.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 

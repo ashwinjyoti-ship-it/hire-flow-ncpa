@@ -218,7 +218,11 @@ export function EventDetailPage() {
     const params = new URLSearchParams(searchParams);
     params.delete("field");
     setSearchParams(params, { replace: true });
-    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    window.requestAnimationFrame(() => {
+      const main = document.getElementById("app-main");
+      if (main) main.scrollTo({ top: 0, behavior: "smooth" });
+      else window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
 
   const transition = useMutation({
@@ -993,7 +997,7 @@ function ChecklistModuleView({
     for (const item of items) valueByKey.set(item.field_key, item.value);
   }
   return (
-    <div id="checklist-form-top" className="scroll-mt-28 space-y-4">
+    <div id="checklist-form-top" className="space-y-4">
       {showGoToTop && <GoToTopButton targetId="checklist-form-top" />}
       {entries.map(([section, items]) => {
         const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));

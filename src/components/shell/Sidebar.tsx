@@ -26,18 +26,11 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   return (
     <>
-      {/* Sticky nav: self-start so flex stretch doesn't cancel sticky. lg topbar scrolls away → top-6. */}
-      <nav
-        className="sticky top-24 hidden w-56 shrink-0 self-start lg:block lg:top-6"
-        aria-label="Primary"
-      >
+      <nav className="scroll-slim hidden w-56 shrink-0 overflow-y-auto lg:block" aria-label="Primary">
         <SidebarCard onNavigate={onClose} />
       </nav>
 
-      <nav
-        className="sticky top-24 hidden w-20 shrink-0 self-start md:block lg:hidden"
-        aria-label="Primary"
-      >
+      <nav className="scroll-slim hidden w-20 shrink-0 overflow-y-auto md:block lg:hidden" aria-label="Primary">
         <TabletRail onNavigate={onClose} />
       </nav>
 

@@ -88,7 +88,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
   }, [notificationsOpen]);
 
   return (
-    <header className="carved-header sticky top-0 z-50 mx-auto w-full max-w-[1600px] rounded-b-2xl bg-marble-highlight/75 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4 lg:relative lg:top-auto lg:mt-6 lg:rounded-2xl lg:bg-marble-highlight/60 lg:px-6">
+    <header className="carved-header z-50 w-full shrink-0 rounded-2xl bg-marble-highlight/75 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4 lg:bg-marble-highlight/60 lg:px-6">
       <div className="flex items-center justify-between gap-2 sm:gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <button
