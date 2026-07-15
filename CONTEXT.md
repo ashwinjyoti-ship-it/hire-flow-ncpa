@@ -49,4 +49,4 @@ npm run dev                        # :5173
 ```
 
 ## Deploy
-Push to `main` → GitHub Actions. Migrations: `npm run db:migrate:remote`. Scheduler: separate `deploy:scheduler`.
+Push to `main` → single GitHub Actions workflow (`ci.yml`): validate, then deploy (gated). Migrations: `npm run db:migrate:remote`. Scheduler: separate `deploy:scheduler` step in the same deploy job.

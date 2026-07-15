@@ -115,12 +115,12 @@ In production, secrets are set via the Cloudflare dashboard or `wrangler pages s
 
 ## Deployment
 
-Production deploys via GitHub Actions on push to `main` (`.github/workflows/deploy.yml`):
+Production deploys via GitHub Actions on push to `main` (`.github/workflows/ci.yml`):
 
-1. Build the SPA
-2. Apply production D1 migrations
-3. Deploy to Cloudflare Pages (`ncpa-hire`)
-4. Deploy the scheduler Worker
+1. **Validate** — typecheck, lint, test, build
+2. **Deploy** (runs only after validate passes on `main`) — apply D1 migrations, deploy Pages, deploy scheduler
+
+Manual production deploy: Actions → **CI** → **Run workflow** (branch: `main`).
 
 ### Required GitHub repository secrets
 
