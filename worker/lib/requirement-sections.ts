@@ -87,7 +87,7 @@ export function isExecutionSectionCaptured(fieldKey: ExecutionSectionFieldKey, r
         || hasMeaningfulText(reqs.security)
         || hasMeaningfulText(reqs.housekeeping)
         || hasMeaningfulText(reqs.crew_cards)
-        || (str(reqs.licenses_status)?.toLowerCase() === "received")
+        || ["received", "awaiting"].includes(str(reqs.licenses_status)?.toLowerCase() ?? "")
         || hasMeaningfulText(reqs.licenses);
     case "exec_additional":
       return isAffirmative(reqs.orchestra_pit_chairs)
