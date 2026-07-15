@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
@@ -560,6 +561,7 @@ export function EventDetailPage() {
           isSaving={checklistUpdate.isPending}
           focusedFieldKey={focusedFieldKey}
           pocCompletion={showPocAlert ? pocCompletion : undefined}
+          showGoToTop
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
       )}
@@ -966,6 +968,7 @@ function ChecklistModuleView({
   focusedFieldKey,
   finalShowDate,
   pocCompletion,
+  showGoToTop = false,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
@@ -974,6 +977,7 @@ function ChecklistModuleView({
   focusedFieldKey: string | null;
   finalShowDate: string | null;
   pocCompletion?: PocCompletionStatus;
+  showGoToTop?: boolean;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -989,7 +993,8 @@ function ChecklistModuleView({
     for (const item of items) valueByKey.set(item.field_key, item.value);
   }
   return (
-    <div className="space-y-4">
+    <div id="checklist-form-top" className="scroll-mt-28 space-y-4">
+      {showGoToTop && <GoToTopButton targetId="checklist-form-top" />}
       {entries.map(([section, items]) => {
         const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));
         if (!visibleItems.length) return null;
