@@ -1,17 +1,17 @@
-/** Fixed floating control that scrolls back to the top of a long form. */
-export function GoToTopButton({ targetId }: { targetId: string }) {
+import { scrollAppMainToId } from "../lib/scroll-app-main";
+
+type GoToTopButtonProps = {
+  targetId: string;
+  /** Called before scrolling — use to clear focused-field deep links that would yank scroll back. */
+  onBeforeScroll?: () => void;
+};
+
+/** Fixed floating control that scrolls back within the AppShell main pane. */
+export function GoToTopButton({ targetId, onBeforeScroll }: GoToTopButtonProps) {
   function goToTop() {
-    const target = document.getElementById(targetId);
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    const main = document.getElementById("app-main");
-    if (main) {
-      main.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    onBeforeScroll?.();
+    // Prefer #app-main offset scrolling — nested overflow makes element scroll APIs jumpy.
+    scrollAppMainToId(targetId, "start", "smooth");
   }
 
   return (

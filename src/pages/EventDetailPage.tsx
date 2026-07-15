@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GoToTopButton } from "../components/GoToTopButton";
@@ -6,6 +6,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
+import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
@@ -154,6 +155,8 @@ export function EventDetailPage() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
+  // Only auto-scroll to a deep-linked field once; checklist refetches must not yank the viewport back.
+  const scrolledToFieldRef = useRef<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["event", id],
@@ -185,13 +188,19 @@ export function EventDetailPage() {
     const nextField = searchParams.get("field");
     if (nextTab && nextTab !== tab) setTab(nextTab);
     setFocusedFieldKey(nextField);
+    if (nextField !== scrolledToFieldRef.current) {
+      scrolledToFieldRef.current = null;
+    }
   }, [searchParams, tab]);
 
   useEffect(() => {
     if (!focusedFieldKey) return;
+    if (scrolledToFieldRef.current === focusedFieldKey) return;
     const frame = window.requestAnimationFrame(() => {
       const el = document.getElementById(`checklist-${focusedFieldKey}`);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!el) return;
+      scrolledToFieldRef.current = focusedFieldKey;
+      scrollAppMainToElement(el, "center", "smooth");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [focusedFieldKey, tab, checklistData]);
@@ -215,14 +224,15 @@ export function EventDetailPage() {
 
   function clearFocusedField() {
     setFocusedFieldKey(null);
+    scrolledToFieldRef.current = null;
     const params = new URLSearchParams(searchParams);
     params.delete("field");
     setSearchParams(params, { replace: true });
-    window.requestAnimationFrame(() => {
-      const main = document.getElementById("app-main");
-      if (main) main.scrollTo({ top: 0, behavior: "smooth" });
-      else window.scrollTo({ top: 0, behavior: "smooth" });
-    });
+  }
+
+  function scrollEventToTop() {
+    clearFocusedField();
+    scrollAppMainToTop("smooth");
   }
 
   const transition = useMutation({
@@ -234,7 +244,7 @@ export function EventDetailPage() {
       setStatusModal(null);
       setReason("");
       applyFreshEventState(fresh);
-      clearFocusedField();
+      scrollEventToTop();
     },
   });
 
@@ -566,6 +576,7 @@ export function EventDetailPage() {
           focusedFieldKey={focusedFieldKey}
           pocCompletion={showPocAlert ? pocCompletion : undefined}
           showGoToTop
+          onGoToTop={clearFocusedField}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
         />
       )}
@@ -973,6 +984,7 @@ function ChecklistModuleView({
   finalShowDate,
   pocCompletion,
   showGoToTop = false,
+  onGoToTop,
   onUpdate,
 }: {
   sections: Record<string, ChecklistItem[]>;
@@ -982,6 +994,7 @@ function ChecklistModuleView({
   finalShowDate: string | null;
   pocCompletion?: PocCompletionStatus;
   showGoToTop?: boolean;
+  onGoToTop?: () => void;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
 }) {
   const entries = Object.entries(sections);
@@ -998,7 +1011,7 @@ function ChecklistModuleView({
   }
   return (
     <div className="space-y-4">
-      {showGoToTop && <GoToTopButton targetId="event-lifecycle" />}
+      {showGoToTop && <GoToTopButton targetId="event-lifecycle" onBeforeScroll={onGoToTop} />}
       {entries.map(([section, items]) => {
         const visibleItems = items.filter((item) => isFieldVisible(item, valueByKey));
         if (!visibleItems.length) return null;
