@@ -31,6 +31,7 @@ import {
   syncAutomaticTaskOwnerForEvent,
   syncEventReferenceChecklist,
   syncPocChecklist,
+  syncTimingsChecklist,
   reconcilePocTaskForEvent,
   mergePocRequirementsForRead,
   updateChecklistItem,
@@ -422,6 +423,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   // values into the Operations checklist so newly captured requirements show
   // up on the Operations tab instead of the seeded "Not Required" defaults.
   await syncAdditionalRequirementsChecklist(db, id);
+  await syncTimingsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
   return c.json({ id }, 201);
@@ -519,6 +521,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   // form carries a value it wins; form-silent fields leave manual ops edits in
   // place (see syncAdditionalRequirementsChecklist for the field mapping).
   await syncAdditionalRequirementsChecklist(db, id);
+  await syncTimingsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
   return c.json({ ok: true });

@@ -200,9 +200,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "decorator_name": return ["Bloom & Beam", "StageCraft", "Ivory Events"][event.index % 3]!;
     case "decorator_tier": return ["A", "B", "C"][event.index % 3]!;
     case "caterer_name": return ["Copper Plate", "Saffron Kitchen", "Bay Leaf"][event.index % 3]!;
-    case "caterer_tier": return ["A", "B", "C"][event.index % 3]!;
-    case "type_of_catering": return ["Veg", "Non-Veg", "Veg & Non-Veg", "Tea/Coffee"][event.index % 4]!;
-    case "no_of_pax": return String(120 + event.index * 12);
+    case "catering_details": return event.index % 5 === 0 ? "Not Received" : "Received";
     case "feedback_sent": return null;
     case "feedback_received": return null;
     case "event_report": return "Not Ready";

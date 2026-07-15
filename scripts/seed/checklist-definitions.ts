@@ -132,9 +132,9 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Operations Details", field_key: "decorator_name", label: "Decorator — Name", field_type: "text" },
   { module: "operations", section: "Operations Details", field_key: "decorator_tier", label: "Decorator — Tier", field_type: "dropdown", options: ["A", "B", "C", "D", "E"] },
   { module: "operations", section: "Operations Details", field_key: "caterer_name", label: "Caterer — Name", field_type: "text" },
-  { module: "operations", section: "Operations Details", field_key: "caterer_tier", label: "Caterer — Tier", field_type: "dropdown", options: ["A", "B", "C", "D", "E"] },
-  { module: "operations", section: "Operations Details", field_key: "type_of_catering", label: "Type of Catering", field_type: "dropdown", options: ["Veg", "Non-Veg", "Veg & Non-Veg", "Tea/Coffee", "Snacks", "Custom"] },
-  { module: "operations", section: "Operations Details", field_key: "no_of_pax", label: "No. of Pax", field_type: "number" },
+
+  // 12b. CATERING (ops follow-up status)
+  { module: "operations", section: "Catering", field_key: "catering_details", label: "Catering Details", field_type: "dropdown", options: ["Not Received", "Received"], default_value: "Received" },
 
   // 13. POST-EVENT CLOSURE
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_sent", label: "Feedback Form — Sent", field_type: "date", triggers_task: { rule: "feedback", title: "Follow up on Feedback", due_after_days: 5, complete_when: "marked Received" } },

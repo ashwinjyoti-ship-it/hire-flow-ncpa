@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, syncTimingsChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -559,8 +559,6 @@ describe("requirements <-> checklist sync", () => {
       expect(byField.get("exec_additional")).toBe("Captured on form");
       expect(byField.get("no_of_crew_cards")).toBe("12");
       expect(byField.get("caterer_name")).toBe("Royal Caterers");
-      expect(byField.get("type_of_catering")).toBe("Lunch, Dinner");
-      expect(byField.get("no_of_pax")).toBe("150");
     });
 
     it("aggregates venue bookings and marks captured sections from merged requirements", async () => {
@@ -666,6 +664,92 @@ describe("event requirements section seed", () => {
     const execRows = CHECKLIST_DEFINITIONS.filter((d) => d.section === "Event Requirements");
     expect(execRows).toHaveLength(6);
     expect(CHECKLIST_DEFINITIONS.some((d) => d.field_key === "req_sound")).toBe(false);
+  });
+
+  it("uses a single Catering Details status field instead of tier/type/pax", () => {
+    const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
+    expect(byKey.catering_details).toMatchObject({
+      section: "Catering",
+      label: "Catering Details",
+      options: ["Not Received", "Received"],
+      default_value: "Received",
+    });
+    expect(byKey.caterer_tier).toBeUndefined();
+    expect(byKey.type_of_catering).toBeUndefined();
+    expect(byKey.no_of_pax).toBeUndefined();
+  });
+});
+
+describe("syncTimingsChecklist", () => {
+  it("writes grouped AC timing text for multi-venue schedules", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("FROM schedule_entries se")) {
+              return {
+                results: [
+                  {
+                    venue: "JBT",
+                    activity_type: "setup",
+                    activity_date: "2026-07-10",
+                    start_time: "10:00",
+                    end_time: "18:00",
+                    with_ac_start: "10:00",
+                    with_ac_end: "14:00",
+                    with_ac_minutes: 240,
+                    without_ac_start: "14:00",
+                    without_ac_end: "18:00",
+                    without_ac_minutes: 240,
+                    notes: null,
+                    sort_order: 1,
+                  },
+                  {
+                    venue: "TATA",
+                    activity_type: "show",
+                    activity_date: "2026-07-11",
+                    start_time: "19:00",
+                    end_time: "22:00",
+                    with_ac_start: "19:00",
+                    with_ac_end: "22:00",
+                    with_ac_minutes: 180,
+                    without_ac_start: null,
+                    without_ac_end: null,
+                    without_ac_minutes: null,
+                    notes: null,
+                    sort_order: 1,
+                  },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncTimingsChecklist(db, "ev_multi");
+
+    const byField = new Map(updates
+      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+    expect(byField.get("timings_with_ac")).toContain("[JBT]");
+    expect(byField.get("timings_with_ac")).toContain("[TATA]");
+    expect(byField.get("ac_hours")).toBe("7h");
+    expect(byField.get("timings_without_ac")).toContain("[JBT]");
+    expect(byField.get("non_ac_hours")).toBe("4h");
   });
 });
 
