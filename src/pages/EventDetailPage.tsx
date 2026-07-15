@@ -5,7 +5,7 @@ import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
-import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "../lib/api";
+import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
 import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
@@ -27,7 +27,8 @@ import {
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
-import { applyOptimisticChecklistUpdate } from "../lib/checklist-cache";
+import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
+import { useChecklistUpdate } from "../lib/use-checklist-update";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -249,39 +250,8 @@ export function EventDetailPage() {
     },
   });
 
-  const checklistUpdate = useMutation({
-    mutationFn: async (args: { item: ChecklistItem; value: string | null; status?: string; correctionReason?: string | null }) => {
-      await apiPatch(`/events/${id}/checklist/${args.item.id}`, {
-        value: args.value,
-        status: args.status,
-        correction_reason: args.correctionReason,
-      });
-    },
-    onMutate: async (args) => {
-      await qc.cancelQueries({ queryKey: ["event", id, "checklist"] });
-      const previous = qc.getQueryData<ChecklistResponse>(["event", id, "checklist"]);
-      if (previous) {
-        qc.setQueryData(
-          ["event", id, "checklist"],
-          applyOptimisticChecklistUpdate(previous, args.item, args.value, args.status),
-        );
-      }
-      return { previous };
-    },
-    onSuccess: async () => {
-      // One lightweight refetch for dependent rows + lifecycle; optimistic UI already updated.
-      const freshChecklist = await apiGet<ChecklistResponse>(`/events/${id}/checklist`);
-      qc.setQueryData(["event", id, "checklist"], freshChecklist);
-      qc.invalidateQueries({ queryKey: ["event", id] });
-      qc.invalidateQueries({ queryKey: ["tasks", id] });
-      qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
-    },
-    onError: (_err, _args, context) => {
-      if (context?.previous) qc.setQueryData(["event", id, "checklist"], context.previous);
-    },
-  });
-
-  const savingChecklistItemId = checklistUpdate.isPending ? checklistUpdate.variables?.item.id ?? null : null;
+  const checklistUpdate = useChecklistUpdate(id);
+  const savingChecklistItemId = checklistUpdate.savingItemId;
 
   const createTask = useMutation({
     mutationFn: async (title: string) => apiPost("/tasks", { title, event_id: id, priority: "medium" }),
@@ -1039,7 +1009,7 @@ function ChecklistModuleView({
     <div className="space-y-4">
       {showGoToTop && <GoToTopButton targetId="event-lifecycle" onBeforeScroll={onGoToTop} />}
       {entries.map(([section, items]) => {
-        const visibleItems = items.filter((item) => isFieldVisible(item, itemByKey));
+        const visibleItems = items.filter((item) => isChecklistFieldVisible(item, itemByKey));
         if (!visibleItems.length) return null;
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
@@ -1080,38 +1050,6 @@ function ChecklistModuleView({
       })}
     </div>
   );
-}
-
-/** Gate / controller fields read better full-width above their dependents. */
-function isFullWidthChecklistField(fieldKey: string): boolean {
-  return fieldKey === "onstage_required"
-    || fieldKey === "emailer"
-    || fieldKey === "approval_required"
-    || fieldKey === "instalment"
-    || fieldKey === "noc_sent"
-    || fieldKey === "monthly_chart_sent";
-}
-
-/**
- * Resolves a field's conditional visibility. Rules use the grammar
- * `onlyWhen(<fieldKey> == <value>)`; a field with no visibility_rule is always
- * visible. Controllers that are themselves hidden also hide their dependents.
- */
-function isFieldVisible(item: ChecklistItem, itemByKey: Map<string, ChecklistItem>, seen = new Set<string>()): boolean {
-  const rule = item.visibility_rule?.trim();
-  if (!rule) return true;
-  const match = rule.match(/^onlyWhen\(\s*([a-zA-Z0-9_]+)\s*==\s*(.+?)\s*\)$/i);
-  if (!match || match.length < 3) return true;
-  const controllerKey = match[1]!;
-  if (seen.has(controllerKey)) return true;
-  seen.add(controllerKey);
-  const expected = (match[2] ?? "").trim();
-  const controller = itemByKey.get(controllerKey);
-  const actual = (controller?.value ?? "").trim();
-  // Case-insensitive comparison — checklist values are free-text inputs.
-  if (actual.toLowerCase() !== expected.toLowerCase()) return false;
-  if (controller && !isFieldVisible(controller, itemByKey, seen)) return false;
-  return true;
 }
 
 function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {

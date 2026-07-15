@@ -1,5 +1,13 @@
 /** Client-side checklist cache helpers for instant visibility toggles. */
 
+import {
+  APPROVAL_DEPENDENT_FIELD_KEYS,
+  EMAILER_DEPENDENT_FIELD_KEYS,
+  NOC_DEPENDENT_FIELD_KEYS,
+  ONSTAGE_DEPENDENT_FIELD_KEYS,
+  TDS_DEPENDENT_FIELD_KEYS,
+} from "../../worker/lib/operations";
+
 export type ChecklistCacheItem = {
   id: string;
   module: "operations" | "accounts";
@@ -27,27 +35,6 @@ export type ChecklistCacheResponse = {
   poc: unknown;
 };
 
-const ONSTAGE_PIPELINE_KEYS = new Set([
-  "onstage_asked_client",
-  "onstage_received_from_client",
-  "onstage_sent_to_team",
-  "onstage_verified",
-  "onstage_complete",
-]);
-
-const EMAILER_DATE_KEYS = new Set([
-  "emailer_asked_client",
-  "emailer_received_from_client",
-  "emailer_sent_to_team",
-  "emailer_sent",
-]);
-
-const APPROVAL_DEPENDENT_KEYS = new Set([
-  "approval_sent_on",
-  "approval_received_on",
-  "genre_head",
-]);
-
 const INSTALMENT_DATE_KEYS = new Set([
   "installment_1_expected_date",
   "installment_2_expected_date",
@@ -55,6 +42,18 @@ const INSTALMENT_DATE_KEYS = new Set([
   "installment_4_expected_date",
   "installment_5_expected_date",
 ]);
+
+/** Controllers that trigger optimistic dependent-status updates (audit: keep in sync with seed visibility_rule). */
+export const OPTIMISTIC_GATE_CONTROLLERS = [
+  "onstage_required",
+  "emailer",
+  "approval_required",
+  "instalment",
+  "noc_sent",
+  "tds_certificate_from_client",
+] as const;
+
+export type OptimisticGateController = (typeof OPTIMISTIC_GATE_CONTROLLERS)[number];
 
 function normalise(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
@@ -81,9 +80,10 @@ function forEachChecklistItem(
   }
 }
 
-function setDependentStatuses(keys: Set<string>, status: string, data: ChecklistCacheResponse): void {
+function setDependentStatuses(keys: Iterable<string>, status: string, data: ChecklistCacheResponse): void {
+  const keySet = keys instanceof Set ? keys : new Set(keys);
   forEachChecklistItem(data, (item) => {
-    if (keys.has(item.field_key)) item.status = status;
+    if (keySet.has(item.field_key)) item.status = status;
   });
 }
 
@@ -110,21 +110,21 @@ export function applyOptimisticChecklistUpdate(
   const v = normalise(value);
   if (item.field_key === "onstage_required") {
     setDependentStatuses(
-      ONSTAGE_PIPELINE_KEYS,
+      ONSTAGE_DEPENDENT_FIELD_KEYS,
       v === "not required" ? "not_applicable" : "not_started",
       next,
     );
   }
   if (item.field_key === "emailer") {
     setDependentStatuses(
-      EMAILER_DATE_KEYS,
+      EMAILER_DEPENDENT_FIELD_KEYS,
       v === "yes" ? "not_started" : "not_applicable",
       next,
     );
   }
   if (item.field_key === "approval_required") {
     setDependentStatuses(
-      APPROVAL_DEPENDENT_KEYS,
+      APPROVAL_DEPENDENT_FIELD_KEYS,
       v === "not required" ? "not_applicable" : "not_started",
       next,
     );
@@ -137,11 +137,18 @@ export function applyOptimisticChecklistUpdate(
     );
   }
   if (item.field_key === "noc_sent") {
-    forEachChecklistItem(next, (row) => {
-      if (row.field_key === "noc_sent_on") {
-        row.status = v === "sent" ? "not_started" : "not_applicable";
-      }
-    });
+    setDependentStatuses(
+      NOC_DEPENDENT_FIELD_KEYS,
+      v === "sent" ? "not_started" : "not_applicable",
+      next,
+    );
+  }
+  if (item.field_key === "tds_certificate_from_client") {
+    setDependentStatuses(
+      TDS_DEPENDENT_FIELD_KEYS,
+      v === "received" ? "not_started" : "not_applicable",
+      next,
+    );
   }
 
   return next;

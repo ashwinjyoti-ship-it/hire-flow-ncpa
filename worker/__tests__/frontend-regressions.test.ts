@@ -118,11 +118,14 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("onGoToTop={clearFocusedField}");
   });
 
-  it("applies optimistic checklist updates instead of blocking on a full event refetch", () => {
+  it("applies optimistic checklist updates via shared hook instead of full event refetch", () => {
+    const hook = readFileSync(resolve(root, "src/lib/use-checklist-update.ts"), "utf8");
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
-    expect(detail).toContain("applyOptimisticChecklistUpdate");
-    expect(detail).toContain("onMutate:");
+    expect(hook).toContain("applyOptimisticChecklistUpdate");
+    expect(hook).toContain("onMutate:");
+    expect(hook).not.toContain("fetchFreshEventState");
+    expect(detail).toContain("useChecklistUpdate");
     expect(detail).toContain("savingItemId={savingChecklistItemId}");
     expect(detail).not.toMatch(/checklistUpdate[\s\S]*fetchFreshEventState/);
   });
