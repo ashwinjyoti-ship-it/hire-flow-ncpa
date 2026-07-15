@@ -109,7 +109,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Event Requirements", field_key: "exec_additional", label: "Additional Requirements", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
 
   // 9. NOC
-  { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["Not sent", "Sent"], default_value: "Not sent" },
+  { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["Not Applicable", "Not sent", "Sent"], default_value: "Not sent" },
   { module: "operations", section: "NOC", field_key: "noc_sent_on", label: "Date Sent", field_type: "date", visibility_rule: "onlyWhen(noc_sent == Sent)" },
 
   // 10. ONSTAGE (sequential pipeline)

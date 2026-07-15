@@ -751,13 +751,64 @@ describe("syncTimingsChecklist", () => {
     expect(byField.get("timings_without_ac")).toContain("[JBT]");
     expect(byField.get("non_ac_hours")).toBe("4h");
   });
+
+  it("syncs ac_hours even when only stored minutes exist without display text windows", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("FROM schedule_entries se")) {
+              return {
+                results: [{
+                  venue: "JBT",
+                  activity_type: "show",
+                  activity_date: "2026-07-10",
+                  start_time: null,
+                  end_time: null,
+                  with_ac_start: null,
+                  with_ac_end: null,
+                  with_ac_minutes: 180,
+                  without_ac_start: null,
+                  without_ac_end: null,
+                  without_ac_minutes: null,
+                  notes: null,
+                  sort_order: 1,
+                }],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncTimingsChecklist(db, "ev_minutes_only");
+
+    const byField = new Map(updates
+      .filter((u) => u.sql.startsWith("UPDATE checklist_items"))
+      .map((u) => [u.binds[u.binds.length - 1] as string, u.binds[0] as string]));
+    expect(byField.get("ac_hours")).toBe("3h");
+    expect(byField.has("timings_with_ac")).toBe(false);
+  });
 });
 
 describe("NOC dependent checklist fields", () => {
   it("seeds visibility_rule so date sent only shows when NOC Sent? = Yes", () => {
     const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
     expect(byKey.noc_sent?.field_type).toBe("dropdown");
-    expect(byKey.noc_sent?.options).toEqual(["Not sent", "Sent"]);
+    expect(byKey.noc_sent?.options).toEqual(["Not Applicable", "Not sent", "Sent"]);
     expect(byKey.noc_sent?.default_value).toBe("Not sent");
     expect(byKey.noc_sent_on?.visibility_rule).toBe("onlyWhen(noc_sent == Sent)");
     expect(byKey.monthly_chart_sent?.label).toBe("SENT for Monthly Chart");

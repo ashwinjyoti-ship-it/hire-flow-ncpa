@@ -174,13 +174,12 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
   });
 
-  it("keeps dashboard summary cards as static counts while calendar destination is undecided", () => {
+  it("links only the regret summary card to the regrets list", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
-    expect(dashboard).toContain("function SummaryCard({ label, value, status }");
+    expect(dashboard).toContain('status="regret" href="/regrets"');
     expect(dashboard).not.toContain("href={getLifecycleCalendarHref");
     expect(dashboard).not.toContain("href={getConfirmedShowCalendarHref");
-    expect(dashboard).not.toContain("<Link to={href}");
   });
 
   it("keeps calendar month prominent without a today shortcut", () => {
@@ -226,8 +225,8 @@ describe("frontend regression guards", () => {
   it("hides confirmed events from the lifecycle calendar status filter and legend", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
-    expect(calendar).toContain('if (view === "lifecycle") return k !== "confirmed"');
-    expect(calendar).toContain('.filter(([key]) => key !== "confirmed")');
+    expect(calendar).toContain('if (view === "lifecycle") return k !== "confirmed" && k !== "regret"');
+    expect(calendar).toContain('.filter(([key]) => key !== "confirmed" && key !== "regret")');
   });
 
   it("lets lifecycle calendar open overflowed day entries in a dedicated panel", () => {

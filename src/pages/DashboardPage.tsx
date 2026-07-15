@@ -58,6 +58,10 @@ export function DashboardPage() {
     queryKey: ["calendar-lifecycle", "dashboard", "all-records"],
     queryFn: () => apiGet<LifecycleResponse>("/calendar/lifecycle"),
   });
+  const { data: regretsData } = useQuery({
+    queryKey: ["regrets", "dashboard-count"],
+    queryFn: () => apiGet<{ regrets: unknown[] }>("/events/regrets"),
+  });
   const { data: taskData } = useQuery({
     queryKey: ["tasks", "dashboard", "active"],
     queryFn: () => apiGet<TasksResponse>("/tasks?status=all"),
@@ -68,11 +72,16 @@ export function DashboardPage() {
     .filter(isDashboardActionableTask)
     .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
 
-  const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: 0, cancelled: 0 };
+  const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: regretsData?.regrets.length ?? 0, cancelled: 0 };
   for (const entry of lifecycleEntries) {
-    if (entry.milestone_type in counts) counts[entry.milestone_type] = (counts[entry.milestone_type] ?? 0) + 1;
+    if (entry.milestone_type in counts && entry.milestone_type !== "regret") {
+      counts[entry.milestone_type] = (counts[entry.milestone_type] ?? 0) + 1;
+    }
   }
-  const lifecycleQueue = [...lifecycleEntries]
+  const activeLifecycleEntries = lifecycleEntries.filter(
+    (entry) => entry.milestone_type !== "regret" && entry.milestone_type !== "cancelled",
+  );
+  const lifecycleQueue = [...activeLifecycleEntries]
     .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
   const pocIncompleteEntries = lifecycleEntries.filter((entry) =>
     (entry.status === "enquiry" || entry.status === "tentative" || entry.status === "approved")
@@ -102,7 +111,7 @@ export function DashboardPage() {
                 {pocIncompleteCount} active event{pocIncompleteCount === 1 ? "" : "s"} still need Point of Contact details
               </p>
               <p className="mt-1 text-xs text-ink-secondary etched">
-                POC must be fully completed before an event can be confirmed.
+                POC must be complete (required fields) before an event can be confirmed.
               </p>
             </div>
             <Link to="/calendar?view=lifecycle&poc_incomplete=1" className="carved-btn rounded-full bg-status-awaitingApproval/15 px-4 py-2 text-xs font-semibold text-status-awaitingApproval etched">
@@ -118,7 +127,7 @@ export function DashboardPage() {
         <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" />
         <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" />
         <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" />
+        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/regrets" />
         <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" />
         <PocSummaryCard value={pocIncompleteCount} />
       </div>
@@ -252,15 +261,27 @@ function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolea
   return true;
 }
 
-function SummaryCard({ label, value, status }: { label: string; value: number; status: EventStatus }) {
+function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href?: string }) {
   const surface = getEventStatusSurface(status);
-  return (
-    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
+  const body = (
+    <>
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
         <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + surface.dot} aria-hidden="true" />
       </div>
       <div className="text-3xl font-semibold text-ink-primary etched-deep">{value}</div>
+    </>
+  );
+  if (href) {
+    return (
+      <Link to={href} className="carved-card block rounded-2xl bg-marble-highlight/50 p-4 transition-colors hover:bg-marble-shadow/30">
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
+      {body}
     </div>
   );
 }

@@ -749,17 +749,23 @@ export async function syncTimingsChecklist(db: D1Database, eventId: string): Pro
 
   const withAc = buildTimingsWithAcText(results);
   const withoutAc = buildTimingsWithoutAcText(results);
-  if (!withAc && !withoutAc) return;
+  const acMinutes = sumAcMinutes(results);
+  const withoutAcMinutes = sumWithoutAcMinutes(results);
+  if (!withAc && !withoutAc && acMinutes <= 0 && withoutAcMinutes <= 0) return;
 
   const now = new Date().toISOString();
   const updates: Array<{ fieldKey: string; fieldType: string; value: string }> = [];
   if (withAc) {
     updates.push({ fieldKey: "timings_with_ac", fieldType: "textarea", value: withAc });
-    updates.push({ fieldKey: "ac_hours", fieldType: "computed", value: formatHoursTotal(sumAcMinutes(results)) });
+  }
+  if (withAc || acMinutes > 0) {
+    updates.push({ fieldKey: "ac_hours", fieldType: "computed", value: formatHoursTotal(acMinutes) });
   }
   if (withoutAc) {
     updates.push({ fieldKey: "timings_without_ac", fieldType: "textarea", value: withoutAc });
-    updates.push({ fieldKey: "non_ac_hours", fieldType: "computed", value: formatHoursTotal(sumWithoutAcMinutes(results)) });
+  }
+  if (withoutAc || withoutAcMinutes > 0) {
+    updates.push({ fieldKey: "non_ac_hours", fieldType: "computed", value: formatHoursTotal(withoutAcMinutes) });
   }
 
   for (const { fieldKey, fieldType, value } of updates) {
