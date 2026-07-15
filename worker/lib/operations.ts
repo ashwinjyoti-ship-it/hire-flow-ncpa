@@ -910,7 +910,7 @@ export async function mergePocRequirementsForRead(
   return reqs;
 }
 
-/** Keep a single automatic task open until every POC field is filled. */
+/** Keep a single automatic task open until required POC fields (and organisation) are filled. */
 export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, today = todayIso()): Promise<number> {
   const event = await db.prepare(
     `SELECT id, status, event_owner_id FROM events WHERE id = ? AND is_archived = 0`

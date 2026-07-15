@@ -28,7 +28,7 @@ export function PocIncompleteBanner({
           <p className="mt-1 text-xs text-ink-secondary etched">
             {poc.missingLabels.length > 0
               ? `Still needed: ${poc.missingLabels.join(", ")}`
-              : "All POC fields must be filled before this event can be confirmed."}
+              : "Required Point of Contact fields must be filled before this event can be confirmed."}
           </p>
         </div>
         <Link

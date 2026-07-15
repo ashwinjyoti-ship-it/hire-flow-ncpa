@@ -463,6 +463,7 @@ describe("API regressions", () => {
             event_type: "EE",
             approval_status: "not_required",
             confirmation_status: "signed_received",
+            organisation_id: "org_test",
           }),
         };
       }

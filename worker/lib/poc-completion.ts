@@ -1,4 +1,10 @@
-import { POC_FIELD_KEYS, POC_FIELD_LABELS, type PocFieldKey } from "./poc-fields";
+import {
+  POC_FIELD_KEYS,
+  POC_FIELD_LABELS,
+  POC_ORGANISATION_LABEL,
+  POC_REQUIRED_FIELD_KEYS,
+  type PocFieldKey,
+} from "./poc-fields";
 
 export const POC_CONFIRMATION_BLOCKER = "POC not filled, cannot confirm.";
 export const POC_TASK_RULE = "poc_incomplete";
@@ -21,15 +27,29 @@ export function isPocFieldValueFilled(fieldKey: PocFieldKey, value: string | nul
   return true;
 }
 
-export function evaluatePocCompletion(values: Partial<Record<PocFieldKey, string | null | undefined>>): PocCompletionStatus {
-  const missing = POC_FIELD_KEYS.filter((key) => !isPocFieldValueFilled(key, values[key]));
-  const filledCount = POC_FIELD_KEYS.length - missing.length;
+export type PocCompletionOptions = {
+  /** When provided, Organisation must be set for confirmation readiness. */
+  organisationId?: string | null;
+};
+
+export function evaluatePocCompletion(
+  values: Partial<Record<PocFieldKey, string | null | undefined>>,
+  opts?: PocCompletionOptions,
+): PocCompletionStatus {
+  const missing = POC_REQUIRED_FIELD_KEYS.filter((key) => !isPocFieldValueFilled(key, values[key]));
+  const organisationMissing = opts ? !(opts.organisationId ?? "").trim() : false;
+  const filledCount = (organisationMissing ? 0 : opts ? 1 : 0) + (POC_REQUIRED_FIELD_KEYS.length - missing.length);
+  const totalCount = POC_REQUIRED_FIELD_KEYS.length + (opts ? 1 : 0);
+  const missingLabels = [
+    ...(organisationMissing ? [POC_ORGANISATION_LABEL] : []),
+    ...missing.map((key) => POC_FIELD_LABELS[key]),
+  ];
   return {
-    complete: missing.length === 0,
+    complete: missing.length === 0 && !organisationMissing,
     filledCount,
-    totalCount: POC_FIELD_KEYS.length,
+    totalCount,
     missing,
-    missingLabels: missing.map((key) => POC_FIELD_LABELS[key]),
+    missingLabels,
   };
 }
 
@@ -80,7 +100,9 @@ export async function getPocFieldValues(db: D1Database, eventId: string): Promis
 
 export async function evaluatePocCompletionForEvent(db: D1Database, eventId: string): Promise<PocCompletionStatus> {
   const values = await getPocFieldValues(db, eventId);
-  return evaluatePocCompletion(values);
+  const event = await db.prepare("SELECT organisation_id FROM events WHERE id = ?")
+    .bind(eventId).first<{ organisation_id: string | null }>();
+  return evaluatePocCompletion(values, { organisationId: event?.organisation_id ?? null });
 }
 
 export type PocIncompleteEventRef = {
@@ -105,7 +127,7 @@ export async function listEventsWithIncompletePoc(
   const statusPlaceholders = POC_INCOMPLETE_ACTIVE_STATUSES.map(() => "?").join(", ");
   const { results: events } = await db.prepare(
     `SELECT e.id AS event_id, e.title AS event_title, o.name AS organisation_name,
-            e.event_start_date, e.status
+            e.organisation_id, e.event_start_date, e.status
      FROM events e
      LEFT JOIN organisations o ON o.id = e.organisation_id
      WHERE e.is_archived = 0 AND e.status IN (${statusPlaceholders})
@@ -115,6 +137,7 @@ export async function listEventsWithIncompletePoc(
     event_id: string;
     event_title: string;
     organisation_name: string | null;
+    organisation_id: string | null;
     event_start_date: string | null;
     status: string;
   }>();
@@ -124,7 +147,9 @@ export async function listEventsWithIncompletePoc(
   const incomplete: PocIncompleteEventRef[] = [];
 
   for (const event of events ?? []) {
-    const poc = evaluatePocCompletion(pocValuesByEvent.get(event.event_id) ?? {});
+    const poc = evaluatePocCompletion(pocValuesByEvent.get(event.event_id) ?? {}, {
+      organisationId: event.organisation_id,
+    });
     if (!poc.complete) {
       incomplete.push({
         ...event,
