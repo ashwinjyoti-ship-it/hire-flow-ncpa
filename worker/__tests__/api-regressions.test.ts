@@ -202,7 +202,7 @@ describe("API regressions", () => {
         expect(sql).not.toContain("tasks t");
         expect(sql).not.toContain("'show' AS milestone_type");
         // Dated lifecycle grids exclude confirmed (those live on Show Calendar).
-        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'regret', 'cancelled')");
+        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'cancelled')");
         expect(sql).not.toContain("'confirmed', 'regret'");
         return {
           all: () => ({
@@ -251,7 +251,7 @@ describe("API regressions", () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
-        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')");
+        expect(sql).toContain("('enquiry', 'tentative', 'approved', 'confirmed', 'cancelled')");
         return { all: () => ({ results: [] }) };
       }
       return {};

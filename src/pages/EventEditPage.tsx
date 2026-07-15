@@ -11,11 +11,11 @@ import {
   createDefaultEventLevelRequirements,
   createDefaultVenueRequirements,
   getEventFormDateError,
-  getScheduleValidationError,
   hydrateVenueRequirements,
   organisationValueFromName,
   parseRequirements,
   pickEventLevelRequirements,
+  prepareVenueBookingsForSave,
   pruneEmptyVenueBookings,
   withDefaultEventLevelRequirements,
   withDefaultVenueRequirements,
@@ -247,9 +247,7 @@ export function EventEditPage() {
         const created = await apiPost<{ id: string }>("/organisations", { name, org_type: newOrganisationType || null });
         orgId = created.id;
       }
-      const venueBookings = pruneEmptyVenueBookings(form.venue_bookings);
-      const incompleteSchedule = getScheduleValidationError(venueBookings);
-      if (incompleteSchedule) throw new Error(incompleteSchedule);
+      const venueBookings = prepareVenueBookingsForSave(form.venue_bookings);
       const requirements = buildEventRequirementsPayload(venueBookings, form.requirements);
       const payload = {
         ...form,
@@ -319,9 +317,8 @@ export function EventEditPage() {
   const dateError = getEventFormDateError({
     event_start_date: form.event_start_date,
     event_end_date: singleDay ? null : form.event_end_date,
-    venue_bookings: pruneEmptyVenueBookings(form.venue_bookings),
+    venue_bookings: prepareVenueBookingsForSave(form.venue_bookings),
   });
-  const scheduleError = getScheduleValidationError(pruneEmptyVenueBookings(form.venue_bookings));
   const reviewOrganisationName = useMemo(() => {
     if (form.organisation_id.startsWith("new:")) return form.organisation_id.slice(4);
     return selectedOrganisation?.name ?? null;
@@ -414,7 +411,7 @@ export function EventEditPage() {
     }));
   };
 
-  const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError && !scheduleError;
+  const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError;
 
   // In edit mode, wait for the existing event before rendering the form so the
   // user never sees an empty form for an event that already has data.
@@ -431,12 +428,6 @@ export function EventEditPage() {
           {dateError}
         </p>
       )}
-      {scheduleError && (
-        <p role="alert" className="mb-4 rounded-xl bg-status-cancelled/10 px-3 py-2 text-xs font-medium text-status-cancelled">
-          {scheduleError}
-        </p>
-      )}
-
       {/* Step indicator */}
       <div className="mb-6 flex gap-1.5">
         {STEPS.map((label, i) => (
@@ -507,7 +498,7 @@ export function EventEditPage() {
               Single-day event
             </label>
             <div className={"mt-2 grid gap-4 " + (singleDay ? "grid-cols-1" : "md:grid-cols-2")}>
-              <Field label="Operating Window — Start Date">
+              <Field label="Operating Window — Start Date *">
                 <input type="date" lang="en-GB" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
               </Field>
               {!singleDay && (
@@ -619,7 +610,7 @@ export function EventEditPage() {
                 )}
               </div>
               <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Venue *">
+                <Field label="Venue">
                   <select value={vb.venue} onChange={(e) => updateVenue(vIdx, { venue: e.target.value })} className="carved input">
                     <option value="">Select…</option>
                     {venues.map((v) => <option key={v.value} value={v.value}>{v.value}</option>)}

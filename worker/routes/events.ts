@@ -275,6 +275,50 @@ eventRoutes.get("/", requireUser, async (c) => {
   return c.json({ events: results });
 });
 
+// GET /regrets — regretted events with the latest regret reason (separate from lifecycle calendar).
+eventRoutes.get("/regrets", requireUser, async (c) => {
+  const { q, mine } = c.req.query();
+  const user = c.get("user");
+  const where = ["e.status = 'regret'", "e.is_archived = 0"];
+  const binds: unknown[] = [];
+
+  if (mine === "1" && user) {
+    where.push("e.event_owner_id = ?");
+    binds.push(user.id);
+  }
+  if (q) {
+    where.push("(LOWER(e.title) LIKE ? OR LOWER(e.event_code) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(sh.reason, '')) LIKE ?)");
+    const like = `%${q.toLowerCase()}%`;
+    binds.push(like, like, like, like);
+  }
+
+  const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
+               e.event_owner, e.enquiry_source,
+               o.name AS organisation_name,
+               (SELECT GROUP_CONCAT(vb.venue, ' · ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS venues,
+               sh.from_status AS lost_from_status,
+               sh.reason AS regret_reason,
+               sh.note AS regret_note,
+               sh.changed_at AS regretted_at,
+               u.name AS regretted_by_name
+               FROM events e
+               LEFT JOIN organisations o ON o.id = e.organisation_id
+               LEFT JOIN event_status_history sh ON sh.id = (
+                 SELECT latest.id
+                 FROM event_status_history latest
+                 WHERE latest.event_id = e.id AND latest.to_status = 'regret'
+                 ORDER BY latest.changed_at DESC
+                 LIMIT 1
+               )
+               LEFT JOIN users u ON u.id = sh.changed_by
+               WHERE ${where.join(" AND ")}
+               ORDER BY COALESCE(sh.changed_at, e.updated_at) DESC
+               LIMIT 300`;
+
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
+  return c.json({ regrets: results });
+});
+
 // GET /duplicates — warn when a likely duplicate event already exists.
 eventRoutes.get("/duplicates", requireUser, async (c) => {
   const org = c.req.query("org")?.trim();

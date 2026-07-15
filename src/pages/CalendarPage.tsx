@@ -278,7 +278,7 @@ export function CalendarPage() {
       { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
       ...Object.entries(STATUS_LABELS)
         .filter(([k]) => {
-          if (view === "lifecycle") return k !== "confirmed";
+          if (view === "lifecycle") return k !== "confirmed" && k !== "regret";
           if (view === "show") return k !== "cancelled" && k !== "regret";
           return true;
         })
@@ -383,7 +383,7 @@ export function CalendarPage() {
       {/* Legend */}
       <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
         {(view === "lifecycle"
-          ? Object.entries(LIFECYCLE_LABELS).filter(([key]) => key !== "confirmed")
+          ? Object.entries(LIFECYCLE_LABELS).filter(([key]) => key !== "confirmed" && key !== "regret")
           : Object.entries(STATUS_LABELS)
         ).map(([key, label]) => (
             <span key={key} className="inline-flex items-center gap-1.5">

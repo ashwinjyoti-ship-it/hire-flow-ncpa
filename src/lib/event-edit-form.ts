@@ -39,6 +39,21 @@ export function pruneEmptyVenueBookings(venueBookings: EventInputT["venue_bookin
   return venueBookings.filter(hasVenue);
 }
 
+/** Drop schedule rows without a valid activity date — venue details are optional at save time. */
+export function pruneIncompleteScheduleEntries(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
+  return venueBookings.map((booking) => ({
+    ...booking,
+    schedule_entries: (booking.schedule_entries ?? []).filter(
+      (entry) => entry.activity_date && /^\d{4}-\d{2}-\d{2}$/.test(entry.activity_date),
+    ),
+  }));
+}
+
+/** Venue bookings ready for API save: no empty venues, no undated schedule stubs. */
+export function prepareVenueBookingsForSave(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
+  return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings));
+}
+
 /**
  * Negative defaults for every Yes/No / Required dropdown on the event form.
  * Pre-populating these lets a first save sync the Operations checklist without
@@ -203,15 +218,9 @@ export function buildEventRequirementsPayload(
   ]);
 }
 
-/** Incomplete schedule rows (no activity date) fail Zod on the API and block the whole save. */
+/** @deprecated Use prepareVenueBookingsForSave — incomplete schedule rows are dropped, not blocked. */
 export function getScheduleValidationError(venueBookings: EventInputT["venue_bookings"]): string | null {
-  for (const [venueIndex, booking] of venueBookings.entries()) {
-    for (const [scheduleIndex, entry] of (booking.schedule_entries ?? []).entries()) {
-      if (!entry.activity_date || !/^\d{4}-\d{2}-\d{2}$/.test(entry.activity_date)) {
-        return `Venue ${venueIndex + 1}, schedule ${scheduleIndex + 1}: choose an activity date before saving.`;
-      }
-    }
-  }
+  void venueBookings;
   return null;
 }
 

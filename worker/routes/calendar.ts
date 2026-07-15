@@ -72,8 +72,8 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   // includes confirmed so summary counts and the lifecycle queue stay complete.
   const calendarGrid = Boolean(from || to);
   const lifecycleStatuses = calendarGrid
-    ? "('enquiry', 'tentative', 'approved', 'regret', 'cancelled')"
-    : "('enquiry', 'tentative', 'approved', 'confirmed', 'regret', 'cancelled')";
+    ? "('enquiry', 'tentative', 'approved', 'cancelled')"
+    : "('enquiry', 'tentative', 'approved', 'confirmed', 'cancelled')";
 
   const sql = `WITH lifecycle AS (
       SELECT

@@ -9,6 +9,7 @@ import {
   getScheduleValidationError,
   hydrateVenueRequirements,
   organisationValueFromName,
+  prepareVenueBookingsForSave,
   pickEventLevelRequirements,
   withDefaultVenueRequirements,
 } from "./event-edit-form";
@@ -80,7 +81,7 @@ describe("organisationValueFromName", () => {
 });
 
 describe("getScheduleValidationError", () => {
-  it("flags schedule rows that are missing an activity date", () => {
+  it("no longer blocks save for incomplete schedule rows", () => {
     expect(getScheduleValidationError([
       {
         venue: "JBT",
@@ -102,32 +103,53 @@ describe("getScheduleValidationError", () => {
           notes: null,
         }],
       },
-    ])).toContain("activity date");
+    ])).toBeNull();
   });
+});
 
-  it("allows complete schedule rows", () => {
-    expect(getScheduleValidationError([
+describe("prepareVenueBookingsForSave", () => {
+  it("drops empty venues and undated schedule stubs", () => {
+    const prepared = prepareVenueBookingsForSave([
+      { venue: "", booking_status: "tentative", number_of_shows: 1, requirements: null, notes: null, schedule_entries: [] },
       {
         venue: "JBT",
         booking_status: "tentative",
         number_of_shows: 1,
         requirements: null,
         notes: null,
-        schedule_entries: [{
-          activity_type: "show",
-          activity_date: "2026-07-10",
-          start_time: null,
-          end_time: null,
-          with_ac_start: null,
-          with_ac_end: null,
-          with_ac_minutes: null,
-          without_ac_start: null,
-          without_ac_end: null,
-          without_ac_minutes: null,
-          notes: null,
-        }],
+        schedule_entries: [
+          {
+            activity_type: "show",
+            activity_date: "2026-07-10",
+            start_time: null,
+            end_time: null,
+            with_ac_start: "18:00",
+            with_ac_end: "21:00",
+            with_ac_minutes: 180,
+            without_ac_start: null,
+            without_ac_end: null,
+            without_ac_minutes: null,
+            notes: null,
+          },
+          {
+            activity_type: "setup",
+            activity_date: "",
+            start_time: null,
+            end_time: null,
+            with_ac_start: "10:00",
+            with_ac_end: "12:00",
+            with_ac_minutes: 120,
+            without_ac_start: null,
+            without_ac_end: null,
+            without_ac_minutes: null,
+            notes: null,
+          },
+        ],
       },
-    ])).toBeNull();
+    ]);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0]?.schedule_entries).toHaveLength(1);
+    expect(prepared[0]?.schedule_entries[0]?.activity_date).toBe("2026-07-10");
   });
 });
 
