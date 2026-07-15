@@ -106,6 +106,18 @@ describe("frontend regression guards", () => {
     expect(shell).toContain("h-dvh");
   });
 
+  it("scrolls Go to top inside #app-main and does not re-yank on checklist refetch", () => {
+    const goToTop = readFileSync(resolve(root, "src/components/GoToTopButton.tsx"), "utf8");
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(goToTop).toContain("scrollAppMainToId");
+    expect(goToTop).not.toContain("scrollIntoView");
+    expect(detail).toContain('targetId="event-lifecycle"');
+    expect(detail).toContain("scrolledToFieldRef");
+    expect(detail).toContain("scrollAppMainToElement");
+    expect(detail).toContain("onGoToTop={clearFocusedField}");
+  });
+
   it("wires the topbar global search to organisations and events", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
