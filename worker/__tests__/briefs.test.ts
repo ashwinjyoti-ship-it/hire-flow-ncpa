@@ -126,6 +126,38 @@ describe("brief content builders", () => {
     expect(content.headline.tasks_due_today).toBe(3);
   });
 
+  it("distinguishes timed venue conflicts from same-day scheduling reviews", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("WITH slots AS")) {
+        expect(sql).toContain("a.first_start < b.last_end");
+        expect(sql).toContain("LOWER(TRIM(a.event_title)) = LOWER(TRIM(b.event_title))");
+        return {
+          all: () => ({
+            results: [
+              {
+                activity_date: "2026-07-10", venue: "JBT",
+                a_id: "a", a_title: "Gala", a_status: "confirmed",
+                b_id: "b", b_title: "Concert", b_status: "confirmed",
+                timing_state: "overlap",
+              },
+              {
+                activity_date: "2026-07-11", venue: "TET",
+                a_id: "c", a_title: "Play", a_status: "confirmed",
+                b_id: "d", b_title: "Talk", b_status: "confirmed",
+                timing_state: "unknown",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+    const content = await buildMorningBrief(db, "2026-07-07");
+    expect(content.decisions.conflicts.map((conflict) => conflict.level)).toEqual(["conflict", "potential"]);
+    expect(content.attention?.map((item) => item.primary_action)).toContain("Venue time conflict · JBT");
+    expect(content.attention?.map((item) => item.primary_action)).toContain("Same venue/date · review schedule · TET");
+  });
+
   it("builds the evening scoreboard and a 7-day trend", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS done,")) {
@@ -247,7 +279,7 @@ describe("brief routes", () => {
 describe("brief email renderer", () => {
   it("renders the morning digest with escaped values and deep links", async () => {
     const db = fakeDb((sql) => {
-      if (sql.includes("FROM schedule_entries se") && !sql.includes("se2")) {
+      if (sql.includes("FROM schedule_entries se") && !sql.includes("WITH slots AS")) {
         return { all: () => ({ results: [{ venue: "JBT", activity_type: "show", start_time: "19:00", end_time: "22:00", event_id: "ev_1", event_title: "<Gala> & Co", event_status: "confirmed", organisation_name: "Acme" }] }) };
       }
       return {};
@@ -255,7 +287,8 @@ describe("brief email renderer", () => {
     const content = await buildMorningBrief(db, "2026-07-07");
     const html = renderBriefEmail(content, "https://example.test");
     expect(html).toContain("Morning Brief");
-    expect(html).toContain("Nothing needs your decision today.");
+    expect(html).toContain("Nothing needs your attention today.");
+    expect(html).toContain("Watchlist");
     expect(html).toContain("&lt;Gala&gt; &amp; Co");
     expect(html).toContain("https://example.test/events/ev_1");
     expect(html).not.toContain("<Gala>");

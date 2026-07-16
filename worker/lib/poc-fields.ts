@@ -46,4 +46,4 @@ export const POC_FIELD_LABELS: Record<PocFieldKey, string> = {
   vendor_registration_form: "Vendor Registration Form",
 };
 
-export const VENDOR_REGISTRATION_OPTIONS = ["Pending", "Received", "No Applicable"] as const;
+export const VENDOR_REGISTRATION_OPTIONS = ["Pending", "Received", "Not Applicable"] as const;

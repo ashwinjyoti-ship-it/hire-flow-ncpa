@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requirePermission } from "../middleware/auth";
 import { istToday } from "../lib/daily-report";
+import { calculateEventFormReadiness } from "../lib/event-readiness";
 
 export const analyticsRoutes = new Hono<AuthEnv>();
 
@@ -162,6 +163,17 @@ analyticsRoutes.get("/operational-performance", async (c) => {
        AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?`
   ).bind(range.from, range.to).first<{ ops: number | null; accounts: number | null; overall: number | null; active_events: number }>();
 
+  const { results: readinessEvents } = await c.env.DB.prepare(
+    `SELECT requirements FROM events
+     WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')
+       AND COALESCE(event_start_date, date(created_at)) BETWEEN ? AND ?`
+  ).bind(range.from, range.to).all<{ requirements: string | null }>();
+  const readinessTotal = readinessEvents.reduce(
+    (sum, event) => sum + calculateEventFormReadiness(event.requirements).percentage,
+    0,
+  );
+  const formReadiness = readinessEvents.length ? readinessTotal / readinessEvents.length / 100 : 0;
+
   let total = 0;
   let completed = 0;
   const byType: Record<string, Record<string, number>> = {};
@@ -184,6 +196,7 @@ analyticsRoutes.get("/operational-performance", async (c) => {
       overall: completion?.overall ?? 0,
       active_events: completion?.active_events ?? 0,
     },
+    form_readiness: formReadiness,
   });
 });
 

@@ -58,6 +58,35 @@ describe("frontend regression guards", () => {
     expect(source).toContain("parseEventDetailTab");
     expect(source).toContain("canShowStatusActions={tab === \"operations\"}");
     expect(source).toContain("Open Operations to change lifecycle status");
+    expect(source).toContain("forwardMilestoneButtonClass");
+    expect(source).toContain('s === "confirmed" && action');
+    expect(source).toContain("bg-status-confirmed/15");
+  });
+
+  it("uses the established status palette for event-form readiness", () => {
+    const source = readFileSync(resolve(root, "src/components/EventReadinessPanel.tsx"), "utf8");
+
+    expect(source).toContain("bg-status-cancelled/10");
+    expect(source).toContain("bg-status-awaitingApproval/10");
+    expect(source).toContain("bg-status-tentative/10");
+    expect(source).toContain("bg-status-confirmed/10");
+    expect(source).not.toMatch(/bg-(red|orange|amber|emerald)-/);
+    expect(source).toContain("Still needed");
+    expect(source).toContain("section.missingLabels.map");
+    expect(source).not.toContain("section.missingLabels.slice(0, 2)");
+    expect(source).toContain("section.missingKeys[index]");
+    expect(source).toContain("&field=");
+    expect(source).toContain("Open {section.label} section");
+  });
+
+  it("gives every readiness item an exact event-form field target", () => {
+    const readiness = readFileSync(resolve(root, "worker/lib/event-readiness.ts"), "utf8");
+    const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
+    const staticKeys = Array.from(readiness.matchAll(/(?:decision|detail)\("([^"]+)"/g), (match) => match[1]);
+
+    for (const key of staticKeys) expect(fields).toContain(`fieldKey="${key}"`);
+    expect(fields).toContain('id={`requirement-field-${requiredKey}`}');
+    expect(fields).toContain('id={`requirement-field-${paxKey}`}');
   });
 
   it("offers event record deletion while preserving organisation and POC details", () => {
@@ -202,10 +231,15 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain('aria-label={view === "show" ? "Search show calendar" : "Search lifecycle calendar"}');
   });
 
-  it("links only the regret summary card to the regrets list", () => {
+  it("keeps dashboard summary metrics bounded to active operational work", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
-    expect(dashboard).toContain('status="regret" href="/regrets"');
+    expect(dashboard).toContain("Active enquiries");
+    expect(dashboard).toContain("Awaiting confirmation");
+    expect(dashboard).toContain("Upcoming confirmed");
+    expect(dashboard).toContain("dashboardOperationalCounts");
+    expect(dashboard).not.toContain('label="Regret"');
+    expect(dashboard).not.toContain('label="Cancelled"');
     expect(dashboard).not.toContain("href={getLifecycleCalendarHref");
     expect(dashboard).not.toContain("href={getConfirmedShowCalendarHref");
   });
@@ -271,11 +305,11 @@ describe("frontend regression guards", () => {
   it("keeps missing call-time fields on the new event form", () => {
     const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
 
-    expect(fields).toContain('Field label="Sound Call Time"');
+    expect(fields).toContain('Field fieldKey="sound_call_time" label="Sound Call Time"');
     expect(fields).toContain('setReq("sound_call_time"');
-    expect(fields).toContain('Field label="Light Requirements"');
+    expect(fields).toContain('Field fieldKey="light" label="Light Requirements"');
     expect(fields).toContain('setReq("light"');
-    expect(fields).toContain('Field label="Light Call Time"');
+    expect(fields).toContain('Field fieldKey="light_call_time" label="Light Call Time"');
     expect(fields).toContain('setReq("light_call_time"');
   });
 
@@ -309,10 +343,26 @@ describe("frontend regression guards", () => {
   it("keeps dashboard lifecycle rows tied to a specific event", () => {
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
 
-    expect(dashboard).toContain("e.organisation_name && e.title !== e.organisation_name");
-    expect(dashboard).toContain("eventDisplayName(e.title, e.organisation_name)");
+    expect(dashboard).toContain("entry.organisation_name && entry.title !== entry.organisation_name");
+    expect(dashboard).toContain("eventDisplayName(entry.title, entry.organisation_name)");
     expect(dashboard).toContain('from "../lib/event-display"');
-    expect(dashboard).toContain("getEventOperationsLink(e.event_id)");
+    expect(dashboard).toContain("pipelineDecisionHref(entry)");
+  });
+
+  it("separates pipeline decisions from event-grouped next actions", () => {
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+
+    expect(dashboard).toContain("Pipeline Decisions");
+    expect(dashboard).toContain("Next Actions");
+    expect(dashboard).toContain("groupDashboardActions");
+    expect(dashboard).toContain("groupPipelineDecisions");
+    expect(dashboard).toContain("pipelineDecisionHref");
+    expect(dashboard).toContain("group.count - 1");
+    expect(dashboard).toContain("matching");
+    expect(dashboard).toContain("usablePipelineDate");
+    expect(dashboard).not.toContain("Lifecycle Queue");
+    expect(dashboard).not.toContain("Work Needing Attention");
+    expect(dashboard).not.toContain("POC Still Missing");
   });
 
   it("keeps task command cards collapsible by default", () => {
@@ -322,8 +372,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Expand");
     expect(source).toContain("Collapse");
     expect(source).toContain("ChecklistProgress");
-    expect(source).toContain("overallCompletion");
-    expect(source).toContain("% complete");
+    expect(source).toContain("formReadiness");
+    expect(source).toContain("% ready");
   });
 
   it("keeps stale lifecycle tasks out of dashboard attention", () => {
@@ -481,11 +531,11 @@ describe("frontend regression guards", () => {
     const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
     const pocFields = readFileSync(resolve(root, "src/components/event-form/PocFields.tsx"), "utf8");
 
-    expect(fields).toContain('Field label="Stage Setup"');
+    expect(fields).toContain('Field fieldKey="stage_setup" label="Stage Setup"');
     expect(fields).toContain('setReq("stage_setup"');
-    expect(fields).toContain('Field label="Foyer Setup"');
+    expect(fields).toContain('Field fieldKey="foyer_setup" label="Foyer Setup"');
     expect(fields).toContain('setReq("foyer_setup"');
-    expect(fields).toContain('Field label="Licences — Required"');
+    expect(fields).toContain('Field fieldKey="licenses_status" label="Licences — Required"');
     expect(fields).toContain('setReq("licenses_status"');
     expect(fields).toContain('value="Awaiting"');
     expect(fields).toContain(">Awaiting</option>");
@@ -493,10 +543,10 @@ describe("frontend regression guards", () => {
     expect(eventForm).not.toContain("lookups?.lookups.program_officer");
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
-    expect(fields).toContain('Field label="Interval"');
+    expect(fields).toContain('Field fieldKey="interval" label="Interval"');
     expect(fields).toContain('setReq("interval"');
-    expect(fields).toContain('Field label="Digital Standee — notes"');
-    expect(fields).toContain('Field label="Car Display — notes"');
+    expect(fields).toContain('Field fieldKey="digital_standee_note" label="Digital Standee — notes"');
+    expect(fields).toContain('Field fieldKey="car_display_note" label="Car Display — notes"');
     expect(eventForm).toContain("RequirementsFields");
     expect(eventForm).toContain("PocFields");
     expect(pocFields).toContain("vendor_registration_form");
@@ -508,6 +558,9 @@ describe("frontend regression guards", () => {
     expect(pocFields).toContain("Point of Contact incomplete");
     expect(eventForm).toContain("hydrateVenueRequirements");
     expect(eventForm).toContain("updateVenueRequirements");
+    expect(eventForm).toContain('searchParams.get("field")');
+    expect(eventForm).toContain("requirement-field-${field}");
+    expect(eventForm).toContain("focusedFieldKey={focusedRequirementField}");
   });
 
   it("exposes a New Event shortcut from the dashboard", () => {

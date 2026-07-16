@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
+import { EventReadinessPanel } from "../components/EventReadinessPanel";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
@@ -27,6 +28,7 @@ import {
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc, escapeHtml } from "../lib/export";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
+import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
 
@@ -54,6 +56,7 @@ type DetailResponse = {
     ops_completion: number | null;
     accounts_completion: number | null;
     poc_completion?: PocCompletionStatus;
+    event_readiness?: EventFormReadiness;
   };
   venue_bookings: Array<Record<string, unknown> & {
     venue?: string | null;
@@ -99,6 +102,7 @@ type ChecklistResponse = {
     actions: LifecycleAction[];
   };
   poc: PocCompletionStatus;
+  readiness: EventFormReadiness;
 };
 
 type EventPageFreshState = {
@@ -389,6 +393,10 @@ export function EventDetailPage() {
   }
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
+    if (target.fieldKey === "poc_name") {
+      navigate(`/events/${id}/edit?step=0&section=poc`);
+      return;
+    }
     selectTab(target.tab, target.fieldKey);
   }
 
@@ -444,6 +452,16 @@ export function EventDetailPage() {
         <SummaryItem label="Approval" value={prettyState(e.approval_status)} />
         <SummaryItem label="Signed confirmation" value={prettyState(e.confirmation_status)} />
       </div>
+
+      {e.event_readiness && (
+        <div className="mb-5">
+          <EventReadinessPanel
+            eventId={e.id}
+            readiness={e.event_readiness}
+            beforeConfirmationBlockers={checklistData?.lifecycle.blockers.length ?? 0}
+          />
+        </div>
+      )}
 
       <LifecyclePanel
         event={e}
@@ -563,13 +581,14 @@ export function EventDetailPage() {
       )}
 
       {tab === "operations" && (
-        <ChecklistModuleView
+        <OperationsFlow
+          eventId={e.id}
+          readiness={checklistData?.readiness ?? e.event_readiness}
           sections={checklistData?.checklist.operations ?? {}}
           finalShowDate={e.event_end_date ?? e.event_start_date}
           canEdit={canUpdateChecklist}
           savingItemId={savingChecklistItemId}
           focusedFieldKey={focusedFieldKey}
-          pocCompletion={showPocAlert ? pocCompletion : undefined}
           showGoToTop
           onGoToTop={clearFocusedField}
           onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
@@ -841,6 +860,7 @@ function LifecyclePanel({
   const visibleBlockerTarget = visibleBlocker
     ? BLOCKER_TARGETS[visibleBlocker]
     : undefined;
+  const displayedForwardAction = nextAction ?? blockedForwardAction;
 
   return (
     <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
@@ -895,6 +915,10 @@ function LifecyclePanel({
       <LifecycleTrack
         current={event.status}
         eventType={event.event_type}
+        actions={visibleActions}
+        canChangeStatus={canChangeStatus && canShowStatusActions}
+        onChoose={onChoose}
+        onOpenBlocker={onOpenBlocker}
       />
 
       <div className="rounded-2xl bg-marble-shadow/20 p-4">
@@ -909,13 +933,18 @@ function LifecyclePanel({
                   : "No forward milestone available"}
             </p>
           </div>
-          {canChangeStatus && canShowStatusActions && nextAction && (
+          {canChangeStatus && canShowStatusActions && displayedForwardAction && (
             <button
               type="button"
-              onClick={() => onChoose(nextAction.status)}
-              className="carved-btn-terracotta rounded-full bg-terracotta-btn px-4 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover"
+              disabled={!nextAction && !visibleBlockerTarget}
+              onClick={() => {
+                if (nextAction) onChoose(nextAction.status);
+                else if (visibleBlockerTarget) onOpenBlocker(visibleBlockerTarget);
+              }}
+              title={!nextAction && visibleBlocker ? `Resolve blocker: ${visibleBlocker}` : undefined}
+              className={forwardMilestoneButtonClass(displayedForwardAction.status, !nextAction)}
             >
-              Advance to {milestoneLabel(nextAction.status)}
+              {nextAction ? "Advance to" : "Continue to"} {milestoneLabel(displayedForwardAction.status)}
             </button>
           )}
           {canChangeStatus && !canShowStatusActions && (nextAction || closeOutActions.length > 0) && (
@@ -968,6 +997,78 @@ function LifecyclePanel({
         )}
       </div>
     </section>
+  );
+}
+
+function OperationsFlow({
+  eventId,
+  readiness,
+  sections,
+  canEdit,
+  savingItemId,
+  focusedFieldKey,
+  finalShowDate,
+  showGoToTop = false,
+  onGoToTop,
+  onUpdate,
+}: {
+  eventId: string;
+  readiness?: EventFormReadiness;
+  sections: Record<string, ChecklistItem[]>;
+  canEdit: boolean;
+  savingItemId: string | null;
+  focusedFieldKey: string | null;
+  finalShowDate: string | null;
+  showGoToTop?: boolean;
+  onGoToTop?: () => void;
+  onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
+}) {
+  const beforeEvent = Object.fromEntries(Object.entries(sections).filter(([section]) => section !== "Post-Event Closure"));
+  const postEvent = Object.fromEntries(Object.entries(sections).filter(([section]) => section === "Post-Event Closure"));
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-ink-primary etched-deep">Action checklist</h2>
+          <p className="text-xs text-ink-muted etched">Identification and follow-up actions through Technical Meeting and Minutes.</p>
+        </div>
+        <ChecklistModuleView
+          sections={beforeEvent}
+          canEdit={canEdit}
+          savingItemId={savingItemId}
+          focusedFieldKey={focusedFieldKey}
+          finalShowDate={finalShowDate}
+          showGoToTop={showGoToTop}
+          onGoToTop={onGoToTop}
+          onUpdate={onUpdate}
+        />
+      </div>
+      {readiness && (
+        <div>
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form completeness</h2>
+            <p className="text-xs text-ink-muted etched">Automated from the event form; these rows cannot be manually ticked.</p>
+          </div>
+          <EventReadinessPanel eventId={eventId} readiness={readiness} detailed />
+        </div>
+      )}
+      {Object.keys(postEvent).length > 0 && (
+        <div>
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-ink-primary etched-deep">Post-event closure</h2>
+            <p className="text-xs text-ink-muted etched">Close the file, then continue to Accounts.</p>
+          </div>
+          <ChecklistModuleView
+            sections={postEvent}
+            canEdit={canEdit}
+            savingItemId={savingItemId}
+            focusedFieldKey={focusedFieldKey}
+            finalShowDate={finalShowDate}
+            onUpdate={onUpdate}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1525,10 +1626,14 @@ function ProgressBar({ label, value, emphasis }: { label: string; value: number 
  * - Terminal states (regret/cancelled) replace the track with a banner.
  */
 function LifecycleTrack({
-  current, eventType,
+  current, eventType, actions, canChangeStatus, onChoose, onOpenBlocker,
 }: {
   current: EventStatus;
   eventType: string | null;
+  actions: LifecycleAction[];
+  canChangeStatus: boolean;
+  onChoose: (status: EventStatus) => void;
+  onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
 }) {
   // Terminal decline states — show a banner instead of the track.
   if (current === "regret" || current === "cancelled") {
@@ -1554,22 +1659,48 @@ function LifecycleTrack({
           const isPast = i < currentIdx;
           const isCurrent = i === currentIdx;
           const isApprovedGate = s === "approved";
+          const action = actions.find((candidate) => candidate.status === s);
+          const blocker = action ? selectNextLifecycleBlocker(action.blockers) : null;
+          const blockerTarget = blocker ? BLOCKER_TARGETS[blocker] : undefined;
+          const canUseMilestone = Boolean(canChangeStatus && action && (action.allowed || blockerTarget));
+          const milestoneClass =
+            "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
+            (isCurrent
+              ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
+              : s === "confirmed" && action
+                ? action.allowed
+                  ? "carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover"
+                  : "carved-btn-sage bg-status-confirmed/15 text-sage-text ring-1 ring-status-confirmed/25 hover:bg-status-confirmed/20"
+                : s === "approved" && action
+                  ? "carved-btn-sage bg-status-approved/15 text-sage-text ring-1 ring-status-approved/25 hover:bg-status-approved/20"
+                  : isPast
+                    ? "bg-sage/10 text-sage-text"
+                    : "bg-marble-shadow/30 text-ink-muted");
+          const milestoneContent = <>{milestoneLabel(s)}{isApprovedGate && " ★"}</>;
           return (
             <li key={s} className="flex items-center">
-              <span
-                aria-current={isCurrent ? "step" : undefined}
-                className={
-                  "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
-                  (isCurrent
-                    ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
-                    : isPast
-                      ? "bg-sage/10 text-sage-text"
-                      : "bg-marble-shadow/30 text-ink-muted")
-                }
-                title={isApprovedGate ? "VFH approval gate" : undefined}
-              >
-                {milestoneLabel(s)}{isApprovedGate && " ★"}
-              </span>
+              {canUseMilestone ? (
+                <button
+                  type="button"
+                  aria-current={isCurrent ? "step" : undefined}
+                  className={milestoneClass}
+                  title={action?.allowed ? `Advance to ${milestoneLabel(s)}` : blocker ? `Resolve blocker: ${blocker}` : undefined}
+                  onClick={() => {
+                    if (action?.allowed) onChoose(s);
+                    else if (blockerTarget) onOpenBlocker(blockerTarget);
+                  }}
+                >
+                  {milestoneContent}
+                </button>
+              ) : (
+                <span
+                  aria-current={isCurrent ? "step" : undefined}
+                  className={milestoneClass}
+                  title={isApprovedGate ? "VFH approval gate" : undefined}
+                >
+                  {milestoneContent}
+                </span>
+              )}
               {i < track.length - 1 && (
                 <span className={"mx-1 text-ink-muted " + (i < currentIdx ? "text-sage-text" : "")}>→</span>
               )}
@@ -1594,6 +1725,19 @@ function lifecycleActionLabel(status: EventStatus): string {
   if (status === "cancelled") return "Cancel event";
   if (status === "regret") return "Mark as Regret";
   return statusLabel(status);
+}
+
+function forwardMilestoneButtonClass(status: EventStatus, blocked: boolean): string {
+  const base = "rounded-full px-4 py-2 text-sm font-semibold etched disabled:cursor-not-allowed disabled:opacity-50";
+  if (status === "confirmed") {
+    return blocked
+      ? `${base} carved-btn-sage bg-status-confirmed/15 text-sage-text ring-1 ring-status-confirmed/25 hover:bg-status-confirmed/20`
+      : `${base} carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover`;
+  }
+  if (blocked) {
+    return `${base} carved-btn bg-status-awaitingApproval/15 text-status-awaitingApproval hover:bg-status-awaitingApproval/20`;
+  }
+  return `${base} carved-btn-terracotta bg-terracotta-btn text-terracotta-text hover:bg-terracotta-btn-hover`;
 }
 
 function prettyState(value: string | null | undefined): string {

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementsFields } from "../components/event-form/RequirementsFields";
 import { PocFields } from "../components/event-form/PocFields";
 import { apiGet, apiPost, apiPut } from "../lib/api";
+import { scrollAppMainToElement } from "../lib/scroll-app-main";
 import {
   buildEventRequirementsPayload,
   canCreateEvent,
@@ -128,9 +129,10 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
 export function EventEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data: lookups } = useLookups();
   const isEdit = Boolean(id);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => searchParams.get("step") === "2" ? 2 : 0);
   const [error, setError] = useState<string | null>(null);
   const [newOrganisationType, setNewOrganisationType] = useState("");
   const [selectedOrganisation, setSelectedOrganisation] = useState<OrgListItem | null>(null);
@@ -164,6 +166,8 @@ export function EventEditPage() {
   // Defaults ON (most events are single-day). Synced from existing form data on edit.
   const [singleDay, setSingleDay] = useState(true);
   const [requirementsVenueTab, setRequirementsVenueTab] = useState(0);
+  const focusedRequirementRef = useRef<string | null>(null);
+  const [focusedRequirementField, setFocusedRequirementField] = useState<string | null>(null);
 
   // In edit mode, hydrate the form from the existing event. Without this the
   // edit page renders an empty form regardless of which event was opened —
@@ -230,6 +234,34 @@ export function EventEditPage() {
     setSingleDay(!e.event_end_date);
     setHydrated(true);
   }, [isEdit, existing, hydrated]);
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    const field = searchParams.get("field");
+    const requestedVenue = Math.max(0, Number.parseInt(searchParams.get("venue") ?? "0", 10) || 0);
+    const focusKey = `${requestedVenue}:${field ?? section ?? ""}`;
+    if (step !== 2 || !section || focusedRequirementRef.current === focusKey) return;
+    if (requestedVenue < form.venue_bookings.length && requirementsVenueTab !== requestedVenue) {
+      setRequirementsVenueTab(requestedVenue);
+      return;
+    }
+    let focusTimer: number | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(field ? `requirement-field-${field}` : `requirement-${section}`);
+      if (!target) return;
+      focusedRequirementRef.current = focusKey;
+      setFocusedRequirementField(field);
+      scrollAppMainToElement(target, "center", "smooth");
+      const control = target.matches("input, select, textarea, button")
+        ? target
+        : target.querySelector<HTMLElement>("input, select, textarea, button");
+      focusTimer = window.setTimeout(() => control?.focus({ preventScroll: true }), 250);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (focusTimer != null) window.clearTimeout(focusTimer);
+    };
+  }, [searchParams, step, hydrated, requirementsVenueTab, form.venue_bookings.length]);
 
   useEffect(() => {
     if (!form.organisation_id || form.organisation_id.startsWith("new:")) {
@@ -752,6 +784,7 @@ export function EventEditPage() {
               <RequirementsFields
                 value={(form.venue_bookings[activeRequirementsVenue]?.requirements ?? {}) as Record<string, unknown>}
                 onChange={(next) => updateVenueRequirements(activeRequirementsVenue, next)}
+                focusedFieldKey={focusedRequirementField}
               />
             </>
           )}

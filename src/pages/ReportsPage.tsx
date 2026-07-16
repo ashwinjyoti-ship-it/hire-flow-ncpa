@@ -18,7 +18,7 @@ import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { downloadWordDoc, htmlTableSection } from "../lib/export";
 import type { DailyReportContent, ReportTask } from "../../worker/lib/daily-report";
-import type { BriefContent, EveningBriefContent, MorningBriefContent } from "../../worker/lib/brief";
+import { buildMorningAttention, conflictAttentionLabel, type BriefContent, type EveningBriefContent, type MorningAttentionItem, type MorningBriefContent } from "../../worker/lib/brief";
 
 function istToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -446,15 +446,6 @@ function AllClear({ text }: { text: string }) {
   return <p className="text-sm font-medium text-status-confirmed etched">{text}</p>;
 }
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const cls = priority === "high"
-    ? "bg-status-cancelled/15 text-status-cancelled"
-    : priority === "medium"
-      ? "bg-status-tentative/15 text-status-tentative"
-      : "bg-marble-shadow/60 text-ink-muted";
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${cls}`}>{priority}</span>;
-}
-
 function AssigneeCell({ name }: { name: string | null }) {
   if (name) return <>{name}</>;
   return <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-tentative">Unassigned</span>;
@@ -464,38 +455,73 @@ function OverdueDays({ days }: { days: number }) {
   return <span className="font-semibold text-status-cancelled">{days}d</span>;
 }
 
-function briefTaskRows(tasks: ReportTask[], withAssignee = true): React.ReactNode[][] {
-  return tasks.map((t) => [
-    t.title,
-    <PriorityBadge key="p" priority={t.priority} />,
-    t.due_date ? formatDate(t.due_date) : "—",
-    <EventCell key="e" id={t.event_id} title={t.event_title} />,
-    ...(withAssignee ? [<AssigneeCell key="a" name={t.assignee_name} />] : []),
-  ]);
-}
-
-function TeamPlanGroups({ groups, emptyText }: { groups: Array<{ assignee: string | null; tasks: ReportTask[] }>; emptyText: string }) {
-  if (!groups.length) return <p className="text-sm text-ink-muted etched">{emptyText}</p>;
+function AttentionList({ items, limit }: { items: MorningAttentionItem[]; limit: number }) {
+  const visible = items.slice(0, limit);
+  if (!visible.length) return <AllClear text="Nothing needs your attention today." />;
   return (
-    <div className="space-y-3">
-      {groups.map((g) => (
-        <div key={g.assignee ?? "__unassigned"}>
-          <p className="mb-1 text-sm font-semibold text-ink-primary etched-deep">
-            {g.assignee ?? "Unassigned"} ({g.tasks.length})
-            {!g.assignee && <span className="ml-2 text-xs font-medium text-status-cancelled">needs an owner</span>}
-          </p>
-          <ReportTable headers={["Task", "Priority", "Due", "Event"]} rows={briefTaskRows(g.tasks, false)} />
-        </div>
+    <div className="space-y-2">
+      {visible.map((item) => (
+        <Link
+          key={item.key}
+          to={item.href}
+          className="flex items-start justify-between gap-3 rounded-xl bg-marble-shadow/30 px-3 py-2.5 transition-colors hover:bg-marble-shadow/50"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">{item.event_title}</span>
+            {(item.organisation_name || item.event_start_date) && (
+              <span className="mt-0.5 block text-[11px] text-ink-muted etched">
+                {[item.organisation_name, item.event_start_date ? formatDate(item.event_start_date) : null].filter(Boolean).join(" · ")}
+              </span>
+            )}
+            <span className={"mt-1 block text-xs font-medium etched " + (item.priority <= 2 ? "text-status-cancelled" : "text-ink-secondary")}>
+              {item.primary_action}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2 pt-0.5">
+            {item.signals.length > 1 && (
+              <span className="rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted">
+                +{item.signals.length - 1}
+              </span>
+            )}
+            <span className="text-sage-text" aria-hidden="true">→</span>
+          </span>
+        </Link>
       ))}
+      {items.length > visible.length && (
+        <p className="text-xs text-ink-muted etched">Showing {visible.length} of {items.length}. Full detail remains available in the report exports.</p>
+      )}
     </div>
   );
 }
 
 function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
-  const d = s.decisions;
   const r = s.risk_radar;
-  const decisionCount = d.approvals_pending.length + d.conflicts.length + d.unassigned_high_priority.length + d.stale_enquiries.length;
-  const riskCount = r.low_readiness.length + r.blocked_items.length + r.overdue_instalments.length + r.unsigned_confirmations.length + r.poc_incomplete.length;
+  const attention = Array.isArray(s.attention)
+    ? s.attention
+    : buildMorningAttention({ decisions: s.decisions, risk_radar: r });
+  const watchlist = attention.filter((item) => item.is_watchlist);
+  const affectedEvents = new Set([
+    ...s.decisions.conflicts.flatMap((conflict) => [conflict.a.event_id, conflict.b.event_id]),
+    ...r.low_readiness.map((item) => item.event_id),
+    ...r.blocked_items.map((item) => item.event_id),
+    ...r.overdue_instalments.flatMap((item) => item.event_id ? [item.event_id] : []),
+    ...r.unsigned_confirmations.map((item) => item.event_id),
+    ...r.poc_incomplete.map((item) => item.event_id),
+  ]).size;
+  const totals = r.totals ?? {
+    low_readiness: r.low_readiness.length,
+    blocked_items: r.blocked_items.length,
+    overdue_instalments: r.overdue_instalments.length,
+    unsigned_confirmations: r.unsigned_confirmations.length,
+    poc_incomplete: r.poc_incomplete.length,
+    affected_events: affectedEvents,
+  };
+  const overdueByEvent = new Map<string, Array<ReportTask & { days_overdue: number }>>();
+  for (const task of s.overdue.oldest) {
+    const key = task.event_id ?? `task:${task.id}`;
+    overdueByEvent.set(key, [...(overdueByEvent.get(key) ?? []), task]);
+  }
+  const overduePreview = [...overdueByEvent.values()].slice(0, 3);
 
   return (
     <>
@@ -503,138 +529,93 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
         <Stat label="At the venues" value={String(s.headline.scheduled_today)} />
         <Stat label="Tasks due today" value={String(s.headline.tasks_due_today)} />
         <Stat label="Overdue" value={String(s.headline.overdue)} />
-        <Stat label="Need your decision" value={String(s.headline.decisions_needed)} />
+        <Stat label="Need attention" value={String(attention.length)} />
         <Stat label="New enquiries yday" value={String(s.headline.new_enquiries_yesterday)} />
       </div>
 
-      <ReportSection title={`Needs your decision (${decisionCount})`}>
-        {decisionCount === 0 ? <AllClear text="Nothing needs your decision today." /> : (
-          <>
-            {d.approvals_pending.length > 0 && (
-              <SubBlock title={`VFH approvals pending (${d.approvals_pending.length})`} tone="alert">
-                <ReportTable
-                  headers={["Event", "Organisation", "Event date", "Approval"]}
-                  rows={d.approvals_pending.map((a) => [
-                    <EventCell key="e" id={a.event_id} title={a.event_title} />, a.organisation_name ?? "—",
-                    a.event_start_date ? formatDate(a.event_start_date) : "—", a.approval_status ?? "—",
-                  ])}
-                />
-              </SubBlock>
-            )}
-            {d.conflicts.length > 0 && (
-              <SubBlock title={`Venue conflicts ahead (${d.conflicts.length})`} tone="alert">
-                <ReportTable
-                  headers={["Date", "Venue", "Level", "Events"]}
-                  rows={d.conflicts.map((cf) => [
-                    formatDate(cf.activity_date), cf.venue,
-                    cf.level === "conflict" ? "Conflict" : "Potential",
-                    <span key="ev">
-                      <EventCell id={cf.a.event_id} title={cf.a.event_title} /> ({cf.a.status}) · <EventCell id={cf.b.event_id} title={cf.b.event_title} /> ({cf.b.status})
-                    </span>,
-                  ])}
-                />
-              </SubBlock>
-            )}
-            {d.unassigned_high_priority.length > 0 && (
-              <SubBlock title={`High-priority tasks with no owner (${d.unassigned_high_priority.length})`} tone="alert">
-                <ReportTable headers={["Task", "Priority", "Due", "Event", "Assignee"]} rows={briefTaskRows(d.unassigned_high_priority)} />
-              </SubBlock>
-            )}
-            {d.stale_enquiries.length > 0 && (
-              <SubBlock title={`Enquiries gone quiet (${d.stale_enquiries.length})`} tone="alert">
-                <ReportTable
-                  headers={["Enquiry", "Organisation", "Enquiry date", "Quiet for"]}
-                  rows={d.stale_enquiries.map((e) => [
-                    <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—",
-                    e.enquiry_date ? formatDate(e.enquiry_date) : "—", `${e.days_quiet} days`,
-                  ])}
-                />
-              </SubBlock>
-            )}
-          </>
-        )}
+      <ReportSection title={`Do now (${attention.length})`}>
+        <AttentionList items={attention} limit={5} />
       </ReportSection>
 
       <ReportSection title={`Today at the venues (${s.today_schedule.length})`}>
         {s.today_schedule.length === 0 ? <p className="text-sm text-ink-muted etched">No venue activity scheduled today.</p> : (
-          <ReportTable
-            headers={["Venue", "Activity", "Time", "Event", "Organisation", "Status"]}
-            rows={s.today_schedule.map((e) => [
-              e.venue, e.activity_type.replace(/_/g, " "),
-              e.start_time ? formatTimeRange(e.start_time, e.end_time) : "—",
-              <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—", e.event_status,
-            ])}
-          />
+          <>
+            <ReportTable
+              headers={["Venue", "Time", "Event", "Status"]}
+              rows={s.today_schedule.slice(0, 6).map((event) => [
+                event.venue,
+                event.start_time ? formatTimeRange(event.start_time, event.end_time) : "—",
+                <EventCell key="event" id={event.event_id} title={event.event_title} />,
+                event.event_status,
+              ])}
+            />
+            {s.today_schedule.length > 6 && <p className="mt-2 text-xs text-ink-muted etched">+{s.today_schedule.length - 6} more venue activities in the export.</p>}
+          </>
         )}
       </ReportSection>
 
-      <ReportSection title={`Team plan for today (${s.headline.tasks_due_today})`}>
-        <TeamPlanGroups groups={s.team_plan} emptyText="No tasks due today." />
+      <ReportSection title={`Team plan (${s.headline.tasks_due_today})`}>
+        {s.team_plan.length === 0 ? <p className="text-sm text-ink-muted etched">No tasks due today.</p> : (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {s.team_plan.slice(0, 6).map((group) => {
+              const lead = group.tasks[0]!;
+              return (
+                <Link key={group.assignee ?? "__unassigned"} to={lead.event_id ? `/events/${lead.event_id}` : "/tasks"} className="rounded-xl bg-marble-shadow/30 p-3 hover:bg-marble-shadow/50">
+                  <span className="block text-sm font-semibold text-ink-primary etched-deep">{group.assignee ?? "Unassigned"}</span>
+                  <span className="mt-1 block text-xs text-ink-secondary etched">{group.tasks.length} due · {lead.title}</span>
+                  {group.tasks.length > 1 && <span className="mt-1 block text-[11px] font-medium text-sage-text">+{group.tasks.length - 1} more</span>}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </ReportSection>
 
-      <ReportSection title={`Risk radar (${riskCount})`}>
-        {riskCount === 0 ? <AllClear text="No risks on the radar." /> : (
+      <ReportSection title={`Watchlist (${totals.affected_events} events)`}>
+        {totals.affected_events === 0 ? <AllClear text="No events on the watchlist." /> : (
           <>
-            {r.low_readiness.length > 0 && (
-              <SubBlock title={`Events soon, checklist behind (${r.low_readiness.length})`}>
-                <ReportTable
-                  headers={["Event", "Starts", "In", "Ready", "Status"]}
-                  rows={r.low_readiness.map((e) => [
-                    <EventCell key="e" id={e.event_id} title={e.event_title} />,
-                    e.event_start_date ? formatDate(e.event_start_date) : "—",
-                    `${e.days_to_event}d`, `${Math.round(e.overall_completion * 100)}%`, e.status,
-                  ])}
-                />
-              </SubBlock>
-            )}
-            {r.blocked_items.length > 0 && (
-              <SubBlock title={`Blocked checklist items (${r.blocked_items.length})`}>
-                <ReportTable
-                  headers={["Item", "Section", "Event"]}
-                  rows={r.blocked_items.map((b) => [b.label, `${b.module} · ${b.section}`, <EventCell key="e" id={b.event_id} title={b.event_title} />])}
-                />
-              </SubBlock>
-            )}
-            {r.overdue_instalments.length > 0 && (
-              <SubBlock title={`Payment follow-ups overdue (${r.overdue_instalments.length})`}>
-                <ReportTable headers={["Task", "Priority", "Due", "Event", "Assignee"]} rows={briefTaskRows(r.overdue_instalments)} />
-              </SubBlock>
-            )}
-            {r.unsigned_confirmations.length > 0 && (
-              <SubBlock title={`Confirmed events without signed confirmation (${r.unsigned_confirmations.length})`}>
-                <ReportTable
-                  headers={["Event", "Organisation", "Starts", "Confirmation"]}
-                  rows={r.unsigned_confirmations.map((e) => [
-                    <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—",
-                    e.event_start_date ? formatDate(e.event_start_date) : "—", (e.confirmation_status ?? "none").replace(/_/g, " "),
-                  ])}
-                />
-              </SubBlock>
-            )}
-            {r.poc_incomplete.length > 0 && (
-              <SubBlock title={`Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})`} tone="alert">
-                <ReportTable
-                  headers={["Event", "Organisation", "Starts", "POC", "Still needed"]}
-                  rows={r.poc_incomplete.map((e) => [
-                    <EventCell key="e" id={e.event_id} title={e.event_title} tab="operations" fieldKey="poc_name" />,
-                    e.organisation_name ?? "—",
-                    e.event_start_date ? formatDate(e.event_start_date) : "—",
-                    `${e.filled_count}/${e.total_count}`,
-                    e.missing_labels.join(", "),
-                  ])}
-                />
-              </SubBlock>
-            )}
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {[
+                ["Low readiness", totals.low_readiness],
+                ["Blocked", totals.blocked_items],
+                ["Payments", totals.overdue_instalments],
+                ["Unsigned", totals.unsigned_confirmations],
+                ["Events with POC gaps", totals.poc_incomplete],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-xl bg-marble-shadow/30 px-3 py-2">
+                  <span className="block text-lg font-semibold text-ink-primary etched-deep">{value}</span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
+                </div>
+              ))}
+            </div>
+            <AttentionList items={watchlist} limit={3} />
           </>
         )}
       </ReportSection>
 
       <ReportSection title={`Overdue (${s.overdue.total})`}>
         {s.overdue.total === 0 ? <AllClear text="Nothing is overdue." /> : (
-          <ReportTable
-            headers={["Task", "Priority", "Due", "Event", "Assignee", "Overdue"]}
-            rows={s.overdue.oldest.map((t) => [...briefTaskRows([t])[0]!, <OverdueDays key="o" days={t.days_overdue} />])}
-          />
+          <>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {s.overdue.buckets.map((bucket) => (
+                <span key={bucket.label} className="rounded-full bg-marble-shadow/50 px-3 py-1 text-xs text-ink-secondary etched">{bucket.label}: <b>{bucket.count}</b></span>
+              ))}
+            </div>
+            <ReportTable
+              headers={["Event", "Oldest action", "Due", "Owner", "Age"]}
+              rows={overduePreview.map((tasks) => {
+                const lead = tasks[0]!;
+                return [
+                  <EventCell key="event" id={lead.event_id} title={lead.event_title ?? lead.title} />,
+                  <span key="action">{lead.title}{tasks.length > 1 ? ` · +${tasks.length - 1} more` : ""}</span>,
+                  lead.due_date ? formatDate(lead.due_date) : "—",
+                  <AssigneeCell key="owner" name={lead.assignee_name} />,
+                  <OverdueDays key="age" days={lead.days_overdue} />,
+                ];
+              })}
+            />
+            {s.overdue.total > overduePreview.length && <p className="mt-2 text-xs text-ink-muted etched">Showing the three oldest event groups. Full overdue detail remains in exports.</p>}
+          </>
         )}
       </ReportSection>
 
@@ -646,7 +627,6 @@ function MorningBriefView({ content: s }: { content: MorningBriefContent }) {
     </>
   );
 }
-
 function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
   const sc = s.scoreboard;
   const pct = Math.round(sc.completion_rate * 100);
@@ -670,19 +650,16 @@ function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
 
       <ReportSection title="What got done">
         {s.done_by_person.length === 0 ? <p className="text-sm text-ink-muted etched">Nothing was completed today.</p> : (
-          <div className="space-y-3">
-            {s.done_by_person.map((p) => (
-              <div key={p.person}>
-                <p className="mb-1 text-sm font-semibold text-ink-primary etched-deep">{p.person} ({p.tasks.length + p.checklist.length})</p>
-                <ReportTable
-                  headers={["Type", "Item", "Event", "Detail"]}
-                  rows={[
-                    ...p.tasks.map((t) => ["Task", t.title, t.event_title ?? "—", t.completion_note ?? ""] as React.ReactNode[]),
-                    ...p.checklist.map((ci) => ["Checklist", ci.label, ci.event_title ?? "—", `${ci.module} · ${ci.section}`] as React.ReactNode[]),
-                  ]}
-                />
-              </div>
-            ))}
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {s.done_by_person.slice(0, 6).map((p) => {
+              const highlights = [...p.tasks.map((task) => task.title), ...p.checklist.map((item) => item.label)];
+              return (
+                <div key={p.person} className="rounded-xl bg-marble-shadow/30 p-3">
+                  <p className="text-sm font-semibold text-ink-primary etched-deep">{p.person} · {highlights.length} completed</p>
+                  <p className="mt-1 text-xs text-ink-secondary etched">{highlights.slice(0, 2).join(" · ")}{highlights.length > 2 ? ` · +${highlights.length - 2} more` : ""}</p>
+                </div>
+              );
+            })}
           </div>
         )}
       </ReportSection>
@@ -690,7 +667,14 @@ function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
       <ReportSection title="Slipped today">
         {s.slipped.length === 0
           ? <AllClear text="Nothing slipped — everything due today is done." />
-          : <TeamPlanGroups groups={s.slipped} emptyText="" />}
+          : <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {s.slipped.slice(0, 6).map((group) => (
+                <div key={group.assignee ?? "__unassigned"} className="rounded-xl bg-marble-shadow/30 p-3">
+                  <p className="text-sm font-semibold text-ink-primary etched-deep">{group.assignee ?? "Unassigned"} · {group.tasks.length} slipped</p>
+                  <p className="mt-1 text-xs text-ink-secondary etched">{group.tasks[0]?.title}{group.tasks.length > 1 ? ` · +${group.tasks.length - 1} more` : ""}</p>
+                </div>
+              ))}
+            </div>}
       </ReportSection>
 
       <ReportSection title="New today">
@@ -698,7 +682,7 @@ function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
           {s.new_today.enquiries.length === 0 ? <p className="text-sm text-ink-muted etched">No new enquiries today.</p> : (
             <ReportTable
               headers={["Enquiry", "Organisation", "Source"]}
-              rows={s.new_today.enquiries.map((e) => [
+              rows={s.new_today.enquiries.slice(0, 5).map((e) => [
                 <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—", e.enquiry_source ?? "—",
               ])}
             />
@@ -708,7 +692,7 @@ function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
           {s.new_today.status_changes.length === 0 ? <p className="text-sm text-ink-muted etched">No status changes today.</p> : (
             <ReportTable
               headers={["Event", "Change", "By", "Reason"]}
-              rows={s.new_today.status_changes.map((c) => [
+              rows={s.new_today.status_changes.slice(0, 5).map((c) => [
                 <EventCell key="e" id={c.event_id} title={c.event_title} />,
                 `${c.from_status ?? "—"} → ${c.to_status}`, c.changed_by_name ?? "—", c.reason ?? "",
               ])}
@@ -722,7 +706,7 @@ function EveningBriefView({ content: s }: { content: EveningBriefContent }) {
         {s.tomorrow.schedule.length === 0 ? <p className="text-sm text-ink-muted etched">No venue activity scheduled tomorrow.</p> : (
           <ReportTable
             headers={["Venue", "Activity", "Time", "Event", "Organisation"]}
-            rows={s.tomorrow.schedule.map((e) => [
+            rows={s.tomorrow.schedule.slice(0, 6).map((e) => [
               e.venue, e.activity_type.replace(/_/g, " "),
               e.start_time ? formatTimeRange(e.start_time, e.end_time) : "—",
               <EventCell key="e" id={e.event_id} title={e.event_title} />, e.organisation_name ?? "—",
@@ -768,15 +752,15 @@ function briefWordBody(content: BriefContent): string {
       ]),
       htmlTableSection("Needs Your Decision", ["Type", "Item", "Detail", "Date"], [
         ...s.decisions.approvals_pending.map((a) => ["VFH approval pending", a.event_title, a.organisation_name ?? "", a.event_start_date ?? ""]),
-        ...s.decisions.conflicts.map((cf) => [cf.level === "conflict" ? "Venue conflict" : "Potential conflict", `${cf.a.event_title} / ${cf.b.event_title}`, cf.venue, cf.activity_date]),
+        ...s.decisions.conflicts.map((cf) => [conflictAttentionLabel(cf), `${cf.a.event_title} / ${cf.b.event_title}`, cf.venue, cf.activity_date]),
         ...s.decisions.unassigned_high_priority.map((t) => ["Unassigned high priority", t.title, t.event_title ?? "", t.due_date ?? ""]),
         ...s.decisions.stale_enquiries.map((e) => ["Stale enquiry", e.event_title, `${e.organisation_name ?? ""} — quiet ${e.days_quiet}d`, e.enquiry_date ?? ""]),
       ]),
       htmlTableSection("Today at the Venues", ["Venue", "Activity", "Start", "End", "Event", "Organisation"],
         s.today_schedule.map((e) => [e.venue, e.activity_type, e.start_time, e.end_time, e.event_title, e.organisation_name])),
       htmlTableSection("Team Plan", ["Task", "Priority", "Due", "Event", "Assignee"], taskRows(s.team_plan.flatMap((g) => g.tasks))),
-      htmlTableSection("Risk Radar", ["Risk", "Item", "Detail"], [
-        ...s.risk_radar.low_readiness.map((e) => ["Low readiness", e.event_title, `${Math.round(e.overall_completion * 100)}% ready, starts in ${e.days_to_event}d`]),
+      htmlTableSection("Watchlist", ["Risk", "Item", "Detail"], [
+        ...s.risk_radar.low_readiness.map((e) => ["Low readiness", e.event_title, `${e.event_form_readiness ?? Math.round((e.overall_completion ?? 0) * 100)}% ready, starts in ${e.days_to_event}d`]),
         ...s.risk_radar.blocked_items.map((b) => ["Blocked checklist item", b.label, b.event_title]),
         ...s.risk_radar.overdue_instalments.map((t) => ["Overdue payment follow-up", t.title, t.event_title ?? ""]),
         ...s.risk_radar.unsigned_confirmations.map((e) => ["Unsigned confirmation", e.event_title, e.confirmation_status ?? "none"]),
@@ -844,6 +828,7 @@ type OperationalPerformance = {
   tasks_by_type: Record<string, Record<string, number>>;
   overdue_tasks: number;
   checklist_completion: { operations: number; accounts: number; overall: number; active_events: number };
+  form_readiness: number;
 };
 type ClientProfile = {
   by_event_type: Array<{ event_type: string; count: number }>;
@@ -1010,10 +995,10 @@ function AnalyticsView() {
               ))}
             </div>
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Average checklist completion</h4>
-              <Bar label="Operations" value={performance.data.checklist_completion.operations} max={1} detail={`${Math.round(performance.data.checklist_completion.operations * 100)}%`} />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Action progress vs form readiness</h4>
+              <Bar label="Operations actions" value={performance.data.checklist_completion.operations} max={1} detail={`${Math.round(performance.data.checklist_completion.operations * 100)}%`} />
+              <Bar label="Event-form readiness" value={performance.data.form_readiness} max={1} detail={`${Math.round(performance.data.form_readiness * 100)}%`} />
               <Bar label="Accounts" value={performance.data.checklist_completion.accounts} max={1} detail={`${Math.round(performance.data.checklist_completion.accounts * 100)}%`} />
-              <Bar label="Overall" value={performance.data.checklist_completion.overall} max={1} detail={`${Math.round(performance.data.checklist_completion.overall * 100)}%`} />
             </div>
           </div>
         )}

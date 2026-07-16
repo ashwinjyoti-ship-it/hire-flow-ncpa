@@ -131,8 +131,7 @@ export async function listEventsWithIncompletePoc(
      FROM events e
      LEFT JOIN organisations o ON o.id = e.organisation_id
      WHERE e.is_archived = 0 AND e.status IN (${statusPlaceholders})
-     ORDER BY COALESCE(e.event_start_date, '9999'), e.title
-     LIMIT 200`,
+     ORDER BY COALESCE(e.event_start_date, '9999'), e.title`,
   ).bind(...POC_INCOMPLETE_ACTIVE_STATUSES).all<{
     event_id: string;
     event_title: string;
@@ -170,26 +169,33 @@ export async function getPocFieldValuesForEvents(
   const out = new Map<string, Partial<Record<PocFieldKey, string | null>>>();
   if (eventIds.length === 0) return out;
 
-  const placeholders = eventIds.map(() => "?").join(", ");
-  const { results: checklistRows } = await db.prepare(
-    `SELECT event_id, field_key, value FROM checklist_items
-     WHERE event_id IN (${placeholders})
-       AND field_key IN (${POC_FIELD_KEYS.map(() => "?").join(", ")})`
-  ).bind(...eventIds, ...POC_FIELD_KEYS).all<{ event_id: string; field_key: string; value: string | null }>();
-
   const checklistByEvent = new Map<string, Partial<Record<PocFieldKey, string | null>>>();
-  for (const row of checklistRows ?? []) {
-    const current = checklistByEvent.get(row.event_id) ?? {};
-    current[row.field_key as PocFieldKey] = row.value;
-    checklistByEvent.set(row.event_id, current);
-  }
+  // D1/SQLite caps bound parameters per statement. Dashboard feeds may pass
+  // hundreds of event ids, so keep every enrichment query comfortably below
+  // that limit instead of letting the whole lifecycle endpoint fail.
+  const batchSize = 75;
+  for (let offset = 0; offset < eventIds.length; offset += batchSize) {
+    const batch = eventIds.slice(offset, offset + batchSize);
+    const placeholders = batch.map(() => "?").join(", ");
+    const { results: checklistRows } = await db.prepare(
+      `SELECT event_id, field_key, value FROM checklist_items
+       WHERE event_id IN (${placeholders})
+         AND field_key IN (${POC_FIELD_KEYS.map(() => "?").join(", ")})`
+    ).bind(...batch, ...POC_FIELD_KEYS).all<{ event_id: string; field_key: string; value: string | null }>();
 
-  const { results: eventRows } = await db.prepare(
-    `SELECT id, requirements FROM events WHERE id IN (${placeholders})`
-  ).bind(...eventIds).all<{ id: string; requirements: string | null }>();
+    for (const row of checklistRows ?? []) {
+      const current = checklistByEvent.get(row.event_id) ?? {};
+      current[row.field_key as PocFieldKey] = row.value;
+      checklistByEvent.set(row.event_id, current);
+    }
 
-  for (const event of eventRows ?? []) {
-    out.set(event.id, mergePocValues(checklistByEvent.get(event.id) ?? {}, event.requirements));
+    const { results: eventRows } = await db.prepare(
+      `SELECT id, requirements FROM events WHERE id IN (${placeholders})`
+    ).bind(...batch).all<{ id: string; requirements: string | null }>();
+
+    for (const event of eventRows ?? []) {
+      out.set(event.id, mergePocValues(checklistByEvent.get(event.id) ?? {}, event.requirements));
+    }
   }
   for (const eventId of eventIds) {
     if (!out.has(eventId)) out.set(eventId, {});

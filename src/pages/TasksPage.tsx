@@ -143,7 +143,7 @@ function EventCommandCards({ tasks, today }: TaskViewProps) {
                   </span>
                 </div>
                 {card.event.id && (
-                  <ChecklistProgress value={card.event.overallCompletion} />
+                  <ChecklistProgress value={card.event.formReadiness} />
                 )}
                 <button
                   type="button"
@@ -248,15 +248,15 @@ type TaskViewProps = {
 };
 
 function ChecklistProgress({ value }: { value: number | null }) {
-  const pct = value != null ? Math.round(value * 100) : 0;
+  const pct = value != null ? Math.round(value) : 0;
   return (
     <div
       className="min-w-[7.5rem] flex-1"
-      title={`Checklist ${pct}% complete`}
-      aria-label={`Checklist ${pct}% complete`}
+      title={`Event form ${pct}% ready`}
+      aria-label={`Event form ${pct}% ready`}
     >
       <div className="mb-0.5 flex items-center justify-end gap-2">
-        <span className="text-[10px] font-semibold tabular-nums text-sage-text etched">{pct}% complete</span>
+        <span className="text-[10px] font-semibold tabular-nums text-sage-text etched">{pct}% ready</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-marble-shadow/60">
         <div className="h-full rounded-full bg-sage-btn transition-[width] duration-300" style={{ width: `${pct}%` }} />

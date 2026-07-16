@@ -5,9 +5,11 @@ import { StatusBadge } from "../components/StatusBadge";
 import { AnnouncementBanner } from "../components/AnnouncementBanner";
 import { PocStatusBadge } from "../components/PocIncompleteBanner";
 import { apiGet } from "../lib/api";
+import { dashboardOperationalCounts, operationalLifecycleEntries } from "../lib/dashboard-operational-counts";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { eventDisplayName } from "../lib/event-display";
 import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
+import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
@@ -15,8 +17,10 @@ type LifecycleEntry = {
   id: string;
   milestone_type: EventStatus;
   milestone_date: string;
+  enquiry_date?: string | null;
   event_id: string;
   event_start_date: string | null;
+  event_end_date?: string | null;
   title: string;
   status: EventStatus;
   organisation_name: string | null;
@@ -25,11 +29,14 @@ type LifecycleEntry = {
   poc_filled_count?: number;
   poc_total_count?: number;
   poc_missing_labels?: string[];
+  event_form_readiness?: number;
+  decision_status?: "approved" | "confirmed" | null;
+  decision_allowed?: boolean;
+  decision_blocker?: string | null;
 };
 type LifecycleResponse = {
   entries: LifecycleEntry[];
   byDate: Record<string, LifecycleEntry[]>;
-  poc_incomplete_count?: number;
 };
 type TasksResponse = {
   tasks: Array<{
@@ -45,6 +52,7 @@ type TasksResponse = {
     due_date: string | null;
     priority: "high" | "medium" | "low";
     status: "open" | "in_progress" | "completed" | "cancelled";
+    event_form_readiness?: number | null;
   }>;
 };
 
@@ -54,13 +62,9 @@ export function DashboardPage() {
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-  const { data: lifecycleData } = useQuery({
+  const { data: lifecycleData, isError: lifecycleLoadFailed } = useQuery({
     queryKey: ["calendar-lifecycle", "dashboard", "all-records"],
     queryFn: () => apiGet<LifecycleResponse>("/calendar/lifecycle"),
-  });
-  const { data: regretsData } = useQuery({
-    queryKey: ["regrets", "dashboard-count"],
-    queryFn: () => apiGet<{ regrets: unknown[] }>("/events/regrets"),
   });
   const { data: taskData } = useQuery({
     queryKey: ["tasks", "dashboard", "active"],
@@ -71,29 +75,20 @@ export function DashboardPage() {
   const tasks = (taskData?.tasks ?? [])
     .filter(isDashboardActionableTask)
     .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
-
-  const counts: Record<string, number> = { enquiry: 0, tentative: 0, approved: 0, confirmed: 0, regret: regretsData?.regrets.length ?? 0, cancelled: 0 };
-  for (const entry of lifecycleEntries) {
-    if (entry.milestone_type in counts && entry.milestone_type !== "regret") {
-      counts[entry.milestone_type] = (counts[entry.milestone_type] ?? 0) + 1;
-    }
-  }
-  const activeLifecycleEntries = lifecycleEntries.filter(
-    (entry) => entry.milestone_type !== "regret" && entry.milestone_type !== "cancelled",
-  );
-  const lifecycleQueue = [...activeLifecycleEntries]
-    .sort((a, b) => lifecycleRank(a.milestone_type) - lifecycleRank(b.milestone_type) || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
-  const pocIncompleteEntries = lifecycleEntries.filter((entry) =>
-    (entry.status === "enquiry" || entry.status === "tentative" || entry.status === "approved")
-    && entry.poc_complete === false,
-  );
-  const pocIncompleteCount = lifecycleData?.poc_incomplete_count ?? pocIncompleteEntries.length;
-
+  const actionGroups = groupDashboardActions(tasks);
+  const operationalEntries = operationalLifecycleEntries(lifecycleEntries, todayIso);
+  const operationalCounts = dashboardOperationalCounts(lifecycleEntries, todayIso);
+  const pipelineDecisions = operationalEntries
+    .filter((entry) => entry.status === "enquiry" || entry.status === "tentative" || entry.status === "approved")
+    .sort((a, b) => pipelineDecisionRank(a, todayIso) - pipelineDecisionRank(b, todayIso)
+      || compareOptionalDates(usablePipelineDate(a.event_start_date), usablePipelineDate(b.event_start_date))
+      || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
+  const pipelineDecisionGroups = groupPipelineDecisions(pipelineDecisions);
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle="All active lifecycle records and work needing attention"
+        subtitle="Pipeline decisions and the next action for each event"
         actions={(
           <Link to="/events/new" className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover">
             + New Event
@@ -103,134 +98,128 @@ export function DashboardPage() {
 
       <AnnouncementBanner />
 
-      {pocIncompleteCount > 0 && (
-        <div role="alert" className="mb-6 rounded-2xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/12 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-status-awaitingApproval etched-deep">
-                {pocIncompleteCount} active event{pocIncompleteCount === 1 ? "" : "s"} still need Point of Contact details
-              </p>
-              <p className="mt-1 text-xs text-ink-secondary etched">
-                POC must be complete (required fields) before an event can be confirmed.
-              </p>
-            </div>
-            <Link to="/calendar?view=lifecycle&poc_incomplete=1" className="carved-btn rounded-full bg-status-awaitingApproval/15 px-4 py-2 text-xs font-semibold text-status-awaitingApproval etched">
-              View on calendar
-            </Link>
-          </div>
+      {lifecycleLoadFailed && (
+        <div role="alert" className="mb-6 rounded-2xl border border-status-cancelled/30 bg-status-cancelled/10 px-5 py-4 text-sm text-status-cancelled etched">
+          Lifecycle counts and pipeline decisions are temporarily unavailable. Task actions are still shown below.
         </div>
       )}
 
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
-        <SummaryCard label="Enquiries" value={counts.enquiry ?? 0} status="enquiry" />
-        <SummaryCard label="Tentative" value={counts.tentative ?? 0} status="tentative" />
-        <SummaryCard label="Approved" value={counts.approved ?? 0} status="approved" />
-        <SummaryCard label="Confirmed" value={counts.confirmed ?? 0} status="confirmed" />
-        <SummaryCard label="Regret" value={counts.regret ?? 0} status="regret" href="/regrets" />
-        <SummaryCard label="Cancelled" value={counts.cancelled ?? 0} status="cancelled" />
-        <PocSummaryCard value={pocIncompleteCount} />
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <SummaryCard
+          label="Active enquiries"
+          value={lifecycleLoadFailed ? "—" : operationalCounts.activeEnquiries}
+          status="enquiry"
+          hint="Future-dated enquiries, plus undated enquiries received in the last 30 days"
+        />
+        <SummaryCard
+          label="Awaiting confirmation"
+          value={lifecycleLoadFailed ? "—" : operationalCounts.awaitingConfirmation}
+          status="approved"
+          hint="Upcoming tentative and approved events"
+        />
+        <SummaryCard
+          label="Upcoming confirmed"
+          value={lifecycleLoadFailed ? "—" : operationalCounts.upcomingConfirmed}
+          status="confirmed"
+          hint="Confirmed events starting today or later"
+        />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-status-awaitingApproval etched">POC Still Missing</h2>
-            <Link to="/calendar?view=lifecycle&poc_incomplete=1" className="text-xs text-sage-text hover:underline">Filter calendar →</Link>
+      <div className="grid gap-5 lg:grid-cols-5 lg:gap-6">
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-2">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Pipeline Decisions</h2>
+            <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
           </div>
-          {pocIncompleteEntries.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">All active events have a complete Point of Contact.</p>
+          <p className="mb-4 text-[11px] text-ink-muted etched">One event per row · ready decisions and immediate blockers first</p>
+          {lifecycleLoadFailed ? (
+            <p className="text-sm text-status-cancelled etched">Pipeline decisions could not be loaded.</p>
+          ) : pipelineDecisionGroups.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No enquiry, tentative, or approved events need a pipeline decision.</p>
           ) : (
             <ul className="space-y-2">
-              {pocIncompleteEntries.slice(0, 8).map((entry) => (
-                <li key={entry.id}>
-                  <Link to={`/events/${entry.event_id}?tab=operations&field=poc_name`} className="flex items-center gap-3 rounded-lg bg-status-awaitingApproval/10 px-3 py-2 hover:bg-status-awaitingApproval/15">
+              {pipelineDecisionGroups.slice(0, 8).map((group) => {
+                const entry = group.lead;
+                return (
+                <li key={group.key}>
+                  <Link to={pipelineDecisionHref(entry)} className="flex items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
-                        {entry.organisation_name ?? entry.title}
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-ink-primary etched-deep">{entry.organisation_name ?? entry.title}</span>
+                        {group.count > 1 && (
+                          <span className="shrink-0 rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted etched">+{group.count - 1} matching</span>
+                        )}
                       </span>
                       {entry.organisation_name && entry.title !== entry.organisation_name && (
                         <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
                           {eventDisplayName(entry.title, entry.organisation_name)}
                         </span>
                       )}
-                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">
-                        {entry.poc_filled_count ?? 0}/{entry.poc_total_count ?? 6} fields
-                        {entry.poc_missing_labels?.length ? ` · need ${entry.poc_missing_labels.slice(0, 2).join(", ")}${entry.poc_missing_labels.length > 2 ? "…" : ""}` : ""}
+                      <span className={`mt-1 block text-[11px] font-medium etched ${entry.decision_allowed ? "text-sage-text" : "text-status-awaitingApproval"}`}>
+                        {entry.decision_blocker ?? (entry.decision_status ? `${pipelineMilestoneLabel(entry.decision_status)} is ready` : "Review lifecycle status")}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-ink-muted etched">
+                        {usablePipelineDate(entry.event_start_date) ? `Event ${formatDate(entry.event_start_date!)}` : `Entered ${formatDate(entry.milestone_date)}`} · {entry.venues && entry.venues !== "0" ? entry.venues : "No venue"}
                       </span>
                     </span>
-                    <PocStatusBadge complete={false} />
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <PipelineDecisionBadge entry={entry} />
+                      {entry.poc_complete === false && <PocStatusBadge complete={false} />}
+                      <StatusBadge status={entry.status} />
+                    </span>
                   </Link>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
 
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle Queue</h2>
-            <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
+        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-3">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Next Actions</h2>
+            <Link to="/tasks" className="text-xs text-sage-text hover:underline">All tasks →</Link>
           </div>
-          {lifecycleQueue.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">No active lifecycle records.</p>
+          <p className="mb-4 text-[11px] text-ink-muted etched">One priority action per event · overdue and due-today work first</p>
+          {actionGroups.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No open actions.</p>
           ) : (
             <ul className="space-y-2">
-              {lifecycleQueue.slice(0, 8).map((e) => (
-                <li key={e.id}>
-                  <Link to={getEventOperationsLink(e.event_id)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
-                        {e.organisation_name ?? e.title}
-                      </span>
-                      {e.organisation_name && e.title !== e.organisation_name && (
-                        <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
-                          {eventDisplayName(e.title, e.organisation_name)}
+              {actionGroups.slice(0, 8).map((group) => {
+                const task = group.lead;
+                return (
+                  <li key={group.key}>
+                    <Link to={getTaskWorkLink(task)} className="flex items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-ink-primary etched-deep">
+                            {task.organisation_name ?? task.event_title ?? "Unlinked task"}
+                          </span>
+                          {group.count > 1 && (
+                            <span className="shrink-0 rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted etched">+{group.count - 1} more</span>
+                          )}
                         </span>
-                      )}
-                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">{formatDate(e.milestone_date)} · {e.venues ?? "No venue"}</span>
-                    </span>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      {e.poc_complete === false && (e.status === "enquiry" || e.status === "tentative" || e.status === "approved") && (
-                        <PocStatusBadge complete={false} />
-                      )}
-                      <StatusBadge status={e.milestone_type} />
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-1">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Work Needing Attention</h2>
-            <Link to="/tasks" className="text-xs text-sage-text hover:underline">Tasks →</Link>
-          </div>
-          {tasks.length === 0 ? (
-            <p className="text-sm text-ink-muted etched">No open tasks.</p>
-          ) : (
-            <ul className="space-y-2">
-              {tasks.slice(0, 8).map((task) => (
-                <li key={task.id}>
-                  <Link to={getTaskWorkLink(task)} className="flex items-center gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2 hover:bg-marble-shadow/50">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
-                        {task.organisation_name ?? task.event_title ?? "Unlinked task"}
+                        <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
+                          {task.title}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-ink-muted etched">
+                          {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
+                          {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
-                        {task.title}
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <TaskAttentionBadge task={task} todayIso={todayIso} />
+                        {task.event_form_readiness != null && (
+                          <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold text-sage-text etched">
+                            {Math.round(task.event_form_readiness)}% ready
+                          </span>
+                        )}
                       </span>
-                      <span className="mt-0.5 block text-[11px] text-ink-muted etched">
-                        {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
-                        {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
-                      </span>
-                    </span>
-                    {task.event_status && <StatusBadge status={task.event_status} />}
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -239,11 +228,56 @@ export function DashboardPage() {
   );
 }
 
-function lifecycleRank(status: EventStatus): number {
-  if (status === "enquiry") return 0;
-  if (status === "tentative") return 1;
-  if (status === "approved") return 2;
-  return 3;
+function pipelineDecisionRank(entry: LifecycleEntry, todayIso: string): number {
+  const eventDate = usablePipelineDate(entry.event_start_date);
+  if (eventDate && eventDate <= todayIso) return 0;
+  if (eventDate) {
+    const daysToEvent = Math.round((Date.parse(`${eventDate}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`)) / 86_400_000);
+    if (daysToEvent <= 14) return 1;
+  }
+  if (entry.decision_allowed) return 2;
+  if (entry.poc_complete === false) return 3;
+  if (entry.decision_blocker) return 4;
+  return 5;
+}
+
+function usablePipelineDate(value: string | null | undefined): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || year < 2000 || !month || month > 12 || !day || day > 31) return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() + 1 === month && parsed.getUTCDate() === day ? value : null;
+}
+
+function compareOptionalDates(a: string | null | undefined, b: string | null | undefined): number {
+  if (a && b) return a.localeCompare(b);
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+function pipelineMilestoneLabel(status: "approved" | "confirmed"): string {
+  return status === "approved" ? "Approval" : "Confirmation";
+}
+
+function pipelineDecisionHref(entry: LifecycleEntry): string {
+  const target = entry.decision_blocker ? BLOCKER_TARGETS[entry.decision_blocker] : undefined;
+  if (!target) return getEventOperationsLink(entry.event_id);
+  if (target.fieldKey === "poc_name") return `/events/${entry.event_id}/edit?step=0&section=poc`;
+  return `/events/${entry.event_id}?tab=${target.tab}&field=${encodeURIComponent(target.fieldKey)}`;
+}
+
+function PipelineDecisionBadge({ entry }: { entry: LifecycleEntry }) {
+  if (!entry.decision_status) {
+    return <span className="rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted etched">Review</span>;
+  }
+  const label = pipelineMilestoneLabel(entry.decision_status);
+  return entry.decision_allowed ? (
+    <span className="rounded-full bg-status-confirmed/15 px-2 py-0.5 text-[10px] font-semibold text-sage-text etched">Ready: {label}</span>
+  ) : (
+    <span className="rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold text-status-awaitingApproval etched">{label} blocked</span>
+  );
 }
 
 function taskRank(task: TasksResponse["tasks"][number], todayIso: string): number {
@@ -254,6 +288,56 @@ function taskRank(task: TasksResponse["tasks"][number], todayIso: string): numbe
   return 4;
 }
 
+type DashboardActionGroup = {
+  key: string;
+  lead: TasksResponse["tasks"][number];
+  count: number;
+};
+
+type PipelineDecisionGroup = {
+  key: string;
+  lead: LifecycleEntry;
+  count: number;
+};
+
+function groupPipelineDecisions(entries: LifecycleEntry[]): PipelineDecisionGroup[] {
+  const groups = new Map<string, PipelineDecisionGroup>();
+  for (const entry of entries) {
+    const eventDate = usablePipelineDate(entry.event_start_date) ?? entry.milestone_date;
+    const key = [entry.organisation_name ?? "", entry.title, eventDate, entry.venues ?? "", entry.status]
+      .map((value) => value.trim().toLowerCase())
+      .join("|");
+    const existing = groups.get(key);
+    if (existing) existing.count += 1;
+    else groups.set(key, { key, lead: entry, count: 1 });
+  }
+  return Array.from(groups.values());
+}
+
+function groupDashboardActions(tasks: TasksResponse["tasks"]): DashboardActionGroup[] {
+  const groups = new Map<string, DashboardActionGroup>();
+  for (const task of tasks) {
+    const key = task.event_id ?? `task:${task.id}`;
+    const existing = groups.get(key);
+    if (existing) existing.count += 1;
+    else groups.set(key, { key, lead: task, count: 1 });
+  }
+  return Array.from(groups.values());
+}
+
+function TaskAttentionBadge({ task, todayIso }: { task: TasksResponse["tasks"][number]; todayIso: string }) {
+  if (task.due_date && task.due_date < todayIso) {
+    return <span className="rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-semibold text-status-cancelled etched">Overdue</span>;
+  }
+  if (task.due_date === todayIso) {
+    return <span className="rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold text-status-awaitingApproval etched">Due today</span>;
+  }
+  if (task.priority === "high") {
+    return <span className="rounded-full bg-status-tentative/15 px-2 py-0.5 text-[10px] font-semibold text-status-tentative etched">High priority</span>;
+  }
+  return <span className="rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted etched">Open</span>;
+}
+
 function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolean {
   if (task.status !== "open" && task.status !== "in_progress") return false;
   if (task.event_status === "cancelled" || task.event_status === "regret") return false;
@@ -261,39 +345,16 @@ function isDashboardActionableTask(task: TasksResponse["tasks"][number]): boolea
   return true;
 }
 
-function SummaryCard({ label, value, status, href }: { label: string; value: number; status: EventStatus; href?: string }) {
+function SummaryCard({ label, value, status, hint }: { label: string; value: number | string; status: EventStatus; hint: string }) {
   const surface = getEventStatusSurface(status);
-  const body = (
-    <>
+  return (
+    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</span>
         <span className={"h-2.5 w-2.5 shrink-0 rounded-full evt-dot " + surface.dot} aria-hidden="true" />
       </div>
       <div className="text-3xl font-semibold text-ink-primary etched-deep">{value}</div>
-    </>
-  );
-  if (href) {
-    return (
-      <Link to={href} className="carved-card block rounded-2xl bg-marble-highlight/50 p-4 transition-colors hover:bg-marble-shadow/30">
-        {body}
-      </Link>
-    );
-  }
-  return (
-    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-4">
-      {body}
-    </div>
-  );
-}
-
-function PocSummaryCard({ value }: { value: number }) {
-  return (
-    <div className="carved-card rounded-2xl bg-status-awaitingApproval/10 p-4">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-status-awaitingApproval etched">POC Missing</span>
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-awaitingApproval" aria-hidden="true" />
-      </div>
-      <div className="text-3xl font-semibold text-status-awaitingApproval etched-deep">{value}</div>
+      <p className="mt-2 text-[11px] leading-4 text-ink-muted etched">{hint}</p>
     </div>
   );
 }

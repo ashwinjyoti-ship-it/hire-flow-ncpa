@@ -15,6 +15,7 @@ import { EventInput, StatusTransitionInput, type VenueBookingInputT } from "../l
 import { getEventDateIssues } from "../lib/event-date-policy";
 import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
+import { calculateEventFormReadiness } from "../lib/event-readiness";
 import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
@@ -32,6 +33,7 @@ import {
   syncEventReferenceChecklist,
   syncPocChecklist,
   reconcilePocTaskForEvent,
+  reconcileReadinessTasksForEvent,
   mergePocRequirementsForRead,
   updateChecklistItem,
 } from "../lib/operations";
@@ -390,6 +392,7 @@ eventRoutes.get("/:id", requireUser, async (c) => {
       ...(event as Record<string, unknown>),
       requirements: Object.keys(mergedRequirements).length > 0 ? mergedRequirements : null,
       poc_completion: poc,
+      event_readiness: calculateEventFormReadiness(mergedRequirements),
     },
     venue_bookings: bookings,
     activity,
@@ -468,6 +471,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
+  await reconcileReadinessTasksForEvent(db, id);
   return c.json({ id }, 201);
 });
 
@@ -565,6 +569,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
+  await reconcileReadinessTasksForEvent(db, id);
   return c.json({ ok: true });
 });
 
@@ -671,9 +676,10 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
 // GET /:id/checklist — per-event checklist grouped by module and lifecycle readiness.
 eventRoutes.get("/:id/checklist", requireUser, async (c) => {
   const id = c.req.param("id");
-  const [items, lifecycle] = await Promise.all([
+  const [items, lifecycle, event] = await Promise.all([
     getChecklistItems(c.env.DB, id),
     getEventLifecycle(c.env.DB, id),
+    c.env.DB.prepare("SELECT requirements FROM events WHERE id = ?").bind(id).first<{ requirements: string | null }>(),
   ]);
 
   const grouped: Record<string, Record<string, unknown[]>> = {};
@@ -685,7 +691,12 @@ eventRoutes.get("/:id/checklist", requireUser, async (c) => {
       options: item.options ? JSON.parse(item.options) as unknown[] : null,
     });
   }
-  return c.json({ checklist: grouped, lifecycle: lifecycle.readiness, poc: lifecycle.poc });
+  return c.json({
+    checklist: grouped,
+    lifecycle: lifecycle.readiness,
+    poc: lifecycle.poc,
+    readiness: calculateEventFormReadiness(event?.requirements),
+  });
 });
 
 const ChecklistUpdateInput = z.object({

@@ -13,6 +13,7 @@
  */
 import { IST_OFFSET_MINUTES, istToday, type ReportTask, type ScheduledEntry } from "./daily-report";
 import { listEventsWithIncompletePoc } from "./poc-completion";
+import { calculateEventFormReadiness } from "./event-readiness";
 
 export type BriefType = "morning" | "evening";
 
@@ -64,11 +65,31 @@ export type ConflictEntry = {
   venue: string;
   activity_date: string;
   level: "conflict" | "potential";
+  timing_state?: "overlap" | "unknown";
   a: { event_id: string; event_title: string; status: string };
   b: { event_id: string; event_title: string; status: string };
 };
 
+export function conflictAttentionLabel(conflict: ConflictEntry): string {
+  if (conflict.timing_state === "unknown") return `Same venue/date · review schedule · ${conflict.venue}`;
+  if (conflict.level === "conflict") return `Venue time conflict · ${conflict.venue}`;
+  return `Potential venue time conflict · ${conflict.venue}`;
+}
+
 export type AssigneeTasks = { assignee: string | null; tasks: ReportTask[] };
+
+export type MorningAttentionItem = {
+  key: string;
+  event_id: string | null;
+  event_title: string;
+  organisation_name: string | null;
+  event_start_date: string | null;
+  primary_action: string;
+  signals: string[];
+  href: string;
+  priority: number;
+  is_watchlist: boolean;
+};
 
 function addDaysIso(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00.000Z`);
@@ -121,30 +142,51 @@ function groupByAssignee(tasks: ReportTask[]): AssigneeTasks[] {
 /** Upcoming venue double-bookings within the window, pairwise, deduplicated. */
 async function findConflicts(db: D1Database, from: string, to: string): Promise<ConflictEntry[]> {
   const { results } = await db.prepare(
-    `SELECT se1.activity_date, vb1.venue,
-            e1.id AS a_id, e1.title AS a_title, e1.status AS a_status,
-            e2.id AS b_id, e2.title AS b_title, e2.status AS b_status
-     FROM schedule_entries se1
-     JOIN venue_bookings vb1 ON vb1.id = se1.venue_booking_id
-     JOIN events e1 ON e1.id = se1.event_id
-     JOIN schedule_entries se2 ON se2.activity_date = se1.activity_date
-     JOIN venue_bookings vb2 ON vb2.id = se2.venue_booking_id AND vb2.venue = vb1.venue
-     JOIN events e2 ON e2.id = se2.event_id AND e1.id < e2.id
-     WHERE se1.activity_date BETWEEN ? AND ?
-       AND e1.is_archived = 0 AND e1.status NOT IN ('cancelled','regret')
-       AND e2.is_archived = 0 AND e2.status NOT IN ('cancelled','regret')
-     GROUP BY se1.activity_date, vb1.venue, e1.id, e2.id
-     ORDER BY se1.activity_date, vb1.venue
+    `WITH slots AS (
+       SELECT se.activity_date, vb.venue,
+              e.id AS event_id, e.title AS event_title, e.status AS event_status,
+              LOWER(TRIM(COALESCE(o.name, ''))) AS organisation_key,
+              MIN(NULLIF(se.start_time, '')) AS first_start,
+              MAX(NULLIF(se.end_time, '')) AS last_end
+       FROM schedule_entries se
+       JOIN venue_bookings vb ON vb.id = se.venue_booking_id
+       JOIN events e ON e.id = se.event_id
+       LEFT JOIN organisations o ON o.id = e.organisation_id
+       WHERE se.activity_date BETWEEN ? AND ?
+         AND e.is_archived = 0 AND e.status NOT IN ('cancelled','regret')
+       GROUP BY se.activity_date, vb.venue, e.id
+     )
+     SELECT a.activity_date, a.venue,
+            a.event_id AS a_id, a.event_title AS a_title, a.event_status AS a_status,
+            b.event_id AS b_id, b.event_title AS b_title, b.event_status AS b_status,
+            CASE
+              WHEN a.first_start IS NULL OR a.last_end IS NULL OR b.first_start IS NULL OR b.last_end IS NULL
+                THEN 'unknown'
+              ELSE 'overlap'
+            END AS timing_state
+     FROM slots a
+     JOIN slots b ON b.activity_date = a.activity_date AND b.venue = a.venue AND a.event_id < b.event_id
+     WHERE NOT (
+       LOWER(TRIM(a.event_title)) = LOWER(TRIM(b.event_title))
+       AND a.organisation_key = b.organisation_key
+     )
+       AND (
+         a.first_start IS NULL OR a.last_end IS NULL OR b.first_start IS NULL OR b.last_end IS NULL
+         OR (a.first_start < b.last_end AND b.first_start < a.last_end)
+       )
+     ORDER BY a.activity_date, a.venue
      LIMIT 20`
   ).bind(from, to).all<{
     activity_date: string; venue: string;
     a_id: string; a_title: string; a_status: string;
     b_id: string; b_title: string; b_status: string;
+    timing_state: "overlap" | "unknown";
   }>();
   return results.map((r) => ({
     venue: r.venue,
     activity_date: r.activity_date,
-    level: r.a_status === "confirmed" && r.b_status === "confirmed" ? "conflict" : "potential",
+    level: r.timing_state === "overlap" && r.a_status === "confirmed" && r.b_status === "confirmed" ? "conflict" : "potential",
+    timing_state: r.timing_state,
     a: { event_id: r.a_id, event_title: r.a_title, status: r.a_status },
     b: { event_id: r.b_id, event_title: r.b_title, status: r.b_status },
   }));
@@ -169,10 +211,12 @@ export interface MorningBriefContent {
     unassigned_high_priority: ReportTask[];
     stale_enquiries: Array<EventRef & { enquiry_date: string | null; days_quiet: number }>;
   };
+  /** Event-deduplicated attention queue. Optional for backwards-compatible saved snapshots. */
+  attention?: MorningAttentionItem[];
   today_schedule: ScheduledEntry[];
   team_plan: AssigneeTasks[];
   risk_radar: {
-    low_readiness: Array<EventRef & { event_start_date: string | null; days_to_event: number; overall_completion: number; status: string }>;
+    low_readiness: Array<EventRef & { event_start_date: string | null; days_to_event: number; event_form_readiness: number; overall_completion?: number; status: string }>;
     blocked_items: Array<{ event_id: string; event_title: string; label: string; section: string; module: string }>;
     overdue_instalments: ReportTask[];
     unsigned_confirmations: Array<EventRef & { event_start_date: string | null; confirmation_status: string | null }>;
@@ -183,6 +227,14 @@ export interface MorningBriefContent {
       total_count: number;
       missing_labels: string[];
     }>;
+    totals?: {
+      low_readiness: number;
+      blocked_items: number;
+      overdue_instalments: number;
+      unsigned_confirmations: number;
+      poc_incomplete: number;
+      affected_events: number;
+    };
   };
   overdue: {
     total: number;
@@ -191,6 +243,146 @@ export interface MorningBriefContent {
     by_assignee: Array<{ assignee: string; count: number }>;
   };
   yesterday: { completed: number; new_enquiries: number; confirmations: number };
+}
+
+type MorningAttentionSources = Pick<MorningBriefContent, "decisions" | "risk_radar">;
+
+/** Collapse overlapping decision/risk signals into one ordered action per event. */
+export function buildMorningAttention({ decisions, risk_radar: risks }: MorningAttentionSources): MorningAttentionItem[] {
+  const items = new Map<string, MorningAttentionItem>();
+  const add = (item: MorningAttentionItem) => {
+    const existing = items.get(item.key);
+    if (!existing) {
+      items.set(item.key, item);
+      return;
+    }
+    if (!existing.signals.includes(item.primary_action)) existing.signals.push(item.primary_action);
+    existing.is_watchlist ||= item.is_watchlist;
+    if (item.priority < existing.priority) {
+      existing.primary_action = item.primary_action;
+      existing.href = item.href;
+      existing.priority = item.priority;
+    }
+  };
+  const eventItem = (
+    event: EventRef & { event_start_date?: string | null },
+    primary_action: string,
+    href: string,
+    priority: number,
+    is_watchlist: boolean,
+  ): MorningAttentionItem => ({
+    key: `event:${event.event_id}`,
+    event_id: event.event_id,
+    event_title: event.event_title,
+    organisation_name: event.organisation_name,
+    event_start_date: event.event_start_date ?? null,
+    primary_action,
+    signals: [primary_action],
+    href,
+    priority,
+    is_watchlist,
+  });
+
+  for (const conflict of decisions.conflicts) {
+    const eventIds = [conflict.a.event_id, conflict.b.event_id].sort();
+    const title = conflict.a.event_title === conflict.b.event_title
+      ? conflict.a.event_title
+      : `${conflict.a.event_title} / ${conflict.b.event_title}`;
+    const action = conflictAttentionLabel(conflict);
+    add({
+      key: `conflict:${conflict.activity_date}:${conflict.venue}:${eventIds.join(":")}`,
+      event_id: null,
+      event_title: title,
+      organisation_name: null,
+      event_start_date: conflict.activity_date,
+      primary_action: action,
+      signals: [action],
+      href: `/calendar?view=show&date=${conflict.activity_date}`,
+      priority: conflict.level === "conflict" ? 0 : conflict.timing_state === "unknown" ? 4 : 2,
+      is_watchlist: true,
+    });
+  }
+  for (const task of risks.overdue_instalments) {
+    add({
+      key: task.event_id ? `event:${task.event_id}` : `task:${task.id}`,
+      event_id: task.event_id,
+      event_title: task.event_title ?? task.title,
+      organisation_name: null,
+      event_start_date: null,
+      primary_action: `Payment follow-up overdue${task.due_date ? ` · due ${task.due_date}` : ""}`,
+      signals: [`Payment follow-up overdue${task.due_date ? ` · due ${task.due_date}` : ""}`],
+      href: task.event_id ? `/events/${task.event_id}?tab=accounts` : "/tasks",
+      priority: 1,
+      is_watchlist: true,
+    });
+  }
+  for (const event of risks.unsigned_confirmations) {
+    add(eventItem(event, "Signed confirmation still needed", `/events/${event.event_id}?tab=operations&field=confirmation_status`, 2, true));
+  }
+  for (const event of decisions.approvals_pending) {
+    add(eventItem(event, "VFH approval pending", `/events/${event.event_id}?tab=operations&field=approval_status`, 3, false));
+  }
+  for (const task of decisions.unassigned_high_priority) {
+    add({
+      key: task.event_id ? `event:${task.event_id}` : `task:${task.id}`,
+      event_id: task.event_id,
+      event_title: task.event_title ?? task.title,
+      organisation_name: null,
+      event_start_date: task.due_date,
+      primary_action: `Assign high-priority task · ${task.title}`,
+      signals: [`Assign high-priority task · ${task.title}`],
+      href: "/tasks",
+      priority: 3,
+      is_watchlist: false,
+    });
+  }
+  for (const blocked of risks.blocked_items) {
+    add(eventItem(
+      { event_id: blocked.event_id, event_title: blocked.event_title, organisation_name: null },
+      `Blocked · ${blocked.label}`,
+      `/events/${blocked.event_id}?tab=operations`,
+      4,
+      true,
+    ));
+  }
+  for (const event of risks.low_readiness) {
+    add(eventItem(event, `Event form ${event.event_form_readiness}% ready · starts in ${event.days_to_event}d`, `/events/${event.event_id}?tab=operations`, 5, true));
+  }
+  for (const event of risks.poc_incomplete) {
+    add(eventItem(event, `POC details needed · ${event.missing_labels.join(", ")}`, `/events/${event.event_id}/edit?step=0&section=poc`, 6, true));
+  }
+  for (const event of decisions.stale_enquiries) {
+    add(eventItem(event, `Enquiry quiet for ${event.days_quiet} days`, `/events/${event.event_id}`, 7, false));
+  }
+
+  const sorted = [...items.values()].sort((a, b) =>
+    a.priority - b.priority
+    || (a.event_start_date ?? "9999").localeCompare(b.event_start_date ?? "9999")
+    || a.event_title.localeCompare(b.event_title));
+  const logicalEvents = new Map<string, MorningAttentionItem>();
+  for (const item of sorted) {
+    const logicalKey = item.event_id && item.event_start_date && item.organisation_name
+      ? [item.organisation_name, item.event_title, item.event_start_date]
+        .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
+        .join("|")
+      : item.key;
+    const existing = logicalEvents.get(logicalKey);
+    if (!existing) {
+      logicalEvents.set(logicalKey, item);
+      continue;
+    }
+    for (const signal of item.signals) {
+      if (!existing.signals.includes(signal)) existing.signals.push(signal);
+    }
+    existing.is_watchlist ||= item.is_watchlist;
+    if (item.priority < existing.priority) {
+      existing.primary_action = item.primary_action;
+      existing.href = item.href;
+      existing.priority = item.priority;
+      existing.event_id = item.event_id;
+    }
+  }
+  return [...logicalEvents.values()];
 }
 
 export async function buildMorningBrief(db: D1Database, reportDate?: string): Promise<MorningBriefContent> {
@@ -215,7 +407,7 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
      WHERE e.is_archived = 0 AND e.event_type = 'VFH'
        AND e.approval_status IN ('pending','sent')
        AND e.status IN ('enquiry','tentative')
-     ORDER BY COALESCE(e.event_start_date, '9999') LIMIT 10`
+     ORDER BY COALESCE(e.event_start_date, '9999')`
   ).all<MorningBriefContent["decisions"]["approvals_pending"][number]>();
 
   const conflicts = await findConflicts(db, date, addDaysIso(date, settings.conflict_window_days));
@@ -224,7 +416,7 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
     `${BRIEF_TASK_SELECT}
      WHERE t.status IN ('open','in_progress') AND t.assignee_id IS NULL
        AND t.priority = 'high' AND t.due_date IS NOT NULL AND t.due_date <= ?
-     ORDER BY t.due_date LIMIT 10`
+     ORDER BY t.due_date`
   ).bind(date).all<ReportTask>();
 
   const { results: stale_enquiries } = await db.prepare(
@@ -234,36 +426,41 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
      FROM events e LEFT JOIN organisations o ON o.id = e.organisation_id
      WHERE e.is_archived = 0 AND e.status = 'enquiry'
        AND date(e.updated_at, '${IST}') <= date(?, '-' || ? || ' days')
-     ORDER BY e.updated_at LIMIT 10`
+     ORDER BY e.updated_at`
   ).bind(date, date, settings.stale_enquiry_days).all<MorningBriefContent["decisions"]["stale_enquiries"][number]>();
 
   // -- Risk radar ----------------------------------------------------------
   const windowEnd = addDaysIso(date, settings.readiness_window_days);
-  const { results: low_readiness } = await db.prepare(
+  const { results: lowReadinessCandidates } = await db.prepare(
     `SELECT e.id AS event_id, e.title AS event_title, o.name AS organisation_name,
-            e.event_start_date, e.overall_completion, e.status,
+            e.event_start_date, e.requirements, e.status,
             CAST(julianday(e.event_start_date) - julianday(?) AS INTEGER) AS days_to_event
      FROM events e LEFT JOIN organisations o ON o.id = e.organisation_id
      WHERE e.is_archived = 0 AND e.status IN ('tentative','approved','confirmed')
        AND e.event_start_date BETWEEN ? AND ?
-       AND e.overall_completion < ?
-     ORDER BY e.event_start_date LIMIT 10`
-  ).bind(date, date, windowEnd, settings.readiness_threshold)
-    .all<MorningBriefContent["risk_radar"]["low_readiness"][number]>();
+     ORDER BY e.event_start_date`
+  ).bind(date, date, windowEnd)
+    .all<EventRef & { event_start_date: string | null; requirements: string | null; days_to_event: number; status: string }>();
+  const low_readiness = lowReadinessCandidates
+    .map(({ requirements, ...event }) => ({
+      ...event,
+      event_form_readiness: calculateEventFormReadiness(requirements).percentage,
+    }))
+    .filter((event) => event.event_form_readiness < settings.readiness_threshold * 100);
 
   const { results: blocked_items } = await db.prepare(
     `SELECT ci.event_id, e.title AS event_title, ci.label, ci.section, ci.module
      FROM checklist_items ci
      JOIN events e ON e.id = ci.event_id
      WHERE ci.status = 'blocked' AND e.is_archived = 0 AND e.status NOT IN ('cancelled','regret')
-     ORDER BY ci.last_updated_at LIMIT 10`
+     ORDER BY ci.last_updated_at`
   ).all<MorningBriefContent["risk_radar"]["blocked_items"][number]>();
 
   const { results: overdue_instalments } = await db.prepare(
     `${BRIEF_TASK_SELECT}
      WHERE t.source_rule = 'instalment' AND t.status IN ('open','in_progress')
        AND t.due_date IS NOT NULL AND t.due_date < ?
-     ORDER BY t.due_date LIMIT 10`
+     ORDER BY t.due_date`
   ).bind(date).all<ReportTask>();
 
   const { results: unsigned_confirmations } = await db.prepare(
@@ -273,10 +470,10 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
      WHERE e.is_archived = 0 AND e.status = 'confirmed'
        AND e.event_start_date BETWEEN ? AND ?
        AND COALESCE(e.confirmation_status, 'none') != 'signed_received'
-     ORDER BY e.event_start_date LIMIT 10`
+     ORDER BY e.event_start_date`
   ).bind(date, addDaysIso(date, 14)).all<MorningBriefContent["risk_radar"]["unsigned_confirmations"][number]>();
 
-  const poc_incomplete = await listEventsWithIncompletePoc(db, { limit: 10 });
+  const poc_incomplete = await listEventsWithIncompletePoc(db, { limit: Number.MAX_SAFE_INTEGER });
 
   // -- Overdue, bucketed so it never overwhelms ---------------------------
   const { results: overdueRows } = await db.prepare(
@@ -327,8 +524,27 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
     unassigned_high_priority,
     stale_enquiries,
   };
-  const decisionsNeeded =
-    approvals_pending.length + conflicts.length + unassigned_high_priority.length + stale_enquiries.length;
+  const affectedEvents = new Set<string>();
+  for (const conflict of conflicts) {
+    affectedEvents.add(conflict.a.event_id);
+    affectedEvents.add(conflict.b.event_id);
+  }
+  for (const event of low_readiness) affectedEvents.add(event.event_id);
+  for (const item of blocked_items) affectedEvents.add(item.event_id);
+  for (const task of overdue_instalments) if (task.event_id) affectedEvents.add(task.event_id);
+  for (const event of unsigned_confirmations) affectedEvents.add(event.event_id);
+  for (const event of poc_incomplete) affectedEvents.add(event.event_id);
+  const riskTotals = {
+    low_readiness: low_readiness.length,
+    blocked_items: blocked_items.length,
+    overdue_instalments: overdue_instalments.length,
+    unsigned_confirmations: unsigned_confirmations.length,
+    poc_incomplete: poc_incomplete.length,
+    affected_events: affectedEvents.size,
+  };
+  const risk_radar = { low_readiness, blocked_items, overdue_instalments, unsigned_confirmations, poc_incomplete, totals: riskTotals };
+  const attention = buildMorningAttention({ decisions, risk_radar });
+  riskTotals.affected_events = attention.filter((item) => item.is_watchlist).length;
 
   return {
     brief_type: "morning",
@@ -338,13 +554,14 @@ export async function buildMorningBrief(db: D1Database, reportDate?: string): Pr
       scheduled_today: today_schedule.length,
       tasks_due_today: dueToday.length,
       overdue: withAge.length,
-      decisions_needed: decisionsNeeded,
+      decisions_needed: attention.length,
       new_enquiries_yesterday: yEnquiries?.n ?? 0,
     },
     decisions,
+    attention,
     today_schedule,
     team_plan,
-    risk_radar: { low_readiness, blocked_items, overdue_instalments, unsigned_confirmations, poc_incomplete },
+    risk_radar,
     overdue: {
       total: withAge.length,
       buckets,

@@ -154,19 +154,17 @@ describe("prepareVenueBookingsForSave", () => {
 });
 
 describe("requirement defaults", () => {
-  it("pre-fills every requirement dropdown with its negative option", () => {
+  it("starts venue requirement decisions unknown", () => {
     const defaults = createDefaultVenueRequirements();
-    expect(defaults.green_rooms_required).toBe("Not Required");
-    expect(defaults.video_recording).toBe("No");
-    expect(defaults.orchestra_pit_chairs).toBe("Keep");
-    expect(defaults.licenses_status).toBe("Not required");
-    expect(defaults.catering_breakfast_required).toBe("No");
+    expect(defaults).toEqual({});
+    expect(defaults.orchestra_pit_chairs).toBeUndefined();
+    expect(defaults.licenses_status).toBeUndefined();
   });
 
   it("merges saved values over defaults without dropping explicit choices", () => {
     expect(withDefaultVenueRequirements({ piano_required: "Yes" }).piano_required).toBe("Yes");
-    expect(withDefaultVenueRequirements({ piano_required: "Yes" }).licenses_status).toBe("Not required");
-    expect(createDefaultEventLevelRequirements().vendor_registration_form).toBe("No Applicable");
+    expect(withDefaultVenueRequirements({ piano_required: "Yes" }).licenses_status).toBeUndefined();
+    expect(createDefaultEventLevelRequirements().vendor_registration_form).toBe("Not Applicable");
   });
 });
 
@@ -183,12 +181,22 @@ describe("per-venue requirements helpers", () => {
       light: "Basic",
     });
 
-    expect(hydrated[0]!.requirements).toEqual({ sound: "PA", light: "Basic" });
+    expect(hydrated[0]!.requirements).toEqual({ light: "Basic" });
     expect(hydrated[1]!.requirements).toEqual({ sound: "Already set" });
     expect(pickEventLevelRequirements({
       program_officer_phone: "022 1",
       sound: "PA",
     })).toEqual({ program_officer_phone: "022 1" });
+  });
+
+  it("preserves legacy requirement keys when venue rows contain unrelated metadata", () => {
+    const bookings = [
+      { venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: { seating: "standard" }, notes: null, schedule_entries: [] },
+      { venue: "TATA", booking_status: "tentative", number_of_shows: 1, requirements: { staffing: "3" }, notes: null, schedule_entries: [] },
+    ] as VenueBookingInputT[];
+    const hydrated = hydrateVenueRequirements(bookings, { sound: "PA", parking: "2 bays" });
+    expect(hydrated[0]?.requirements).toEqual({ sound: "PA", parking: "2 bays", seating: "standard" });
+    expect(hydrated[1]?.requirements).toEqual({ staffing: "3" });
   });
 
   it("aggregates venue requirements for the denormalised event payload", () => {

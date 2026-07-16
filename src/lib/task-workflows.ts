@@ -11,6 +11,7 @@ export type TaskLike = {
   event_venues?: string | null;
   event_owner?: string | null;
   event_overall_completion?: number | null;
+  event_form_readiness?: number | null;
   task_type: "automatic" | "manual";
   source_checklist_item_id?: string | null;
   source_module?: "operations" | "accounts" | null;
@@ -43,6 +44,7 @@ export type EventCommandCard = {
     venues: string | null;
     owner: string | null;
     overallCompletion: number | null;
+    formReadiness: number | null;
   };
   tasks: TaskLike[];
   workflowGroups: Array<TaskGroup<WorkflowFamily>>;
@@ -78,6 +80,7 @@ const TIMING_ORDER: TimingGroupKey[] = ["overdue", "today", "tomorrow", "thisWee
 
 export function getWorkflowFamily(task: TaskLike): WorkflowFamily {
   if (task.source_rule === "poc_incomplete") return "beforeConfirmation";
+  if (task.source_rule?.startsWith("event_form_readiness:")) return "operations";
   const haystack = `${task.source_rule ?? ""} ${task.title}`.toLowerCase();
   if (haystack.includes("approval")) return "beforeConfirmation";
   if (haystack.includes("confirmation") || haystack.includes("letter") || haystack.includes("signed")) return "beforeConfirmation";
@@ -103,6 +106,10 @@ export function getEventOperationsLink(eventId: string | null | undefined): stri
 
 export function getTaskWorkLink(task: Pick<TaskLike, "event_id" | "source_module" | "source_field_key" | "source_rule" | "title">): string {
   if (!task.event_id) return "/tasks";
+  if (task.source_rule?.startsWith("event_form_readiness:")) {
+    const section = task.source_rule.slice("event_form_readiness:".length);
+    return `/events/${task.event_id}/edit?step=2&section=${encodeURIComponent(section)}`;
+  }
   const inferred = inferTaskWorkTarget(task);
   const tab = inferred.module;
   const field = inferred.fieldKey ? `&field=${encodeURIComponent(inferred.fieldKey)}` : "";
@@ -132,6 +139,7 @@ export function buildEventCommandCards(tasks: TaskLike[], todayIso = isoToday())
           venues: first.event_venues ?? null,
           owner: first.event_owner ?? first.assignee_name ?? null,
           overallCompletion: first.event_overall_completion ?? null,
+          formReadiness: first.event_form_readiness ?? null,
         },
         tasks: sortedTasks,
         workflowGroups: groupTasksByWorkflowOrder(sortedTasks, CARD_WORKFLOW_ORDER, todayIso),

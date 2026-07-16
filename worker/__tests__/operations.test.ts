@@ -330,13 +330,13 @@ describe("task lifecycle reconciliation", () => {
 });
 
 describe("event reference checklist sync", () => {
-  // Regression ("Ankh"): the Operations tab reads event_name/event_type/
-  // nature_of_event/venue from checklist_items.value, which was seeded NULL at
+  // Regression ("Ankh"): the Operations tab reads computed identity rows,
+  // which were seeded NULL at
   // create time. The event form's own data must be mirrored into those rows.
 
   type Upd = { sql: string; binds: unknown[] };
 
-  function buildDb(opts: { title: string; eventType: string | null; description: string | null; venues: string[]; manualFieldKey?: string; manualValue?: string }) {
+  function buildDb(opts: { title: string; eventType: string | null; description: string | null; venues: string[]; startDate?: string | null; endDate?: string | null }) {
     const updates: Upd[] = [];
     const db = {
       prepare(sql: string) {
@@ -344,8 +344,8 @@ describe("event reference checklist sync", () => {
           binds: [] as unknown[],
           bind(...values: unknown[]) { this.binds = values; return this; },
           async first() {
-            if (sql.includes("SELECT id, title, event_type, description FROM events")) {
-              return { id: "ev_ankh", title: opts.title, event_type: opts.eventType, description: opts.description };
+            if (sql.includes("SELECT id, title, event_type, event_start_date, event_end_date FROM events")) {
+              return { id: "ev_ankh", title: opts.title, event_type: opts.eventType, event_start_date: opts.startDate ?? null, event_end_date: opts.endDate ?? null };
             }
             return null;
           },
@@ -372,12 +372,14 @@ describe("event reference checklist sync", () => {
     return { db, updates };
   }
 
-  it("mirrors title/type/description/venue into the empty reference checklist rows", async () => {
+  it("mirrors title/type/date/venue into computed reference checklist rows", async () => {
     const { db, updates } = buildDb({
       title: "Ankh",
       eventType: "EE",
       description: "Hindi play, ticketed event",
       venues: ["JBT", "TATA"],
+      startDate: "2026-07-16",
+      endDate: "2026-07-17",
     });
 
     await syncEventReferenceChecklist(db, "ev_ankh");
@@ -385,22 +387,17 @@ describe("event reference checklist sync", () => {
     const fieldUpdates = updates.map((u) => u.binds[u.binds.length - 1]);
     expect(fieldUpdates).toContain("event_name");
     expect(fieldUpdates).toContain("event_type");
-    expect(fieldUpdates).toContain("nature_of_event");
+    expect(fieldUpdates).toContain("event_dates");
     expect(fieldUpdates).toContain("venue");
     const venueUpd = updates.find((u) => u.binds[u.binds.length - 1] === "venue");
     expect(venueUpd?.binds[0]).toBe("JBT, TATA");
     const nameUpd = updates.find((u) => u.binds[u.binds.length - 1] === "event_name");
     expect(nameUpd?.binds[0]).toBe("Ankh");
-    const natureUpd = updates.find((u) => u.binds[u.binds.length - 1] === "nature_of_event");
-    expect(natureUpd?.binds[0]).toBe("Hindi play, ticketed event");
-    // event_name always mirrors title; other reference fields only fill empty rows.
+    const datesUpd = updates.find((u) => u.binds[u.binds.length - 1] === "event_dates");
+    expect(datesUpd?.binds[0]).toBe("2026-07-16 – 2026-07-17");
+    // All identity rows are computed and always mirror the event form.
     for (const u of updates) {
-      const fieldKey = u.binds[u.binds.length - 1];
-      if (fieldKey === "event_name") {
-        expect(u.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
-      } else {
-        expect(u.sql).toContain("(value IS NULL OR TRIM(value) = '')");
-      }
+      expect(u.sql).not.toContain("(value IS NULL OR TRIM(value) = '')");
     }
   });
 
@@ -664,21 +661,16 @@ describe("requirements <-> checklist sync", () => {
   });
 });
 
-describe("event requirements section seed", () => {
-  it("defines six Event Requirements section rows and no granular req_* fields", () => {
+describe("event requirements stay on the event form", () => {
+  it("does not seed editable requirement rollups or granular req_* fields", () => {
     const execRows = CHECKLIST_DEFINITIONS.filter((d) => d.section === "Event Requirements");
-    expect(execRows).toHaveLength(6);
+    expect(execRows).toHaveLength(0);
     expect(CHECKLIST_DEFINITIONS.some((d) => d.field_key === "req_sound")).toBe(false);
   });
 
-  it("uses a single Catering Details status field instead of tier/type/pax", () => {
+  it("does not seed catering data-entry status fields", () => {
     const byKey = Object.fromEntries(CHECKLIST_DEFINITIONS.map((d) => [d.field_key, d]));
-    expect(byKey.catering_details).toMatchObject({
-      section: "Catering",
-      label: "Catering Details",
-      options: ["Not Received", "Received"],
-      default_value: "Received",
-    });
+    expect(byKey.catering_details).toBeUndefined();
     expect(byKey.caterer_tier).toBeUndefined();
     expect(byKey.type_of_catering).toBeUndefined();
     expect(byKey.no_of_pax).toBeUndefined();

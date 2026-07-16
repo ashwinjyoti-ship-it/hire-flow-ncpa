@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluatePocCompletion,
+  getPocFieldValuesForEvents,
   isPocFieldValueFilled,
   listEventsWithIncompletePoc,
   mergePocValues,
@@ -8,6 +9,25 @@ import {
 } from "../../worker/lib/poc-completion";
 
 describe("poc completion", () => {
+  it("batches large dashboard enrichments below the D1 parameter limit", async () => {
+    const bindSizes: number[] = [];
+    const db = {
+      prepare() {
+        return {
+          bind(...values: unknown[]) { bindSizes.push(values.length); return this; },
+          async all() { return { results: [] }; },
+        };
+      },
+    } as unknown as D1Database;
+
+    const eventIds = Array.from({ length: 230 }, (_, index) => `ev_${index}`);
+    const values = await getPocFieldValuesForEvents(db, eventIds);
+
+    expect(Math.max(...bindSizes)).toBeLessThanOrEqual(100);
+    expect(bindSizes.length).toBe(8);
+    expect(values.size).toBe(eventIds.length);
+  });
+
   it("treats vendor registration Pending as incomplete", () => {
     expect(isPocFieldValueFilled("vendor_registration_form", "Pending")).toBe(false);
     expect(isPocFieldValueFilled("vendor_registration_form", "Received")).toBe(true);
