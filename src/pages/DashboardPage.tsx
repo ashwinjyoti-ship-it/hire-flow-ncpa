@@ -8,7 +8,7 @@ import { apiGet } from "../lib/api";
 import { dashboardOperationalCounts, operationalLifecycleEntries } from "../lib/dashboard-operational-counts";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { eventDisplayName } from "../lib/event-display";
-import { getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
+import { getDaysOverdue, getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
@@ -79,6 +79,7 @@ export function DashboardPage() {
     .filter(isDashboardActionableTask)
     .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
   const actionGroups = groupDashboardActions(tasks);
+  const overdueActionGroupCount = actionGroups.filter((group) => getDaysOverdue(group.lead, todayIso) > 0).length;
   const operationalEntries = operationalLifecycleEntries(lifecycleEntries, todayIso);
   const operationalCounts = dashboardOperationalCounts(lifecycleEntries, todayIso);
   const pipelineDecisions = operationalEntries
@@ -184,8 +185,15 @@ export function DashboardPage() {
         </section>
 
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5 lg:col-span-3">
-          <div className="mb-1 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Next Actions</h2>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Next Actions</h2>
+              {overdueActionGroupCount > 0 && (
+                <span className="text-[11px] font-semibold text-status-cancelled etched">
+                  {overdueActionGroupCount} event{overdueActionGroupCount === 1 ? "" : "s"} with overdue actions
+                </span>
+              )}
+            </div>
             <Link to="/tasks" className="text-xs text-sage-text hover:underline">All tasks →</Link>
           </div>
           <p className="mb-4 text-[11px] text-ink-muted etched">One priority action per event · up to {DASHBOARD_VISIBLE_EVENTS} visible at once · scroll for more</p>
@@ -199,6 +207,7 @@ export function DashboardPage() {
             >
               {actionGroups.map((group) => {
                 const task = group.lead;
+                const daysOverdue = getDaysOverdue(task, todayIso);
                 return (
                   <li key={group.key} className="min-h-[6.75rem]">
                     <Link to={getTaskWorkLink(task)} className="flex h-full items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
@@ -211,7 +220,10 @@ export function DashboardPage() {
                         </span>
                         <span className="mt-0.5 block text-[11px] text-ink-muted etched">
                           {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
-                          {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
+                          <span className={daysOverdue > 0 ? "font-semibold text-status-cancelled" : undefined}>
+                            {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
+                            {daysOverdue > 0 ? ` · ${daysOverdue} ${daysOverdue === 1 ? "day" : "days"} late` : ""}
+                          </span>
                           {group.count > 1 ? ` · ${group.count} open tasks` : ""}
                         </span>
                       </span>
@@ -333,9 +345,7 @@ function groupDashboardActions(tasks: TasksResponse["tasks"]): DashboardActionGr
 }
 
 function TaskAttentionBadge({ task, todayIso }: { task: TasksResponse["tasks"][number]; todayIso: string }) {
-  if (task.due_date && task.due_date < todayIso) {
-    return <span className="rounded-full bg-status-cancelled/15 px-2 py-0.5 text-[10px] font-semibold text-status-cancelled etched">Overdue</span>;
-  }
+  if (getDaysOverdue(task, todayIso) > 0) return null;
   if (task.due_date === todayIso) {
     return <span className="rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold text-status-awaitingApproval etched">Due today</span>;
   }

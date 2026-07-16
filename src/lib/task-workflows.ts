@@ -188,6 +188,11 @@ export function getTimingGroup(task: TaskLike, todayIso = isoToday()): TimingGro
   return "later";
 }
 
+export function getDaysOverdue(task: Pick<TaskLike, "due_date">, todayIso = isoToday()): number {
+  if (!task.due_date) return 0;
+  return Math.max(0, -daysBetween(todayIso, task.due_date));
+}
+
 function buildGroups<T extends string>(
   tasks: TaskLike[],
   order: T[],

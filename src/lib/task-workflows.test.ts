@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEventCommandCards,
+  getDaysOverdue,
   getEventOperationsLink,
   groupTasksByTiming,
   groupTasksByWorkflowLane,
@@ -93,6 +94,13 @@ describe("task workflow helpers", () => {
       ["payments", ["tomorrow"]],
       ["manual", ["nodate"]],
     ]);
+  });
+
+  it("reports exact overdue age without treating today or future work as late", () => {
+    expect(getDaysOverdue(task({ id: "late", title: "Late task", due_date: "2026-07-01" }), today)).toBe(5);
+    expect(getDaysOverdue(task({ id: "today", title: "Today task", due_date: today }), today)).toBe(0);
+    expect(getDaysOverdue(task({ id: "future", title: "Future task", due_date: "2026-07-20" }), today)).toBe(0);
+    expect(getDaysOverdue(task({ id: "undated", title: "Undated task", due_date: null }), today)).toBe(0);
   });
 
   it("uses user-facing task intent labels instead of raw workflow rules", () => {

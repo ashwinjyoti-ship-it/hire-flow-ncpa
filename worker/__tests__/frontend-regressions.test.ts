@@ -378,6 +378,10 @@ describe("frontend regression guards", () => {
     expect(dashboard).toContain("DASHBOARD_VISIBLE_EVENTS = 5");
     expect(dashboard).toContain("DASHBOARD_LIST_MAX_HEIGHT");
     expect(dashboard).toContain("overflow-y-auto scroll-slim");
+    expect(dashboard).toContain("overdueActionGroupCount");
+    expect(dashboard).toContain("with overdue actions");
+    expect(dashboard).toContain("daysOverdue === 1");
+    expect(dashboard).not.toContain(">Overdue</span>");
     expect(dashboard).not.toContain("pipelineDecisionGroups.slice(0, 8)");
     expect(dashboard).not.toContain("actionGroups.slice(0, 8)");
     expect(dashboard).not.toContain("Lifecycle Queue");
