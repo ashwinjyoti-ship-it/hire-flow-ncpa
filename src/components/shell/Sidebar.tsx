@@ -26,12 +26,14 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   return (
     <>
-      <nav className="scroll-slim hidden w-56 shrink-0 overflow-y-auto lg:block" aria-label="Primary">
+      <nav className="hidden w-56 shrink-0 overflow-hidden lg:flex lg:flex-col" aria-label="Primary">
         <SidebarCard onNavigate={onClose} />
+        <SidebarVine />
       </nav>
 
-      <nav className="scroll-slim hidden w-20 shrink-0 overflow-y-auto md:block lg:hidden" aria-label="Primary">
+      <nav className="hidden w-20 shrink-0 overflow-hidden md:flex md:flex-col lg:hidden" aria-label="Primary">
         <TabletRail onNavigate={onClose} />
+        <SidebarVine compact />
       </nav>
 
       <div className={clsx("fixed inset-0 z-[60] md:hidden", mobileOpen ? "pointer-events-auto" : "pointer-events-none")}>
@@ -67,9 +69,22 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   );
 }
 
+function SidebarVine({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={clsx("sidebar-vine-frame", compact && "sidebar-vine-frame--compact")} aria-hidden="true">
+      <img
+        src="/assets/decorative-vine.png?v=2"
+        alt=""
+        draggable={false}
+        className={clsx("sidebar-vine", compact && "sidebar-vine--compact")}
+      />
+    </div>
+  );
+}
+
 function SidebarCard({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <div className="carved-header rounded-2xl bg-marble-highlight/70 p-3 backdrop-blur-sm">
+    <div className="carved-header shrink-0 rounded-2xl bg-marble-highlight/70 p-3 backdrop-blur-sm">
       <ul className="space-y-1">
         {NAV.map((item) => (
           <li key={item.to}>
@@ -99,7 +114,7 @@ function SidebarCard({ onNavigate }: { onNavigate?: () => void }) {
 
 function TabletRail({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <div className="carved-header rounded-2xl bg-marble-highlight/70 p-2 backdrop-blur-sm">
+    <div className="carved-header shrink-0 rounded-2xl bg-marble-highlight/70 p-2 backdrop-blur-sm">
       <ul className="space-y-1.5">
         {NAV.map((item) => (
           <li key={item.to}>

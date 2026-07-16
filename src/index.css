@@ -152,6 +152,42 @@ body {
   box-shadow: 0 1px 1px rgba(90, 88, 82, 0.18);
 }
 
+/* Decorative botanical continuation below the persistent navigation. */
+.sidebar-vine-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  margin-top: 0.5rem;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 9%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 9%, #000 86%, transparent 100%);
+}
+
+.sidebar-vine {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  width: clamp(20rem, calc(100dvh - 28rem), 40rem);
+  height: auto;
+  max-width: none;
+  transform: translateX(-50%);
+  opacity: 0.92;
+  filter: saturate(1.16) hue-rotate(8deg) contrast(1.02);
+}
+
+.sidebar-vine-frame--compact {
+  margin-top: 0.25rem;
+}
+
+.sidebar-vine--compact {
+  top: 0.5rem;
+  width: 13rem;
+  height: auto;
+  opacity: 0.72;
+}
+
 /* ---- Accessibility: visible focus (Deep Terracotta accent) ---- */
 :focus-visible {
   outline: 2px solid #b85c38;
