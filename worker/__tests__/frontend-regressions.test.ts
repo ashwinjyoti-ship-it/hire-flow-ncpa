@@ -236,7 +236,8 @@ describe("frontend regression guards", () => {
 
     expect(dashboard).toContain("Active enquiries");
     expect(dashboard).toContain("Awaiting confirmation");
-    expect(dashboard).toContain("Upcoming confirmed");
+    expect(dashboard).toContain('label="Confirmed"');
+    expect(dashboard).toContain("Confirmed events remain counted through their start date");
     expect(dashboard).toContain("dashboardOperationalCounts");
     expect(dashboard).not.toContain('label="Regret"');
     expect(dashboard).not.toContain('label="Cancelled"');
@@ -295,11 +296,23 @@ describe("frontend regression guards", () => {
   it("lets lifecycle calendar open overflowed day entries in a dedicated panel", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
+    expect(calendar).toContain("CALENDAR_VISIBLE_EVENTS_PER_DAY = 3");
     expect(calendar).toContain("LifecycleOverflowPanel");
     expect(calendar).toContain("setLifecycleOverflow");
     expect(calendar).toContain("onOpenOverflow");
     expect(calendar).toContain("View all lifecycle records");
-    expect(calendar).toContain("entries.slice(5)");
+    expect(calendar).toContain("entries.slice(CALENDAR_VISIBLE_EVENTS_PER_DAY)");
+  });
+
+  it("caps show-calendar day cells and exposes every hidden event", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("ShowCalendarOverflowPanel");
+    expect(calendar).toContain("setShowOverflow");
+    expect(calendar).toContain("chips.slice(0, CALENDAR_VISIBLE_EVENTS_PER_DAY)");
+    expect(calendar).toContain("hiddenChips.length");
+    expect(calendar).toContain("View all show events");
+    expect(calendar).toContain("h-[10rem]");
   });
 
   it("keeps missing call-time fields on the new event form", () => {
@@ -358,8 +371,15 @@ describe("frontend regression guards", () => {
     expect(dashboard).toContain("groupPipelineDecisions");
     expect(dashboard).toContain("pipelineDecisionHref");
     expect(dashboard).toContain("group.count - 1");
+    expect(dashboard).toContain("${group.count} open tasks");
+    expect(dashboard).not.toContain("+{group.count - 1} more");
     expect(dashboard).toContain("matching");
     expect(dashboard).toContain("usablePipelineDate");
+    expect(dashboard).toContain("DASHBOARD_VISIBLE_EVENTS = 5");
+    expect(dashboard).toContain("DASHBOARD_LIST_MAX_HEIGHT");
+    expect(dashboard).toContain("overflow-y-auto scroll-slim");
+    expect(dashboard).not.toContain("pipelineDecisionGroups.slice(0, 8)");
+    expect(dashboard).not.toContain("actionGroups.slice(0, 8)");
     expect(dashboard).not.toContain("Lifecycle Queue");
     expect(dashboard).not.toContain("Work Needing Attention");
     expect(dashboard).not.toContain("POC Still Missing");

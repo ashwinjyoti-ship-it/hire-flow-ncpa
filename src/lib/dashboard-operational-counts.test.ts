@@ -43,7 +43,7 @@ describe("dashboard operational lifecycle", () => {
     expect(dashboardOperationalCounts(rows, "2026-07-16")).toEqual({
       activeEnquiries: 1,
       awaitingConfirmation: 1,
-      upcomingConfirmed: 1,
+      confirmed: 1,
     });
     expect(operationalLifecycleEntries(rows, "2026-07-16").map((row) => row.event_id)).toEqual([
       "recent_undated",
@@ -65,6 +65,6 @@ describe("dashboard operational lifecycle", () => {
       event_start_date: "2026-07-16",
       event_end_date: "2026-07-18",
     });
-    expect(dashboardOperationalCounts([alreadyStarted, startsToday], "2026-07-16").upcomingConfirmed).toBe(1);
+    expect(dashboardOperationalCounts([alreadyStarted, startsToday], "2026-07-16").confirmed).toBe(1);
   });
 });

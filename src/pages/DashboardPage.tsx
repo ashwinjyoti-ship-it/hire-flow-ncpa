@@ -57,6 +57,9 @@ type TasksResponse = {
 };
 
 const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_letter"]);
+const DASHBOARD_VISIBLE_EVENTS = 5;
+const DASHBOARD_LIST_MAX_HEIGHT = `${DASHBOARD_VISIBLE_EVENTS * 6.75 + (DASHBOARD_VISIBLE_EVENTS - 1) * 0.5}rem`;
+const DASHBOARD_LIST_STYLE = { maxHeight: DASHBOARD_LIST_MAX_HEIGHT } as const;
 
 export function DashboardPage() {
   const today = new Date();
@@ -119,10 +122,10 @@ export function DashboardPage() {
           hint="Upcoming tentative and approved events"
         />
         <SummaryCard
-          label="Upcoming confirmed"
-          value={lifecycleLoadFailed ? "—" : operationalCounts.upcomingConfirmed}
+          label="Confirmed"
+          value={lifecycleLoadFailed ? "—" : operationalCounts.confirmed}
           status="confirmed"
-          hint="Confirmed events starting today or later"
+          hint="Confirmed events remain counted through their start date"
         />
       </div>
 
@@ -132,18 +135,22 @@ export function DashboardPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Pipeline Decisions</h2>
             <Link to="/calendar?view=lifecycle" className="text-xs text-sage-text hover:underline">Lifecycle calendar →</Link>
           </div>
-          <p className="mb-4 text-[11px] text-ink-muted etched">One event per row · ready decisions and immediate blockers first</p>
+          <p className="mb-4 text-[11px] text-ink-muted etched">One event per row · up to {DASHBOARD_VISIBLE_EVENTS} visible at once · scroll for more</p>
           {lifecycleLoadFailed ? (
             <p className="text-sm text-status-cancelled etched">Pipeline decisions could not be loaded.</p>
           ) : pipelineDecisionGroups.length === 0 ? (
             <p className="text-sm text-ink-muted etched">No enquiry, tentative, or approved events need a pipeline decision.</p>
           ) : (
-            <ul className="space-y-2">
-              {pipelineDecisionGroups.slice(0, 8).map((group) => {
+            <ul
+              className="space-y-2 overflow-y-auto scroll-slim pr-1"
+              style={DASHBOARD_LIST_STYLE}
+              aria-label={`${pipelineDecisionGroups.length} pipeline decision events`}
+            >
+              {pipelineDecisionGroups.map((group) => {
                 const entry = group.lead;
                 return (
-                <li key={group.key}>
-                  <Link to={pipelineDecisionHref(entry)} className="flex items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
+                <li key={group.key} className="min-h-[6.75rem]">
+                  <Link to={pipelineDecisionHref(entry)} className="flex h-full items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate text-sm font-semibold text-ink-primary etched-deep">{entry.organisation_name ?? entry.title}</span>
@@ -181,24 +188,23 @@ export function DashboardPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Next Actions</h2>
             <Link to="/tasks" className="text-xs text-sage-text hover:underline">All tasks →</Link>
           </div>
-          <p className="mb-4 text-[11px] text-ink-muted etched">One priority action per event · overdue and due-today work first</p>
+          <p className="mb-4 text-[11px] text-ink-muted etched">One priority action per event · up to {DASHBOARD_VISIBLE_EVENTS} visible at once · scroll for more</p>
           {actionGroups.length === 0 ? (
             <p className="text-sm text-ink-muted etched">No open actions.</p>
           ) : (
-            <ul className="space-y-2">
-              {actionGroups.slice(0, 8).map((group) => {
+            <ul
+              className="space-y-2 overflow-y-auto scroll-slim pr-1"
+              style={DASHBOARD_LIST_STYLE}
+              aria-label={`${actionGroups.length} next-action events`}
+            >
+              {actionGroups.map((group) => {
                 const task = group.lead;
                 return (
-                  <li key={group.key}>
-                    <Link to={getTaskWorkLink(task)} className="flex items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
+                  <li key={group.key} className="min-h-[6.75rem]">
+                    <Link to={getTaskWorkLink(task)} className="flex h-full items-start gap-3 rounded-lg bg-marble-shadow/30 px-3 py-2.5 hover:bg-marble-shadow/50">
                       <span className="min-w-0 flex-1">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-ink-primary etched-deep">
-                            {task.organisation_name ?? task.event_title ?? "Unlinked task"}
-                          </span>
-                          {group.count > 1 && (
-                            <span className="shrink-0 rounded-full bg-marble-shadow/60 px-2 py-0.5 text-[10px] font-semibold text-ink-muted etched">+{group.count - 1} more</span>
-                          )}
+                        <span className="block truncate text-sm font-semibold text-ink-primary etched-deep">
+                          {task.organisation_name ?? task.event_title ?? "Unlinked task"}
                         </span>
                         <span className="mt-0.5 block truncate text-[12px] font-medium text-ink-secondary etched">
                           {task.title}
@@ -206,6 +212,7 @@ export function DashboardPage() {
                         <span className="mt-0.5 block text-[11px] text-ink-muted etched">
                           {task.event_title && task.event_title !== task.organisation_name ? `${eventDisplayName(task.event_title, task.organisation_name)} · ` : ""}
                           {task.due_date ? `Due ${formatDate(task.due_date)}` : "No due date"}
+                          {group.count > 1 ? ` · ${group.count} open tasks` : ""}
                         </span>
                       </span>
                       <span className="flex shrink-0 flex-col items-end gap-1">

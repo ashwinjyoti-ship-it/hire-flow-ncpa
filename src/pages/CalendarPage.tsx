@@ -71,6 +71,7 @@ type LifecycleResponse = {
   poc_incomplete_count?: number;
 };
 type LifecycleOverflowState = { date: string; entries: LifecycleEntry[] };
+type ShowOverflowState = { date: string; entries: CalEntry[] };
 
 type View = "show" | "lifecycle";
 type LifecycleType =
@@ -82,6 +83,7 @@ type LifecycleType =
   | "cancelled";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CALENDAR_VISIBLE_EVENTS_PER_DAY = 3;
 
 function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
 /** Last calendar day of the month (local). day 0 of next month = last day of this month. */
@@ -120,6 +122,7 @@ export function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [sideEvent, setSideEvent] = useState<CalEntry | null>(null);
   const [lifecycleOverflow, setLifecycleOverflow] = useState<LifecycleOverflowState | null>(null);
+  const [showOverflow, setShowOverflow] = useState<ShowOverflowState | null>(null);
 
   // URL is the single source of truth — avoids the dual-state race that wiped `q`
   // right after a topbar/global search navigation.
@@ -150,6 +153,7 @@ export function CalendarPage() {
       params.set("view", nextView);
     });
     setLifecycleOverflow(null);
+    setShowOverflow(null);
     setSideEvent(null);
   }
 
@@ -157,6 +161,9 @@ export function CalendarPage() {
     updateParams((params) => {
       params.set("from", isoDate(startOfMonth(nextCursor)));
     });
+    setLifecycleOverflow(null);
+    setShowOverflow(null);
+    setSideEvent(null);
   }
 
   function setFilter(key: "status" | "venue" | "type" | "owner" | "q", value: string) {
@@ -401,10 +408,20 @@ export function CalendarPage() {
       ) : isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (
-        <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} />
+        <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} onOpenOverflow={setShowOverflow} />
       )}
 
       {sideEvent && <ShowCalendarDetailPanel entry={sideEvent} onClose={() => setSideEvent(null)} />}
+      {showOverflow && (
+        <ShowCalendarOverflowPanel
+          overflow={showOverflow}
+          onClose={() => setShowOverflow(null)}
+          onPick={(entry) => {
+            setShowOverflow(null);
+            setSideEvent(entry);
+          }}
+        />
+      )}
       {lifecycleOverflow && <LifecycleOverflowPanel overflow={lifecycleOverflow} onClose={() => setLifecycleOverflow(null)} />}
     </div>
   );
@@ -417,11 +434,11 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
   const reqs = Object.keys(venueReqs).length > 0 ? { ...eventReqs, ...venueReqs } : eventReqs;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-detail-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View show details</div>
-            <h3 className="text-xl font-semibold text-neutral-950">{entry.title}</h3>
+            <h3 id="show-calendar-detail-title" className="text-xl font-semibold text-neutral-950">{entry.title}</h3>
             <p className="mt-1 text-xs text-neutral-600">
               {entry.organisation_name ?? "No organisation"}{entry.event_code ? ` · ${entry.event_code}` : ""}
             </p>
@@ -604,10 +621,10 @@ function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate:
       <div className="grid grid-cols-7 gap-1.5 sm:gap-2 lg:gap-3">
         {cells.map(({ date: d, key, inCurrentMonth }) => {
           const entries = inCurrentMonth ? byDate[key] ?? [] : [];
-          const hiddenEntries = entries.slice(5);
+          const hiddenEntries = entries.slice(CALENDAR_VISIBLE_EVENTS_PER_DAY);
           const isToday = key === today;
           return (
-            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[132px] sm:p-2 lg:min-h-[144px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
+            <article key={key} className={"h-[10rem] min-w-0 overflow-hidden rounded-xl p-1.5 sm:h-[13rem] sm:p-2 lg:h-[14rem] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 {shouldShowLifecycleStepCountBadge() && entries.length > 0 ? (
                   <span className="hidden min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched sm:block">
@@ -621,13 +638,15 @@ function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate:
                 </span>
               </div>
               <div className="min-w-0 space-y-1 sm:space-y-1.5">
-                {entries.slice(0, 5).map((entry) => (
+                {entries.slice(0, CALENDAR_VISIBLE_EVENTS_PER_DAY).map((entry) => (
                   <LifecycleChip key={entry.id} entry={entry} />
                 ))}
                 {hiddenEntries.length > 0 && (
                   <button
                     type="button"
                     onClick={() => onOpenOverflow({ date: key, entries })}
+                    aria-label={`View all ${entries.length} lifecycle events on ${formatDate(key)}`}
+                    title={`View ${hiddenEntries.length} more lifecycle events`}
                     className="block w-full truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-left text-[10px] font-medium text-ink-muted etched transition hover:bg-marble-shadow/70 sm:px-2"
                   >
                     +{hiddenEntries.length} more
@@ -642,14 +661,65 @@ function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate:
   );
 }
 
+function ShowCalendarOverflowPanel({ overflow, onClose, onPick }: { overflow: ShowOverflowState; onClose: () => void; onPick: (entry: CalEntry) => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View all show events</div>
+            <h3 id="show-calendar-overflow-title" className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
+            <p className="mt-1 text-xs text-neutral-600">
+              {overflow.entries.length} event{overflow.entries.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+        </div>
+
+        <div className="space-y-3">
+          {overflow.entries.map((entry) => {
+            const surface = getEventStatusSurface(entry.status);
+            return (
+              <button
+                key={entry.event_id}
+                type="button"
+                onClick={() => onPick(entry)}
+                className="block w-full rounded-xl border border-white/65 bg-white/46 p-4 text-left hover:bg-white/65"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={"h-2 w-2 shrink-0 rounded-full " + surface.dot} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                    {STATUS_LABELS[entry.status] ?? entry.status}
+                  </span>
+                </div>
+                <div className="mt-2 text-base font-semibold text-neutral-950">
+                  {entry.organisation_name ?? entry.title}
+                </div>
+                {entry.organisation_name && entry.organisation_name !== entry.title && (
+                  <div className="mt-1 text-sm text-neutral-700">{entry.title}</div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-600">
+                  {entry.event_code && <span>{entry.event_code}</span>}
+                  {entry.venue && <span>{entry.venue}</span>}
+                  {entry.event_owner && <span>{entry.event_owner}</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOverflowState; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="lifecycle-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View all lifecycle records</div>
-            <h3 className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
+            <h3 id="lifecycle-overflow-title" className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
             <p className="mt-1 text-xs text-neutral-600">
               {overflow.entries.length} lifecycle record{overflow.entries.length === 1 ? "" : "s"}
             </p>
@@ -696,6 +766,7 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
   return (
     <Link
       to={`/events/${entry.event_id}`}
+      title={`${entry.organisation_name ?? entry.title} · ${LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}`}
       className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
       <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
@@ -703,21 +774,18 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
+        {entry.poc_complete === false && (
+          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">POC</span>
+        )}
       </div>
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
         {entry.organisation_name ?? entry.title}
       </div>
-      {entry.venues && <div className="truncate text-[10px] text-ink-muted etched">{entry.venues}</div>}
-      {entry.poc_complete === false && (
-        <div className="mt-1">
-          <PocStatusBadge complete={false} />
-        </div>
-      )}
     </Link>
   );
 }
 
-function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void }) {
+function MonthGrid({ byDate, today, cursor, onPick, onOpenOverflow }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void; onOpenOverflow: (overflow: ShowOverflowState) => void }) {
   const cells = calendarCellsForMonth(cursor);
   return (
     <div>
@@ -730,30 +798,42 @@ function MonthGrid({ byDate, today, cursor, onPick }: { byDate: Record<string, C
         {cells.map(({ date: d, key, inCurrentMonth }) => {
           const entries = inCurrentMonth ? byDate[key] ?? [] : [];
           const isToday = key === today;
-          // Group entries by organisation, pick the "worst" (lowest-rank) status as the chip colour.
-          const byOrg = new Map<string, { name: string; status: EventStatus; entry: CalEntry }>();
+          // One chip per event. Multiple venue activities for the same event collapse
+          // to the most urgent status so the day limit represents events, not rows.
+          const byEvent = new Map<string, { name: string; status: EventStatus; entry: CalEntry }>();
           for (const e of entries) {
-            const orgKey = e.organisation_name ?? "—";
-            const existing = byOrg.get(orgKey);
+            const existing = byEvent.get(e.event_id);
             if (!existing || STATUS_RANK[e.status] < STATUS_RANK[existing.status]) {
-              byOrg.set(orgKey, { name: orgKey, status: e.status, entry: e });
+              byEvent.set(e.event_id, { name: e.organisation_name ?? e.title, status: e.status, entry: e });
             }
           }
-          const chips = Array.from(byOrg.values());
+          const chips = Array.from(byEvent.values());
+          const hiddenChips = chips.slice(CALENDAR_VISIBLE_EVENTS_PER_DAY);
           return (
-            <article key={key} className={"min-w-0 overflow-hidden rounded-xl p-1.5 sm:min-h-[118px] sm:p-2 lg:min-h-[128px] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
+            <article key={key} className={"h-[10rem] min-w-0 overflow-hidden rounded-xl p-1.5 sm:h-[13rem] sm:p-2 lg:h-[14rem] lg:p-3 " + (isToday ? "carved-today bg-sage-today-wash" : inCurrentMonth ? "carved bg-marble-highlight/40" : "carved bg-marble-shadow/20")}>
               <div className="mb-2 flex justify-end">
                 <span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold etched sm:h-6 sm:w-6 sm:text-xs " + (isToday ? "bg-sage text-white sage-pip" : inCurrentMonth ? "text-ink-primary" : "text-ink-overflow")}>
                   {d.getDate()}
                 </span>
               </div>
               <div className="min-w-0 space-y-1 sm:space-y-1.5">
-                {chips.map((c, i) => (
-                  <button key={i} type="button" onClick={() => onPick(c.entry)} className={"carved-card flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left sm:gap-1.5 sm:px-2 " + getEventStatusSurface(c.status).chip}>
+                {chips.slice(0, CALENDAR_VISIBLE_EVENTS_PER_DAY).map((c) => (
+                  <button key={c.entry.event_id} type="button" onClick={() => onPick(c.entry)} title={`${c.name} · ${c.entry.title}`} className={"carved-card flex w-full min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left sm:gap-1.5 sm:px-2 " + getEventStatusSurface(c.status).chip}>
                     <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + getEventStatusSurface(c.status).dot} />
                     <span className="min-w-0 truncate text-[10px] font-medium etched sm:text-[11px]">{c.name}</span>
                   </button>
                 ))}
+                {hiddenChips.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenOverflow({ date: key, entries: chips.map((chip) => chip.entry) })}
+                    aria-label={`View all ${chips.length} show events on ${formatDate(key)}`}
+                    title={`View ${hiddenChips.length} more show events`}
+                    className="block w-full truncate rounded-md bg-marble-shadow/50 px-1.5 py-1 text-left text-[10px] font-medium text-ink-muted etched transition hover:bg-marble-shadow/70 sm:px-2"
+                  >
+                    +{hiddenChips.length} more
+                  </button>
+                )}
               </div>
             </article>
           );
