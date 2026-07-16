@@ -135,6 +135,12 @@ enquiry → tentative → approved (VFH only) → confirmed
 | DASH-02 | Actionable tasks / lifecycle queue surfaced | User can navigate from dashboard items into events/tasks |
 | DASH-03 | Default landing after login | Authenticated `/` lands on `/dashboard` |
 
+### 4.2a Application shell
+| ID | Requirement | Acceptance criteria |
+|---|---|---|
+| SHELL-01 | Persistent desktop/tablet navigation | Navigating between authenticated pages retains the left navigation shell |
+| SHELL-02 | Decorative sidebar botanical | A sage vine appears below the desktop/tablet navigation, fills the remaining sidebar height, is non-interactive and `aria-hidden`, and is omitted from the mobile drawer |
+
 ### 4.3 Calendar (primary hub)
 | ID | Requirement | Acceptance criteria |
 |---|---|---|
@@ -284,8 +290,10 @@ An event may move to **Confirmed** only when **all** apply:
         └─► /profile
 ```
 
-Sidebar (typical): Dashboard → Tasks → Calendar → Reports → Organisations → Settings  
+Sidebar (typical): Dashboard → Tasks → Calendar → Regrets → Reports → Organisations → Settings
 User menu: Profile, User Management (admin), notifications.
+
+On desktop and tablet, the sidebar also contains a display-only sage botanical below the navigation card. It softly fades into the Marble + Sage background and must never carry workflow information, replace a navigation item, or appear in the compact mobile drawer.
 
 ---
 
@@ -340,6 +348,7 @@ User menu: Profile, User Management (admin), notifications.
 | Date UI | Day-first formatting on frontend |
 | Browser | Modern evergreen browsers |
 | Performance | Core screens usable within ~1 minute for operational questions |
+| Accessibility | Decorative artwork is `aria-hidden`; navigation labels and controls remain accessible without relying on colour or decoration |
 
 ---
 

@@ -17,6 +17,15 @@ One central workspace where the team can answer, within a minute of opening it:
 
 Built strictly from the supplied NCPA source materials (event form mockup, operations/accounts checklists, executive event tracker, calendar mockup, and the product spec). No invented fields, workflows, or integrations.
 
+## Interface conventions
+
+The application uses a restrained Marble + Sage visual system: etched text, carved working surfaces, and muted sage or terracotta accents.
+
+- The authenticated desktop and tablet shells retain their left navigation while users move between pages.
+- A display-only sage botanical vine continues below that navigation and fills the remaining sidebar space; it fades into the marble surface rather than behaving like a card or control.
+- The mobile navigation drawer deliberately omits the decoration so navigation remains compact and clear.
+- The botanical asset is stored at `public/assets/decorative-vine.png`; it is decorative (`aria-hidden`) and must not convey information or provide an interaction target.
+
 ## Architecture
 
 ```

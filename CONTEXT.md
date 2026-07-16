@@ -29,6 +29,11 @@ Also: ChecklistItems (ops + accounts), Tasks, Documents (R2), Notifications, Act
 Public: `/login`, `/forgot-password`, `/reset-password`  
 App: `/dashboard`, `/calendar` (hub; `/events` redirects here), `/events/new|:id|:id/edit`, `/tasks`, `/organisations`, `/reports`, `/settings`, `/admin/users`, `/profile`
 
+## App-shell visual conventions
+- Marble + Sage is the shared design language: carved surfaces, etched text, and restrained sage/terracotta accents.
+- Desktop and tablet navigation includes a non-interactive, `aria-hidden` sage vine below the navigation card. It fills the available sidebar height and softly fades into the marble backdrop.
+- The vine lives at `public/assets/decorative-vine.png`; it is intentionally absent from the mobile drawer to keep navigation uncluttered.
+
 ## Business rules (easy to break)
 1. **Confirm gates:** Costing Email=Yes + Payment Status=Completed + signed confirmation; VFH also needs approval received/approved **unless** Approval Required?=Not Required.
 2. **Blockers** deep-link to Operations checklist fields (`src/lib/lifecycle-blocker-targets.ts`).
