@@ -16,7 +16,7 @@ export type OperationalLifecycleEntry = {
 export type DashboardOperationalCounts = {
   activeEnquiries: number;
   awaitingConfirmation: number;
-  upcomingConfirmed: number;
+  confirmed: number;
 };
 
 const STATUS_RANK: Partial<Record<EventStatus, number>> = {
@@ -90,6 +90,6 @@ export function dashboardOperationalCounts<T extends OperationalLifecycleEntry>(
   return {
     activeEnquiries: operational.filter((entry) => entry.status === "enquiry").length,
     awaitingConfirmation: operational.filter((entry) => entry.status === "tentative" || entry.status === "approved").length,
-    upcomingConfirmed: operational.filter((entry) => entry.status === "confirmed").length,
+    confirmed: operational.filter((entry) => entry.status === "confirmed").length,
   };
 }
