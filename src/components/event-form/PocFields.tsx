@@ -18,7 +18,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** Event-level Point of Contact fields — mirrored to the Operations checklist. */
+/** Event-level Point of Contact fields — the event form is the source of truth. */
 export function PocFields({ value, onChange }: PocFieldsProps) {
   const reqs = withDefaultEventLevelRequirements(value);
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });

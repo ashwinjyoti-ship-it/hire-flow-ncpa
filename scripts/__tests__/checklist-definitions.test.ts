@@ -55,3 +55,31 @@ describe("financials checklist definitions", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });
+
+describe("operations action checklist", () => {
+  const operations = CHECKLIST_DEFINITIONS.filter((definition) => definition.module === "operations");
+  const keys = operations.map((definition) => definition.field_key);
+
+  it("keeps event identity computed and removes duplicated form data", () => {
+    for (const key of ["event_name", "event_dates", "venue", "event_type"]) {
+      expect(operations.find((definition) => definition.field_key === key)?.is_computed).toBe(true);
+    }
+    for (const key of [
+      "poc_name",
+      "exec_sound_light",
+      "no_of_crew_cards",
+      "house_seats",
+      "licenses_status",
+      "decorator_name",
+      "caterer_name",
+      "catering_details",
+    ]) {
+      expect(keys).not.toContain(key);
+    }
+  });
+
+  it("ends with post-event closure actions", () => {
+    expect(operations.at(-1)?.field_key).toBe("final_closure_notes");
+    expect(operations.at(-1)?.section).toBe("Post-Event Closure");
+  });
+});

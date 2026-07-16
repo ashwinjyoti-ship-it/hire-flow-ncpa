@@ -35,28 +35,13 @@ export interface ChecklistDefSeed {
 }
 
 export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
-  // ===== EVENT OPERATIONS CHECKLIST (14 sections) =====
+  // ===== EVENT OPERATIONS ACTION CHECKLIST =====
 
   // 1. EVENT REFERENCE
-  { module: "operations", section: "Event Reference", field_key: "event_name", label: "Event Name", field_type: "text" },
-  { module: "operations", section: "Event Reference", field_key: "event_type", label: "Event Type", field_type: "dropdown", options: ["EE", "FR", "VFH", "Free Event"] },
-  { module: "operations", section: "Event Reference", field_key: "nature_of_event", label: "Nature of Event", field_type: "text" },
-  { module: "operations", section: "Event Reference", field_key: "venue", label: "Venue", field_type: "dropdown", options: ["JBT", "TATA", "TET", "LT", "GDT", "OAP", "JBT BOX", "TATA GARDEN", "TET GARDEN", "SUNKEN GARDEN", "WEST ROOM 1", "SVR", "TATA LOBBY", "JBT LOBBY"] },
-
-  // 2. POINT OF CONTACT
-  { module: "operations", section: "Point of Contact", field_key: "poc_name", label: "POC Name", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "poc_contact_number", label: "Contact Number", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "poc_email", label: "Email", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "event_company_contact_name", label: "Event Company Contact Name", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "event_company_contact_number", label: "Event Company Contact Number", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "event_company_email", label: "Event Company Email", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "bank_details", label: "Bank Details", field_type: "textarea" },
-  { module: "operations", section: "Point of Contact", field_key: "gst_no", label: "GST No.", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "tan_no", label: "TAN No.", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "pan_no", label: "PAN No.", field_type: "text" },
-  { module: "operations", section: "Point of Contact", field_key: "signing_authority_address", label: "Signing Authority & Address", field_type: "textarea" },
-  { module: "operations", section: "Point of Contact", field_key: "courier_address", label: "Courier Address", field_type: "textarea" },
-  { module: "operations", section: "Point of Contact", field_key: "vendor_registration_form", label: "Vendor Registration Form", field_type: "dropdown", options: ["Pending", "Received", "No Applicable"], default_value: "No Applicable" },
+  { module: "operations", section: "Event Reference", field_key: "event_name", label: "Event Name", field_type: "computed", is_computed: true },
+  { module: "operations", section: "Event Reference", field_key: "event_dates", label: "Event Date(s)", field_type: "computed", is_computed: true },
+  { module: "operations", section: "Event Reference", field_key: "venue", label: "Venue", field_type: "computed", is_computed: true },
+  { module: "operations", section: "Event Reference", field_key: "event_type", label: "Event Type", field_type: "computed", is_computed: true },
 
   // 3. APPROVAL (VFH only)
   // When Approval Required? = Not Required, the rest of this section is skipped:
@@ -65,14 +50,6 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Approval", field_key: "approval_sent_on", label: "Approval Sent On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)", triggers_task: { rule: "approval_followup", title: "Follow up on Approval", due_after_days: 7, complete_when: "Approval is Received or the event becomes Approved" } },
   { module: "operations", section: "Approval", field_key: "approval_received_on", label: "Approval Received On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
   { module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", field_type: "text", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
-
-  // 4. EVENT DATES
-  { module: "operations", section: "Event Dates", field_key: "setup_date", label: "Setup Date", field_type: "date" },
-  { module: "operations", section: "Event Dates", field_key: "rehearsal_date", label: "Rehearsal Date", field_type: "date" },
-  { module: "operations", section: "Event Dates", field_key: "event_dates", label: "Event Date(s)", field_type: "text" },
-  { module: "operations", section: "Event Dates", field_key: "dismantling_date", label: "Dismantling Date", field_type: "date" },
-
-  // AC timings live only on the event form (venue schedule entries) — not in Operations.
 
   // 5. FINANCIALS
   // The Costing Email is the first post-inquiry financial step and a hard gate
@@ -95,14 +72,6 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_made", label: "Made", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_couriered", label: "Couriered", field_type: "date", triggers_task: { rule: "confirmation_letter", title: "Follow up on Confirmation Letter", due_after_days: 3, complete_when: "signed confirmation is received" } },
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_signed_received", label: "Signed Copy Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
-
-  // 7. EVENT REQUIREMENTS (section rollup — mirrors event form cards)
-  { module: "operations", section: "Event Requirements", field_key: "exec_sound_light", label: "Sound & Light", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
-  { module: "operations", section: "Event Requirements", field_key: "exec_staffing", label: "Staffing & Facilities", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
-  { module: "operations", section: "Event Requirements", field_key: "exec_recording_special", label: "Recording & Special", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
-  { module: "operations", section: "Event Requirements", field_key: "exec_catering_decorator", label: "Catering / Decorator", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
-  { module: "operations", section: "Event Requirements", field_key: "exec_operations", label: "Operations", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
-  { module: "operations", section: "Event Requirements", field_key: "exec_additional", label: "Additional Requirements", field_type: "dropdown", options: ["Not started", "Captured on form", "Verified", "Not applicable"], default_value: "Not started" },
 
   // 8. NOC
   { module: "operations", section: "NOC", field_key: "noc_sent", label: "NOC Sent?", field_type: "dropdown", options: ["Not Applicable", "Not sent", "Sent"], default_value: "Not sent" },
@@ -129,23 +98,12 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Technical Meeting & Minutes", field_key: "technical_meeting_date", label: "Technical Meeting Date", field_type: "date", triggers_task: { rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0, complete_when: "the meeting date passes" } },
   { module: "operations", section: "Technical Meeting & Minutes", field_key: "minutes_of_meeting", label: "Minutes of Meeting", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
-  // 12. OPERATIONS DETAILS
-  { module: "operations", section: "Operations Details", field_key: "no_of_crew_cards", label: "No. of Crew Cards", field_type: "number" },
-  { module: "operations", section: "Operations Details", field_key: "house_seats", label: "House Seats", field_type: "number" },
-  { module: "operations", section: "Operations Details", field_key: "licenses_status", label: "Licences — Required", field_type: "dropdown", options: ["Not required", "Awaiting", "Received"], default_value: "Not required" },
-  { module: "operations", section: "Operations Details", field_key: "licenses", label: "Licenses — Types (PPL/IPRS etc.)", field_type: "textarea" },
-  { module: "operations", section: "Operations Details", field_key: "decorator_name", label: "Decorator — Name", field_type: "text" },
-  { module: "operations", section: "Operations Details", field_key: "decorator_tier", label: "Decorator — Tier", field_type: "dropdown", options: ["A", "B", "C", "D", "E"] },
-  { module: "operations", section: "Operations Details", field_key: "caterer_name", label: "Caterer — Name", field_type: "text" },
-
-  // 12b. CATERING (ops follow-up status)
-  { module: "operations", section: "Catering", field_key: "catering_details", label: "Catering Details", field_type: "dropdown", options: ["Not Received", "Received"], default_value: "Received" },
-
-  // 13. POST-EVENT CLOSURE (last operations section)
+  // POST-EVENT CLOSURE (last operations section)
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_sent", label: "Feedback Form — Sent", field_type: "date", triggers_task: { rule: "feedback", title: "Follow up on Feedback", due_after_days: 5, complete_when: "marked Received" } },
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_received", label: "Feedback Form — Received", field_type: "date" },
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },
   { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
+  { module: "operations", section: "Post-Event Closure", field_key: "final_closure_notes", label: "Final Closure Notes", field_type: "textarea" },
 
   // ===== ACCOUNTS TRACKING CHECKLIST =====
   // Note: 3-day follow-up is automatic via accounts_file task on file_sent_to_accounts.

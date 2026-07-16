@@ -239,7 +239,13 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({
       entries: [
-        { milestone_type: "enquiry", milestone_date: "2026-06-03" },
+        {
+          milestone_type: "enquiry",
+          milestone_date: "2026-06-03",
+          decision_status: "approved",
+          decision_allowed: false,
+          decision_blocker: "VFH approval must be received before marking the event approved.",
+        },
       ],
       byDate: {
         "2026-06-03": [{ milestone_type: "enquiry" }],
@@ -252,6 +258,7 @@ describe("API regressions", () => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("WITH lifecycle AS")) {
         expect(sql).toContain("('enquiry', 'tentative', 'approved', 'confirmed', 'cancelled')");
+        expect(sql).toContain("event_end_date");
         return { all: () => ({ results: [] }) };
       }
       return {};
@@ -1189,8 +1196,8 @@ describe("API regressions", () => {
       if (sql.startsWith("UPDATE events SET title")) return { run: () => ({ success: true }) };
       // syncEventReferenceChecklist reads the event + venues then updates the
       // checklist reference rows; assert the UPDATE fires.
-      if (sql.includes("SELECT id, title, event_type, description FROM events")) {
-        return { first: () => ({ id: "ev_ankh", title: "Ankh", event_type: "EE", description: "Hindi play" }) };
+      if (sql.includes("SELECT id, title, event_type, event_start_date, event_end_date FROM events")) {
+        return { first: () => ({ id: "ev_ankh", title: "Ankh", event_type: "EE", event_start_date: "2026-07-01", event_end_date: null }) };
       }
       if (sql.includes("SELECT venue FROM venue_bookings")) {
         return { all: () => ({ results: [{ venue: "JBT" }] }) };

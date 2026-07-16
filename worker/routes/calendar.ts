@@ -8,6 +8,9 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser } from "../middleware/auth";
 import { evaluatePocCompletion, getPocFieldValuesForEvents } from "../lib/poc-completion";
+import { calculateEventFormReadiness } from "../lib/event-readiness";
+import { buildLifecycleReadiness, type EventLifecycleRow } from "../lib/operations";
+import type { EventStatus } from "../lib/state-machine";
 
 export const calendarRoutes = new Hono<AuthEnv>();
 
@@ -83,12 +86,21 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
           WHEN e.status = 'enquiry' THEN NULLIF(e.enquiry_date, '')
           ELSE NULLIF(substr(sh.changed_at, 1, 10), '')
         END AS raw_date,
+        e.enquiry_date AS raw_enquiry_date,
         e.id AS event_id,
         e.event_code,
         e.event_start_date AS raw_event_start_date,
+        e.event_end_date AS raw_event_end_date,
         e.title,
         e.status,
         e.event_type,
+        e.approval_status,
+        e.confirmation_status,
+        e.ops_completion,
+        e.accounts_completion,
+        e.overall_completion,
+        (SELECT ci.value FROM checklist_items ci WHERE ci.event_id = e.id AND ci.field_key = 'costing_email' LIMIT 1) AS costing_email,
+        (SELECT ci.value FROM checklist_items ci WHERE ci.event_id = e.id AND ci.field_key = 'payment_status' LIMIT 1) AS payment_status,
         e.created_at,
         o.name AS organisation_name,
         e.event_owner,
@@ -113,12 +125,21 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         id,
         milestone_type,
         COALESCE(${normalisedDateSql("raw_date")}, date(created_at)) AS milestone_date,
+        ${normalisedDateSql("raw_enquiry_date")} AS enquiry_date,
         event_id,
         event_code,
         ${normalisedDateSql("raw_event_start_date")} AS event_start_date,
+        ${normalisedDateSql("raw_event_end_date")} AS event_end_date,
         title,
         status,
         event_type,
+        approval_status,
+        confirmation_status,
+        ops_completion,
+        accounts_completion,
+        overall_completion,
+        costing_email,
+        payment_status,
         organisation_name,
         event_owner,
         event_owner_id,
@@ -128,7 +149,9 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
         is_archived
       FROM lifecycle
     )
-    SELECT id, milestone_type, milestone_date, event_id, event_code, event_start_date, title, status, event_type,
+    SELECT id, milestone_type, milestone_date, enquiry_date, event_id, event_code, event_start_date, event_end_date, title, status, event_type,
+           approval_status, confirmation_status, ops_completion, accounts_completion, overall_completion,
+           costing_email, payment_status,
            organisation_name, event_owner, venues, task_id, task_title
     FROM normalised_dates
     WHERE ${where.join(" AND ")}
@@ -147,27 +170,70 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const eventIds = Array.from(new Set((results ?? []).map((row) => (row as { event_id: string }).event_id)));
   const pocValuesByEvent = await getPocFieldValuesForEvents(c.env.DB, eventIds);
   const orgByEvent = new Map<string, string | null>();
+  const readinessByEvent = new Map<string, number>();
   if (eventIds.length > 0) {
-    const placeholders = eventIds.map(() => "?").join(", ");
-    const { results: orgRows } = await c.env.DB.prepare(
-      `SELECT id, organisation_id FROM events WHERE id IN (${placeholders})`,
-    ).bind(...eventIds).all<{ id: string; organisation_id: string | null }>();
-    for (const row of orgRows ?? []) {
-      orgByEvent.set(row.id, row.organisation_id);
+    for (let offset = 0; offset < eventIds.length; offset += 75) {
+      const batch = eventIds.slice(offset, offset + 75);
+      const placeholders = batch.map(() => "?").join(", ");
+      const { results: orgRows } = await c.env.DB.prepare(
+        `SELECT id, organisation_id, requirements FROM events WHERE id IN (${placeholders})`,
+      ).bind(...batch).all<{ id: string; organisation_id: string | null; requirements: string | null }>();
+      for (const row of orgRows ?? []) {
+        orgByEvent.set(row.id, row.organisation_id);
+        readinessByEvent.set(row.id, calculateEventFormReadiness(row.requirements).percentage);
+      }
     }
   }
 
   const enriched = (results ?? []).map((row) => {
-    const entry = row as Record<string, unknown> & { event_id: string; status: string };
+    const entry = row as Record<string, unknown> & {
+      event_id: string;
+      title: string;
+      status: EventStatus;
+      event_type: string | null;
+      approval_status: string | null;
+      confirmation_status: string | null;
+      costing_email: string | null;
+      payment_status: string | null;
+      ops_completion: number | null;
+      accounts_completion: number | null;
+      overall_completion: number | null;
+    };
     const poc = evaluatePocCompletion(pocValuesByEvent.get(entry.event_id) ?? {}, {
       organisationId: orgByEvent.get(entry.event_id) ?? null,
     });
+    const lifecycleEvent: EventLifecycleRow = {
+      id: entry.event_id,
+      title: entry.title,
+      status: entry.status,
+      event_type: entry.event_type,
+      approval_status: entry.approval_status,
+      confirmation_status: entry.confirmation_status,
+      costing_email: entry.costing_email,
+      payment_status: entry.payment_status,
+      ops_completion: entry.ops_completion,
+      accounts_completion: entry.accounts_completion,
+      overall_completion: entry.overall_completion,
+      poc_complete: poc.complete,
+    };
+    const lifecycle = buildLifecycleReadiness(lifecycleEvent);
+    const forwardStatuses: EventStatus[] = entry.event_type === "VFH" ? ["approved", "confirmed"] : ["confirmed"];
+    const blockedForward = lifecycle.actions.filter((action) => forwardStatuses.includes(action.status) && action.blockers.length > 0);
+    const confirmationStarted = entry.confirmation_status === "made" || entry.confirmation_status === "couriered";
+    const decision = lifecycle.nextAction
+      ?? (confirmationStarted ? blockedForward.find((action) => action.status === "confirmed") : null)
+      ?? blockedForward[0]
+      ?? null;
     return {
       ...entry,
       poc_complete: poc.complete,
       poc_filled_count: poc.filledCount,
       poc_total_count: poc.totalCount,
       poc_missing_labels: poc.missingLabels,
+      event_form_readiness: readinessByEvent.get(entry.event_id) ?? 0,
+      decision_status: decision?.status ?? null,
+      decision_allowed: decision?.allowed ?? false,
+      decision_blocker: decision?.blockers[0] ?? null,
     };
   });
 

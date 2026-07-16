@@ -330,13 +330,13 @@ export function CalendarPage() {
         </div>
 
         <div className="mx-auto flex items-center gap-2 rounded-full bg-marble-shadow/30 px-2 py-1">
+          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
+            <Chevron dir="left" />
+          </button>
           <div className="min-w-[9rem] text-center">
             <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
             <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
           </div>
-          <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
-            <Chevron dir="left" />
-          </button>
           <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Next month">
             <Chevron dir="right" />
           </button>

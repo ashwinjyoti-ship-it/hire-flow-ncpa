@@ -1,4 +1,4 @@
-import { CATERING_MEAL_TYPES, cateringMealRequiredKey, isCateringMealPaxKey } from "../../worker/lib/catering-meals";
+import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
 import { getEventDateIssues } from "../../worker/lib/event-date-policy";
 
@@ -54,43 +54,18 @@ export function prepareVenueBookingsForSave(venueBookings: EventInputT["venue_bo
   return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings));
 }
 
-/**
- * Negative defaults for every Yes/No / Required dropdown on the event form.
- * Pre-populating these lets a first save sync the Operations checklist without
- * manual ops entry, and only affirmative choices create follow-up work.
- */
+/** Requirement decisions intentionally start unknown. Readiness only advances
+ * after a user makes a choice or enters information on the event form. */
 export function createDefaultVenueRequirements(): RequirementsRecord {
-  const out: RequirementsRecord = {
-    green_rooms_required: "Not Required",
-    ushers_required: "Not Required",
-    loaders_required: "Not Required",
-    house_seats_release: "No",
-    video_recording: "No",
-    piano_required: "No",
-    liquor_licence: "Not Required",
-    catering_required: "No",
-    interval: "No",
-    decorator_required: "No",
-    orchestra_pit_chairs: "Keep",
-    digital_standee: "No",
-    car_display: "No",
-    bike_display: "No",
-    stalls: "No",
-    telecasting_media: "No",
-    licenses_status: "Not required",
-  };
-  for (const meal of CATERING_MEAL_TYPES) {
-    out[cateringMealRequiredKey(meal.key)] = "No";
-  }
-  return out;
+  return {};
 }
 
 /** Event-level requirement defaults (Step 1 fields stored in requirements JSON). */
 export function createDefaultEventLevelRequirements(): RequirementsRecord {
-  return { vendor_registration_form: "No Applicable" };
+  return { vendor_registration_form: "Not Applicable" };
 }
 
-/** Merge saved values over the negative defaults without dropping explicit nulls the user set. */
+/** Merge saved values over policy defaults without dropping explicit nulls the user set. */
 export function withDefaultVenueRequirements(value: RequirementsRecord | null | undefined): RequirementsRecord {
   return { ...createDefaultVenueRequirements(), ...(value ?? {}) };
 }
@@ -200,11 +175,26 @@ export function hydrateVenueRequirements(
   eventRequirements: RequirementsRecord | null | undefined,
 ): VenueBookingInputT[] {
   const venueSeed = omitEventLevelRequirements(eventRequirements);
-  if (isEmptyRequirements(venueSeed)) return bookings;
-  return bookings.map((booking) => {
-    if (!isEmptyRequirements(booking.requirements as RequirementsRecord | null)) return booking;
-    return { ...booking, requirements: { ...venueSeed } };
-  });
+  if (isEmptyRequirements(venueSeed) || bookings.length === 0) return bookings;
+
+  // Legacy event rows may contain a requirements union while venue rows carry
+  // only unrelated metadata. Preserve every legacy key that is not already
+  // represented by any venue, but seed it once so multi-venue data is not
+  // duplicated across every booking on the next save.
+  const capturedKeys = new Set<string>();
+  for (const booking of bookings) {
+    const requirements = booking.requirements as RequirementsRecord | null;
+    for (const [key, value] of Object.entries(requirements ?? {})) {
+      if (value != null && !(typeof value === "string" && value.trim() === "")) capturedKeys.add(key);
+    }
+  }
+  const missingLegacy = Object.fromEntries(
+    Object.entries(venueSeed).filter(([key]) => !capturedKeys.has(key)),
+  );
+  if (isEmptyRequirements(missingLegacy)) return bookings;
+  return bookings.map((booking, index) => index === 0
+    ? { ...booking, requirements: { ...missingLegacy, ...((booking.requirements as RequirementsRecord | null) ?? {}) } }
+    : booking);
 }
 
 /** Build the denormalised events.requirements payload (event-level keys + venue union). */

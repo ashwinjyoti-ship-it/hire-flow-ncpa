@@ -23,7 +23,7 @@ import { requirePermission, actorFrom, ipHint } from "../middleware/auth";
 import { audit } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { buildDailyReportContent, istToday, type DailyReportContent } from "../lib/daily-report";
-import { buildBriefContent, type BriefContent, type EveningBriefContent, type MorningBriefContent } from "../lib/brief";
+import { buildBriefContent, conflictAttentionLabel, type BriefContent, type EveningBriefContent, type MorningBriefContent } from "../lib/brief";
 import { renderBriefPrintable } from "../lib/brief-html";
 
 export const reportRoutes = new Hono<AuthEnv>();
@@ -156,7 +156,7 @@ function briefWorkbook(content: BriefContent) {
     const s = content as MorningBriefContent;
     utils.book_append_sheet(wb, utils.json_to_sheet([
       ...s.decisions.approvals_pending.map((a) => ({ Type: "VFH approval pending", Item: a.event_title, Detail: a.organisation_name ?? "", Date: a.event_start_date ?? "" })),
-      ...s.decisions.conflicts.map((cf) => ({ Type: cf.level === "conflict" ? "Venue conflict" : "Potential conflict", Item: `${cf.a.event_title} / ${cf.b.event_title}`, Detail: cf.venue, Date: cf.activity_date })),
+      ...s.decisions.conflicts.map((cf) => ({ Type: conflictAttentionLabel(cf), Item: `${cf.a.event_title} / ${cf.b.event_title}`, Detail: cf.venue, Date: cf.activity_date })),
       ...s.decisions.unassigned_high_priority.map((t) => ({ Type: "Unassigned high priority", Item: t.title, Detail: t.event_title ?? "", Date: t.due_date ?? "" })),
       ...s.decisions.stale_enquiries.map((e) => ({ Type: "Stale enquiry", Item: e.event_title, Detail: `${e.organisation_name ?? ""} — quiet ${e.days_quiet}d`, Date: e.enquiry_date ?? "" })),
     ]), "Needs Decision");
@@ -165,7 +165,7 @@ function briefWorkbook(content: BriefContent) {
     }))), "Today Schedule");
     utils.book_append_sheet(wb, taskSheet(s.team_plan.flatMap((g) => g.tasks)), "Team Plan");
     utils.book_append_sheet(wb, utils.json_to_sheet([
-      ...s.risk_radar.low_readiness.map((e) => ({ Risk: "Low readiness", Item: e.event_title, Detail: `${Math.round(e.overall_completion * 100)}% ready, starts in ${e.days_to_event}d`, Date: e.event_start_date ?? "" })),
+      ...s.risk_radar.low_readiness.map((e) => ({ Risk: "Low readiness", Item: e.event_title, Detail: `${e.event_form_readiness ?? Math.round((e.overall_completion ?? 0) * 100)}% ready, starts in ${e.days_to_event}d`, Date: e.event_start_date ?? "" })),
       ...s.risk_radar.blocked_items.map((b) => ({ Risk: "Blocked checklist item", Item: b.label, Detail: `${b.event_title} (${b.module} · ${b.section})`, Date: "" })),
       ...s.risk_radar.overdue_instalments.map((t) => ({ Risk: "Overdue payment follow-up", Item: t.title, Detail: t.event_title ?? "", Date: t.due_date ?? "" })),
       ...s.risk_radar.unsigned_confirmations.map((e) => ({ Risk: "Unsigned confirmation", Item: e.event_title, Detail: e.confirmation_status ?? "none", Date: e.event_start_date ?? "" })),
@@ -175,7 +175,7 @@ function briefWorkbook(content: BriefContent) {
         Detail: `${e.filled_count}/${e.total_count} — ${e.missing_labels.join(", ")}`,
         Date: e.event_start_date ?? "",
       })),
-    ]), "Risk Radar");
+    ]), "Watchlist");
     utils.book_append_sheet(wb, utils.json_to_sheet(s.overdue.oldest.map((t) => ({
       Task: t.title, Priority: t.priority, Due: t.due_date ?? "", "Days Overdue": t.days_overdue, Event: t.event_title ?? "", Assignee: t.assignee_name ?? "Unassigned",
     }))), "Overdue");

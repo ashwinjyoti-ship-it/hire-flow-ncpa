@@ -6,6 +6,7 @@ import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
 import { IsoDate } from "../lib/types";
+import { calculateEventFormReadiness } from "../lib/event-readiness";
 
 export const taskRoutes = new Hono<AuthEnv>();
 
@@ -45,6 +46,7 @@ taskRoutes.get("/", requireUser, async (c) => {
             e.event_start_date AS event_start_date, e.event_end_date AS event_end_date,
             e.event_owner AS event_owner,
             e.overall_completion AS event_overall_completion,
+            e.requirements AS event_requirements,
             o.name AS organisation_name,
             ci.module AS source_module, ci.field_key AS source_field_key, ci.label AS source_label,
             (SELECT GROUP_CONCAT(vb.venue, ', ') FROM venue_bookings vb WHERE vb.event_id = e.id) AS event_venues,
@@ -59,7 +61,15 @@ taskRoutes.get("/", requireUser, async (c) => {
      LIMIT 300`
   ).bind(...binds).all();
 
-  return c.json({ tasks: results });
+  return c.json({
+    tasks: results.map((task) => {
+      const row = task as Record<string, unknown>;
+      const readiness = calculateEventFormReadiness(row.event_requirements);
+      const { event_requirements: _requirements, ...publicTask } = row;
+      void _requirements;
+      return { ...publicTask, event_form_readiness: readiness.percentage };
+    }),
+  });
 });
 
 taskRoutes.post("/", requirePermission("task.create"), async (c) => {

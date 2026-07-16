@@ -32,10 +32,10 @@ export function PocIncompleteBanner({
           </p>
         </div>
         <Link
-          to={`/events/${eventId}?tab=operations&field=poc_name`}
+          to={`/events/${eventId}/edit?step=0&section=poc`}
           className="carved-btn shrink-0 rounded-full bg-status-awaitingApproval/15 px-3 py-1.5 text-xs font-semibold text-status-awaitingApproval etched"
         >
-          Fill POC
+          Open event form
         </Link>
       </div>
     </div>

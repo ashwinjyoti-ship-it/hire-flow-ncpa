@@ -8,6 +8,7 @@ import {
 } from "./requirement-sections";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
+import { calculateEventFormReadiness, readinessTaskRule } from "./event-readiness";
 import { makeId } from "./id";
 import { POC_FIELD_KEYS } from "./poc-fields";
 import {
@@ -166,6 +167,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     await syncTdsDependentChecklistFromEvent(db, eventId);
     await syncOnstageDependentChecklistFromEvent(db, eventId);
     await syncEmailerDependentChecklistFromEvent(db, eventId);
+    await recalculateEventCompletion(db, eventId);
     return;
   }
 
@@ -199,6 +201,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   await syncTdsDependentChecklistFromEvent(db, eventId);
   await syncOnstageDependentChecklistFromEvent(db, eventId);
   await syncEmailerDependentChecklistFromEvent(db, eventId);
+  await syncEventReferenceChecklist(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
@@ -702,18 +705,15 @@ async function syncTdsDependentChecklistFromEvent(db: D1Database, eventId: strin
  * Source-of-truth mapping:
  *   event_name     <- events.title
  *   event_type     <- events.event_type
- *   nature_of_event<- events.description   (no dedicated column; the form's
- *                                            "Description" carries the nature)
+ *   event_dates    <- events.event_start_date / event_end_date
  *   venue          <- comma-joined venue_bookings.venue
  *
- * Only rows whose current value is NULL/empty are written for event_type,
- * nature_of_event, and venue, so manual ops edits there are preserved.
- * event_name always follows events.title so renames stay in sync.
+ * These are computed identification rows, so they always follow the event form.
  */
 export async function syncEventReferenceChecklist(db: D1Database, eventId: string): Promise<void> {
   const event = await db.prepare(
-    "SELECT id, title, event_type, description FROM events WHERE id = ?"
-  ).bind(eventId).first<{ id: string; title: string; event_type: string | null; description: string | null }>();
+    "SELECT id, title, event_type, event_start_date, event_end_date FROM events WHERE id = ?"
+  ).bind(eventId).first<{ id: string; title: string; event_type: string | null; event_start_date: string | null; event_end_date: string | null }>();
   if (!event) return;
 
   const { results: venues } = await db.prepare(
@@ -726,7 +726,11 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
   const fieldToValue: Record<string, string | null> = {
     event_name: event.title?.trim() || null,
     event_type: event.event_type ?? null,
-    nature_of_event: event.description?.trim() || null,
+    event_dates: event.event_start_date
+      ? event.event_end_date && event.event_end_date !== event.event_start_date
+        ? `${event.event_start_date} – ${event.event_end_date}`
+        : event.event_start_date
+      : null,
     venue: venueValue,
   };
 
@@ -734,22 +738,11 @@ export async function syncEventReferenceChecklist(db: D1Database, eventId: strin
   for (const [fieldKey, value] of Object.entries(fieldToValue)) {
     if (!value) continue; // nothing to copy for this field
     const status = itemStatusForValue({ field_type: "text", value });
-    if (fieldKey === "event_name") {
-      // Event title is canonical on the event row — always mirror renames into ops.
-      await db.prepare(
-        `UPDATE checklist_items
-         SET value = ?, status = ?, completed_at = COALESCE(completed_at, ?),
-             completed_by = COALESCE(completed_by, NULL), last_updated_at = ?
-         WHERE event_id = ? AND field_key = ?`
-      ).bind(value, status, now, now, eventId, fieldKey).run();
-      continue;
-    }
-    // Other reference rows: only fill when empty — never clobber manual ops edits.
     await db.prepare(
       `UPDATE checklist_items
        SET value = ?, status = ?, completed_at = COALESCE(completed_at, ?),
            completed_by = COALESCE(completed_by, NULL), last_updated_at = ?
-       WHERE event_id = ? AND field_key = ? AND (value IS NULL OR TRIM(value) = '')`
+       WHERE event_id = ? AND field_key = ?`
     ).bind(value, status, now, now, eventId, fieldKey).run();
   }
   await recalculateEventCompletion(db, eventId);
@@ -1070,6 +1063,94 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
   ).run();
 
   return (inserted.meta?.changes ?? 1) > 0 ? 1 : 0;
+}
+
+/** Keep one smart task per incomplete event-form section, due before the event starts. */
+export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: string): Promise<number> {
+  const event = await db.prepare(
+    `SELECT id, status, requirements, event_start_date, event_owner_id
+     FROM events WHERE id = ? AND is_archived = 0`
+  ).bind(eventId).first<{
+    id: string;
+    status: EventStatus;
+    requirements: string | null;
+    event_start_date: string | null;
+    event_owner_id: string | null;
+  }>();
+  if (!event) return 0;
+
+  const readiness = calculateEventFormReadiness(event.requirements);
+  const now = new Date().toISOString();
+  const terminal = event.status === "cancelled" || event.status === "regret";
+  let changed = 0;
+
+  for (const section of readiness.sections) {
+    const sourceRule = readinessTaskRule(section.key);
+    const idempotency = `readiness:${eventId}:${section.key}`;
+    const complete = section.state === "complete" || section.state === "not_applicable";
+    if (terminal || complete) {
+      const result = await db.prepare(
+        `UPDATE tasks
+         SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, ?) ELSE NULL END,
+             completion_note = ?, updated_at = ?
+         WHERE idempotency_key = ? AND status IN ('open','in_progress')`
+      ).bind(
+        terminal ? "cancelled" : "completed",
+        terminal ? "cancelled" : "completed",
+        now,
+        terminal
+          ? "Cancelled automatically because the event is no longer active."
+          : "Completed automatically because this event-form section is ready.",
+        now,
+        idempotency,
+      ).run();
+      changed += result.meta?.changes ?? 0;
+      continue;
+    }
+
+    const shortMissing = section.missingLabels.slice(0, 2).join(", ");
+    const remaining = section.missingLabels.length - 2;
+    const title = `Complete event form: ${section.label} — ${shortMissing}${remaining > 0 ? ` +${remaining} more` : ""}`;
+    const result = await db.prepare(
+      `INSERT INTO tasks
+       (id, title, description, event_id, task_type, source_rule, idempotency_key,
+        assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'high', 'open', NULL, ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         title = excluded.title,
+         description = excluded.description,
+         assignee_id = excluded.assignee_id,
+         due_date = excluded.due_date,
+         priority = excluded.priority,
+         status = 'open',
+         completed_at = NULL,
+         completed_by = NULL,
+         completion_note = NULL,
+         updated_at = excluded.updated_at`
+    ).bind(
+      makeId("task"),
+      title,
+      `${section.filled} of ${section.total} details filled. Missing: ${section.missingLabels.join(", ")}.`,
+      eventId,
+      sourceRule,
+      idempotency,
+      event.event_owner_id,
+      event.event_start_date,
+      now,
+      now,
+    ).run();
+    changed += result.meta?.changes ?? 1;
+  }
+  return changed;
+}
+
+export async function reconcileAllReadinessTasks(db: D1Database): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT id FROM events WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')`
+  ).all<{ id: string }>();
+  let changed = 0;
+  for (const event of results ?? []) changed += await reconcileReadinessTasksForEvent(db, event.id);
+  return changed;
 }
 
 /** Sweep active pipeline events so POC auto-tasks exist even if not recently edited. */
@@ -1525,5 +1606,6 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
   }
   changed += await createFileToAccountsReminders(db, today);
   changed += await reconcileAllPocTasks(db, today);
+  changed += await reconcileAllReadinessTasks(db);
   return changed;
 }

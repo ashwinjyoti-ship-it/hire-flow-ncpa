@@ -6,7 +6,7 @@
  */
 import { STATUS_LABELS, type EventStatus } from "./state-machine";
 import type { ReportTask } from "./daily-report";
-import type { AssigneeTasks, BriefContent, EveningBriefContent, MorningBriefContent } from "./brief";
+import { buildMorningAttention, conflictAttentionLabel, type AssigneeTasks, type BriefContent, type EveningBriefContent, type MorningAttentionItem, type MorningBriefContent } from "./brief";
 
 function esc(value: string | null | undefined): string {
   return (value ?? "")
@@ -76,6 +76,10 @@ function eventLink(
   const query = params.toString();
   const href = `${baseUrl}/events/${id}${query ? `?${query}` : ""}`;
   return `<a href="${esc(href)}" style="${S.link}">${t}</a>`;
+}
+
+function appPathLink(baseUrl: string, path: string, label: string): string {
+  return `<a href="${esc(absoluteHref(baseUrl, path))}" style="${S.link}">${esc(label)}</a>`;
 }
 
 function section(title: string, inner: string): string {
@@ -207,166 +211,174 @@ function emailRecordList(headers: string[], rows: string[][], emptyText = "Nothi
   }).join("");
 }
 
-function emailTeamPlan(baseUrl: string, groups: AssigneeTasks[], emptyText: string): string {
-  if (!groups.length) return emailNote(emptyText);
-  return groups.map((g) => {
-    const name = g.assignee ?? "Unassigned";
-    const title = g.assignee ? `${name} (${g.tasks.length})` : `${name} (${g.tasks.length}) — needs an owner`;
-    return `${emailSubsection(title)}${emailRecordList(
-      ["Task", "Priority", "Due", "Event", "Type"],
-      g.tasks.map((t) => [esc(t.title), priorityBadge(t.priority), fmtDate(t.due_date), eventLink(baseUrl, t.event_id, t.event_title), esc(t.task_type)]),
-    )}`;
-  }).join("");
+function absoluteHref(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function emailCompactActions(baseUrl: string, items: MorningAttentionItem[], emptyText: string): string {
+  if (!items.length) return emailNote(emptyText, "good");
+  return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">${items.map((item, index) => {
+    const extra = item.signals.length - 1;
+    const meta = [item.event_start_date ? fmtDate(item.event_start_date) : "", item.organisation_name ?? ""].filter(Boolean).join(" · ");
+    return `<tr><td style="padding:${index ? "12px" : "2px"} 0 12px;border-bottom:1px solid #ece4d8;font-family:Arial,Helvetica,sans-serif;">
+      <a href="${esc(absoluteHref(baseUrl, item.href))}" style="font-size:15px;line-height:21px;font-weight:700;color:#2f2c27;text-decoration:underline;text-decoration-color:#a8b39c;">${esc(item.event_title)}</a>
+      ${meta ? `<div style="margin-top:2px;font-size:12px;line-height:18px;color:#766f66;">${esc(meta)}</div>` : ""}
+      <div style="margin-top:4px;font-size:13px;line-height:19px;color:${item.priority <= 2 ? "#a4442e" : "#544f47"};">${esc(item.primary_action)}${extra > 0 ? ` <b>+${extra} other issue${extra === 1 ? "" : "s"}</b>` : ""} <span aria-hidden="true">→</span></div>
+    </td></tr>`;
+  }).join("")}</table>`;
+}
+
+function emailCountSummary(cells: Array<{ label: string; value: number }>): string {
+  return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr>${cells.map((cell) =>
+    `<td style="padding:8px 6px;text-align:center;background:#f6f1e8;border-right:2px solid #fffdf9;font-family:Arial,Helvetica,sans-serif;"><div style="font-size:18px;font-weight:700;color:#2f2c27;">${cell.value}</div><div style="font-size:9px;line-height:13px;text-transform:uppercase;letter-spacing:.04em;color:#766f66;">${esc(cell.label)}</div></td>`
+  ).join("")}</tr></table>`;
+}
+
+function emailMore(baseUrl: string, shown: number, total: number, label: string): string {
+  if (total <= shown) return "";
+  return `<p style="margin:10px 0 0;font-size:12px;color:#766f66;font-family:Arial,Helvetica,sans-serif;">Showing ${shown} of ${total}. <a href="${esc(absoluteHref(baseUrl, "/reports"))}" style="color:#4a6741;font-weight:700;">View all ${esc(label)} →</a></p>`;
+}
+
+function emailTrend(rows: EveningBriefContent["trend"]): string {
+  if (!rows.length) return emailNote("No completion trend available yet.");
+  return `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">${rows.map((row) => {
+    const pct = row.due ? Math.round((row.done / row.due) * 100) : null;
+    const color = pct === null ? "#9a958a" : pct >= 80 ? "#4a6741" : pct >= 50 ? "#8a6d1f" : "#a4442e";
+    const day = new Date(`${row.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+    return `<tr><td style="padding:7px 0;border-bottom:1px solid #ece4d8;font-size:12px;color:#544f47;">${esc(day)}</td><td style="padding:7px 8px;border-bottom:1px solid #ece4d8;text-align:right;font-size:12px;color:#766f66;">${row.done}/${row.due}</td><td style="padding:7px 0;border-bottom:1px solid #ece4d8;text-align:right;font-size:13px;font-weight:700;color:${color};">${pct == null ? "—" : `${pct}%`}</td></tr>`;
+  }).join("")}</table>`;
 }
 
 function renderMorningEmail(s: MorningBriefContent, baseUrl: string): string {
-  const d = s.decisions;
-  const decisionsBlocks = [
-    d.approvals_pending.length
-      ? `${emailSubsection(`VFH approvals pending (${d.approvals_pending.length})`)}${emailRecordList(
-          ["Event", "Organisation", "Event date", "Approval"],
-          d.approvals_pending.map((a) => [
-            eventLink(baseUrl, a.event_id, a.event_title),
-            esc(a.organisation_name ?? "—"),
-            fmtDate(a.event_start_date),
-            esc(a.approval_status ?? "—"),
-          ]),
-        )}`
-      : "",
-    d.conflicts.length
-      ? `${emailSubsection(`Venue conflicts ahead (${d.conflicts.length})`)}${emailRecordList(
-          ["Date", "Venue", "Level", "Events"],
-          d.conflicts.map((c) => [
-            fmtDate(c.activity_date),
-            esc(c.venue),
-            c.level === "conflict" ? `<span style="${S.bad}font-weight:700;">Conflict</span>` : "Potential",
-            `${eventLink(baseUrl, c.a.event_id, c.a.event_title)} (${esc(statusLabel(c.a.status))}) · ${eventLink(baseUrl, c.b.event_id, c.b.event_title)} (${esc(statusLabel(c.b.status))})`,
-          ]),
-        )}`
-      : "",
-    d.unassigned_high_priority.length
-      ? `${emailSubsection(`High-priority tasks with no owner (${d.unassigned_high_priority.length})`)}${emailRecordList(
-          ["Task", "Priority", "Due", "Event", "Assignee"],
-          taskRows(baseUrl, d.unassigned_high_priority),
-        )}`
-      : "",
-    d.stale_enquiries.length
-      ? `${emailSubsection(`Enquiries gone quiet (${d.stale_enquiries.length})`)}${emailRecordList(
-          ["Enquiry", "Organisation", "Enquiry date", "Quiet for"],
-          d.stale_enquiries.map((e) => [
-            eventLink(baseUrl, e.event_id, e.event_title),
-            esc(e.organisation_name ?? "—"),
-            fmtDate(e.enquiry_date),
-            `${e.days_quiet} days`,
-          ]),
-        )}`
-      : "",
-  ].filter(Boolean).join("");
-
+  const attention = Array.isArray(s.attention)
+    ? s.attention
+    : buildMorningAttention({ decisions: s.decisions, risk_radar: s.risk_radar });
+  const watchlist = attention.filter((item) => item.is_watchlist);
   const r = s.risk_radar;
-  const riskBlocks = [
-    r.low_readiness.length
-      ? `${emailSubsection(`Events soon, checklist behind (${r.low_readiness.length})`)}${emailRecordList(
-          ["Event", "Starts", "In", "Ready", "Status"],
-          r.low_readiness.map((e) => [
-            eventLink(baseUrl, e.event_id, e.event_title),
-            fmtDate(e.event_start_date),
-            `${e.days_to_event}d`,
-            `<span style="${S.bad}font-weight:700;">${Math.round(e.overall_completion * 100)}%</span>`,
-            esc(statusLabel(e.status)),
-          ]),
-        )}`
-      : "",
-    r.blocked_items.length
-      ? `${emailSubsection(`Blocked checklist items (${r.blocked_items.length})`)}${emailRecordList(
-          ["Item", "Section", "Event"],
-          r.blocked_items.map((b) => [esc(b.label), esc(`${b.module} · ${b.section}`), eventLink(baseUrl, b.event_id, b.event_title)]),
-        )}`
-      : "",
-    r.overdue_instalments.length
-      ? `${emailSubsection(`Payment follow-ups overdue (${r.overdue_instalments.length})`)}${emailRecordList(
-          ["Task", "Priority", "Due", "Event", "Assignee"],
-          taskRows(baseUrl, r.overdue_instalments),
-        )}`
-      : "",
-    r.unsigned_confirmations.length
-      ? `${emailSubsection(`Confirmed events without a signed confirmation (${r.unsigned_confirmations.length})`)}${emailRecordList(
-          ["Event", "Organisation", "Starts", "Confirmation"],
-          r.unsigned_confirmations.map((e) => [
-            eventLink(baseUrl, e.event_id, e.event_title),
-            esc(e.organisation_name ?? "—"),
-            fmtDate(e.event_start_date),
-            esc((e.confirmation_status ?? "none").replace(/_/g, " ")),
-          ]),
-        )}`
-      : "",
-    r.poc_incomplete.length
-      ? `${emailSubsection(`Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})`)}${emailRecordList(
-          ["Event", "Organisation", "Starts", "POC", "Still needed"],
-          r.poc_incomplete.map((e) => [
-            eventLink(baseUrl, e.event_id, e.event_title, "operations", "poc_name"),
-            esc(e.organisation_name ?? "—"),
-            fmtDate(e.event_start_date),
-            `<span style="${S.bad}font-weight:700;">${e.filled_count}/${e.total_count}</span>`,
-            esc(e.missing_labels.join(", ")),
-          ]),
-        )}`
-      : "",
-  ].filter(Boolean).join("");
+  const affectedEvents = new Set([
+    ...s.decisions.conflicts.flatMap((conflict) => [conflict.a.event_id, conflict.b.event_id]),
+    ...r.low_readiness.map((item) => item.event_id),
+    ...r.blocked_items.map((item) => item.event_id),
+    ...r.overdue_instalments.flatMap((item) => item.event_id ? [item.event_id] : []),
+    ...r.unsigned_confirmations.map((item) => item.event_id),
+    ...r.poc_incomplete.map((item) => item.event_id),
+  ]).size;
+  const totals = r.totals ?? {
+    low_readiness: r.low_readiness.length,
+    blocked_items: r.blocked_items.length,
+    overdue_instalments: r.overdue_instalments.length,
+    unsigned_confirmations: r.unsigned_confirmations.length,
+    poc_incomplete: r.poc_incomplete.length,
+    affected_events: affectedEvents,
+  };
+
+  const schedulePreview: MorningAttentionItem[] = s.today_schedule.slice(0, 6).map((event) => ({
+    key: `schedule:${event.event_id}:${event.venue}:${event.start_time ?? ""}`,
+    event_id: event.event_id,
+    event_title: event.event_title,
+    organisation_name: event.organisation_name,
+    event_start_date: s.report_date,
+    primary_action: `${event.venue} · ${event.activity_type.replace(/_/g, " ")} · ${fmtTime(event.start_time, event.end_time)}`,
+    signals: [],
+    href: `/events/${event.event_id}`,
+    priority: 9,
+    is_watchlist: false,
+  }));
+  const teamPreview: MorningAttentionItem[] = s.team_plan.slice(0, 6).map((group) => {
+    const lead = group.tasks[0]!;
+    return {
+      key: `team:${group.assignee ?? "unassigned"}`,
+      event_id: lead.event_id,
+      event_title: group.assignee ?? "Unassigned",
+      organisation_name: null,
+      event_start_date: lead.due_date,
+      primary_action: `${group.tasks.length} due · ${lead.title}`,
+      signals: group.tasks.map((task) => task.title),
+      href: lead.event_id ? `/events/${lead.event_id}` : "/tasks",
+      priority: group.assignee ? 9 : 3,
+      is_watchlist: false,
+    };
+  });
+  const overdueGroups = new Map<string, Array<ReportTask & { days_overdue: number }>>();
+  for (const task of s.overdue.oldest) {
+    const key = task.event_id ?? `task:${task.id}`;
+    overdueGroups.set(key, [...(overdueGroups.get(key) ?? []), task]);
+  }
+  const overduePreview: MorningAttentionItem[] = [...overdueGroups.entries()].slice(0, 3).map(([key, tasks]) => {
+    const lead = tasks[0]!;
+    return {
+      key,
+      event_id: lead.event_id,
+      event_title: lead.event_title ?? lead.title,
+      organisation_name: lead.assignee_name ? `Owner: ${lead.assignee_name}` : "Unassigned",
+      event_start_date: lead.due_date,
+      primary_action: `${lead.days_overdue}d overdue · ${lead.title}`,
+      signals: tasks.map((task) => task.title),
+      href: lead.event_id ? `/events/${lead.event_id}` : "/tasks",
+      priority: 1,
+      is_watchlist: true,
+    };
+  });
+
+  const attentionPreview = attention.slice(0, 5);
+  const watchlistPreview = watchlist.slice(0, 3);
 
   return [
     emailMetricGrid([
       { label: "At the venues", value: String(s.headline.scheduled_today) },
       { label: "Tasks due today", value: String(s.headline.tasks_due_today) },
       { label: "Overdue", value: String(s.headline.overdue), tone: s.headline.overdue ? "bad" : "good" },
-      { label: "Need your decision", value: String(s.headline.decisions_needed), tone: s.headline.decisions_needed ? "bad" : "good" },
+      { label: "Events needing attention", value: String(attention.length), tone: attention.length ? "bad" : "good" },
       { label: "New enquiries yesterday", value: String(s.headline.new_enquiries_yesterday) },
     ]),
-    emailSection("Needs your decision", decisionsBlocks || emailNote("Nothing needs your decision today.", "good")),
-    emailSection("Today at the venues", emailRecordList(
-      ["Venue", "Activity", "Time", "Event", "Organisation", "Status"],
-      s.today_schedule.map((e) => [
-        esc(e.venue),
-        esc(e.activity_type.replace(/_/g, " ")),
-        fmtTime(e.start_time, e.end_time),
-        eventLink(baseUrl, e.event_id, e.event_title),
-        esc(e.organisation_name ?? "—"),
-        esc(statusLabel(e.event_status)),
-      ]),
-      "No venue activity scheduled today.",
-    )),
-    emailSection("Team plan for today", emailTeamPlan(baseUrl, s.team_plan, "No tasks due today.")),
-    emailSection("Risk radar", riskBlocks || emailNote("No risks on the radar.", "good")),
+    emailSection("Do now", [
+      emailCompactActions(baseUrl, attentionPreview, "Nothing needs your attention today."),
+      emailMore(baseUrl, attentionPreview.length, attention.length, "attention items"),
+    ].join("")),
+    emailSection("Today at the venues", [
+      emailCompactActions(baseUrl, schedulePreview, "No venue activity scheduled today."),
+      emailMore(baseUrl, schedulePreview.length, s.today_schedule.length, "venue activity"),
+    ].join("")),
+    emailSection("Team plan", [
+      emailCompactActions(baseUrl, teamPreview, "No tasks due today."),
+      emailMore(baseUrl, teamPreview.length, s.team_plan.length, "team assignments"),
+    ].join("")),
+    emailSection("Watchlist", totals.affected_events
+      ? [
+          emailCountSummary([
+            { label: "Affected events", value: totals.affected_events },
+            { label: "Low readiness", value: totals.low_readiness },
+            { label: "Events with POC gaps", value: totals.poc_incomplete },
+            { label: "Unsigned", value: totals.unsigned_confirmations },
+          ]),
+          emailCompactActions(baseUrl, watchlistPreview, ""),
+          emailMore(baseUrl, watchlistPreview.length, watchlist.length, "watchlist events"),
+        ].join("")
+      : emailNote("No events on the watchlist.", "good")),
     emailSection("Overdue", s.overdue.total
-      ? emailRecordList(
-          ["Task", "Priority", "Due", "Event", "Assignee", "Overdue"],
-          taskRows(baseUrl, s.overdue.oldest, (t) => [`<span style="${S.bad}font-weight:700;">${(t as ReportTask & { days_overdue: number }).days_overdue}d</span>`]),
-        )
+      ? [
+          emailCountSummary(s.overdue.buckets.map((bucket) => ({ label: bucket.label, value: bucket.count }))),
+          emailCompactActions(baseUrl, overduePreview, ""),
+          emailMore(baseUrl, overduePreview.length, s.overdue.total, "overdue work"),
+        ].join("")
       : emailNote("Nothing is overdue.", "good")),
     emailSection("Yesterday in one line", emailNote(
       `Yesterday: ${s.yesterday.completed} tasks completed · ${s.yesterday.new_enquiries} new enquiries · ${s.yesterday.confirmations} confirmations won.`,
     )),
   ].join("");
 }
-
 function renderEveningEmail(s: EveningBriefContent, baseUrl: string): string {
   const sc = s.scoreboard;
   const pct = Math.round(sc.completion_rate * 100);
   const verdict = sc.due_today === 0
     ? "No tasks were due today."
     : `${sc.done_of_due} of ${sc.due_today} tasks due today were completed (${pct}%)${sc.still_open ? ` — ${sc.still_open} slipped.` : " — a clean sweep."}`;
-
-  const doneInner = s.done_by_person.length
-    ? s.done_by_person.map((p) => {
-        const rows: string[][] = [
-          ...p.tasks.map((t) => ["Task", esc(t.title), esc(t.event_title ?? "—"), esc(t.completion_note ?? "Completed")]),
-          ...p.checklist.map((c) => ["Checklist", esc(c.label), esc(c.event_title ?? "—"), esc(`${c.module} · ${c.section}`)]),
-        ];
-        return `${emailSubsection(`${p.person} (${rows.length})`)}${emailRecordList(["Type", "Item", "Event", "Detail"], rows)}`;
-      }).join("")
-    : emailNote("Nothing was completed today.");
-
-  const statusSummary = `Status movements (${s.new_today.status_changes.length}${s.new_today.confirmations ? ` — ${s.new_today.confirmations} confirmed` : ""})`;
+  const donePreview = s.done_by_person.slice(0, 6);
+  const slippedCount = s.slipped.reduce((sum, group) => sum + group.tasks.length, 0);
+  const slippedPreview = s.slipped.slice(0, 5);
+  const enquiryPreview = s.new_today.enquiries.slice(0, 5);
+  const statusPreview = s.new_today.status_changes.slice(0, 5);
+  const tomorrowPreview = s.tomorrow.schedule.slice(0, 6);
 
   return [
     emailMetricGrid([
@@ -377,63 +389,68 @@ function renderEveningEmail(s: EveningBriefContent, baseUrl: string): string {
       { label: "Checklist due / done", value: `${sc.checklist_done}/${sc.checklist_due}` },
     ]),
     emailSection("Plan vs done", emailNote(verdict, sc.still_open ? "bad" : "good")),
-    emailSection("What got done", doneInner),
-    emailSection("Slipped today", s.slipped.length
-      ? emailTeamPlan(baseUrl, s.slipped, "")
+    emailSection("What got done", donePreview.length
+      ? [
+          emailRecordList(
+            ["Team member", "Completed", "Highlights"],
+            donePreview.map((person) => {
+              const highlights = [
+                ...person.tasks.map((task) => task.title),
+                ...person.checklist.map((item) => item.label),
+              ];
+              return [esc(person.person), String(highlights.length), esc(highlights.slice(0, 2).join(" · ") || "Completed work") + (highlights.length > 2 ? ` · +${highlights.length - 2} more` : "")];
+            }),
+          ),
+          emailMore(baseUrl, donePreview.length, s.done_by_person.length, "team completions"),
+        ].join("")
+      : emailNote("Nothing was completed today.")),
+    emailSection("Slipped today", slippedPreview.length
+      ? [
+          emailRecordList(
+            ["Owner", "Open", "Next action"],
+            slippedPreview.map((group) => [
+              esc(group.assignee ?? "Unassigned"),
+              String(group.tasks.length),
+              esc(group.tasks[0]?.title ?? "Review overdue work") + (group.tasks.length > 1 ? ` · +${group.tasks.length - 1} more` : ""),
+            ]),
+          ),
+          emailMore(baseUrl, slippedPreview.reduce((sum, group) => sum + group.tasks.length, 0), slippedCount, "slipped tasks"),
+        ].join("")
       : emailNote("Nothing slipped — everything due today is done.", "good")),
     emailSection("New today", [
       emailSubsection(`Enquiries received (${s.new_today.enquiries.length})`),
       emailRecordList(
-        ["Enquiry", "Organisation", "Source"],
-        s.new_today.enquiries.map((e) => [
-          eventLink(baseUrl, e.event_id, e.event_title),
-          esc(e.organisation_name ?? "—"),
-          esc(e.enquiry_source ?? "—"),
-        ]),
+        ["Enquiry", "Organisation"],
+        enquiryPreview.map((event) => [eventLink(baseUrl, event.event_id, event.event_title), esc(event.organisation_name ?? "—")]),
         "No new enquiries today.",
       ),
-      emailSubsection(statusSummary),
+      emailMore(baseUrl, enquiryPreview.length, s.new_today.enquiries.length, "new enquiries"),
+      emailSubsection(`Status movements (${s.new_today.status_changes.length}${s.new_today.confirmations ? ` · ${s.new_today.confirmations} confirmed` : ""})`),
       emailRecordList(
-        ["Event", "Change", "By", "Reason"],
-        s.new_today.status_changes.map((c) => [
-          eventLink(baseUrl, c.event_id, c.event_title),
-          `${esc(statusLabel(c.from_status))} → <b>${esc(statusLabel(c.to_status))}</b>`,
-          esc(c.changed_by_name ?? "—"),
-          esc(c.reason ?? "—"),
+        ["Event", "Change"],
+        statusPreview.map((change) => [
+          eventLink(baseUrl, change.event_id, change.event_title),
+          `${esc(statusLabel(change.from_status))} → <b>${esc(statusLabel(change.to_status))}</b>`,
         ]),
         "No status changes today.",
       ),
+      emailMore(baseUrl, statusPreview.length, s.new_today.status_changes.length, "status movements"),
     ].join("")),
     emailSection("Tomorrow preview", [
       emailNote(`${s.tomorrow.tasks_due} tasks due tomorrow.`),
       emailRecordList(
-        ["Venue", "Activity", "Time", "Event", "Organisation"],
-        s.tomorrow.schedule.map((e) => [
-          esc(e.venue),
-          esc(e.activity_type.replace(/_/g, " ")),
-          fmtTime(e.start_time, e.end_time),
-          eventLink(baseUrl, e.event_id, e.event_title),
-          esc(e.organisation_name ?? "—"),
+        ["Event", "Venue · time"],
+        tomorrowPreview.map((event) => [
+          eventLink(baseUrl, event.event_id, event.event_title),
+          esc(`${event.venue} · ${fmtTime(event.start_time, event.end_time)}`),
         ]),
         "No venue activity scheduled tomorrow.",
       ),
+      emailMore(baseUrl, tomorrowPreview.length, s.tomorrow.schedule.length, "tomorrow's schedule"),
     ].join("")),
-    emailSection("7-day completion trend", emailRecordList(
-      ["Day", "Completion", "Done / due"],
-      s.trend.map((t) => {
-        const p = t.due ? Math.round((t.done / t.due) * 100) : null;
-        const color = p === null ? "#9a958a" : p >= 80 ? "#4a6741" : p >= 50 ? "#8a6d1f" : "#a4442e";
-        return [
-          new Date(`${t.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }),
-          p === null ? "—" : `<span style="color:${color};font-weight:700;">${p}%</span>`,
-          `${t.done}/${t.due}`,
-        ];
-      }),
-      "No completion trend available yet.",
-    )),
+    emailSection("7-day completion trend", emailTrend(s.trend)),
   ].join("");
 }
-
 // ------------------------------------------------------------- Morning Brief
 
 function renderMorning(s: MorningBriefContent, baseUrl: string): string {
@@ -449,10 +466,10 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
               ]))
             : "",
           d.conflicts.length
-            ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Venue conflicts ahead (${d.conflicts.length})</p>` +
+            ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Venue scheduling reviews (${d.conflicts.length})</p>` +
               table(["Date", "Venue", "Level", "Events"], d.conflicts.map((c) => [
                 fmtDate(c.activity_date), esc(c.venue),
-                c.level === "conflict" ? `<span style="${S.bad}">Conflict</span>` : "Potential",
+                c.level === "conflict" ? `<span style="${S.bad}">Time conflict</span>` : esc(conflictAttentionLabel(c)),
                 `${eventLink(baseUrl, c.a.event_id, c.a.event_title)} (${esc(statusLabel(c.a.status))}) · ${eventLink(baseUrl, c.b.event_id, c.b.event_title)} (${esc(statusLabel(c.b.status))})`,
               ]))
             : "",
@@ -477,7 +494,7 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
             ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Events soon, checklist behind (${r.low_readiness.length})</p>` +
               table(["Event", "Starts", "In", "Ready", "Status"], r.low_readiness.map((e) => [
                 eventLink(baseUrl, e.event_id, e.event_title), fmtDate(e.event_start_date), `${e.days_to_event}d`,
-                `<span style="${S.bad}">${Math.round(e.overall_completion * 100)}%</span>`, esc(statusLabel(e.status)),
+                `<span style="${S.bad}">${e.event_form_readiness ?? Math.round((e.overall_completion ?? 0) * 100)}%</span>`, esc(statusLabel(e.status)),
               ]))
             : "",
           r.blocked_items.length
@@ -499,7 +516,7 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
           r.poc_incomplete.length
             ? `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">Point of Contact incomplete — cannot confirm (${r.poc_incomplete.length})</p>` +
               table(["Event", "Organisation", "Starts", "POC", "Still needed"], r.poc_incomplete.map((e) => [
-                eventLink(baseUrl, e.event_id, e.event_title, "operations", "poc_name"),
+                appPathLink(baseUrl, `/events/${e.event_id}/edit?step=0&section=poc`, e.event_title),
                 esc(e.organisation_name ?? "—"),
                 fmtDate(e.event_start_date),
                 `<span style="${S.bad}">${e.filled_count}/${e.total_count}</span>`,
@@ -532,7 +549,7 @@ function renderMorning(s: MorningBriefContent, baseUrl: string): string {
       "No venue activity scheduled today."
     )),
     section("Team plan for today", teamPlanSection(baseUrl, s.team_plan, "No tasks due today.")),
-    section("Risk radar", riskInner),
+    section("Watchlist", riskInner),
     section("Overdue", overdueSummary),
     section("Yesterday in one line",
       `<p style="font-size:13px;font-family:Georgia,serif;color:#2f2c27;">Yesterday: ${s.yesterday.completed} tasks completed · ${s.yesterday.new_enquiries} new enquiries · ${s.yesterday.confirmations} confirmations won.</p>`),
