@@ -937,12 +937,11 @@ function LifecyclePanel({
           {canChangeStatus && canShowStatusActions && displayedForwardAction && (
             <button
               type="button"
-              disabled={!nextAction && !visibleBlockerTarget}
+              disabled={!nextAction}
               onClick={() => {
                 if (nextAction) onChoose(nextAction.status);
-                else if (visibleBlockerTarget) onOpenBlocker(visibleBlockerTarget);
               }}
-              title={!nextAction && visibleBlocker ? `Resolve blocker: ${visibleBlocker}` : undefined}
+              title={!nextAction && visibleBlocker ? `Blocked until resolved: ${visibleBlocker}` : undefined}
               className={forwardMilestoneButtonClass(displayedForwardAction.status, !nextAction)}
             >
               {nextAction ? "Advance to" : "Continue to"} {milestoneLabel(displayedForwardAction.status)}
@@ -1820,13 +1819,12 @@ function lifecycleActionLabel(status: EventStatus): string {
 
 function forwardMilestoneButtonClass(status: EventStatus, blocked: boolean): string {
   const base = "rounded-full px-4 py-2 text-sm font-semibold etched disabled:cursor-not-allowed disabled:opacity-50";
-  if (status === "confirmed") {
-    return blocked
-      ? `${base} carved-btn-sage bg-status-confirmed/15 text-sage-text ring-1 ring-status-confirmed/25 hover:bg-status-confirmed/20`
-      : `${base} carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover`;
-  }
+  // Blocked: grey and unclickable — resolve via the blocker name link below.
   if (blocked) {
-    return `${base} carved-btn bg-status-awaitingApproval/15 text-status-awaitingApproval hover:bg-status-awaitingApproval/20`;
+    return `${base} carved-btn bg-marble-shadow/45 text-ink-muted`;
+  }
+  if (status === "confirmed") {
+    return `${base} carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover`;
   }
   return `${base} carved-btn-terracotta bg-terracotta-btn text-terracotta-text hover:bg-terracotta-btn-hover`;
 }
