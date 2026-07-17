@@ -65,7 +65,8 @@ async function fetchSettings(): Promise<Settings> {
 /**
  * Collapsible settings panel. Header doubles as a toggle button with a rotating
  * chevron. Auto-opens when the URL hash matches `id` (so deep links like
- * /settings#event-owners from UserManagementPage still land on an open panel).
+ * /settings#team-accounts from UserManagementPage still land on an open panel).
+ * Legacy hash `#event-owners` also opens the team-accounts panel.
  */
 function CollapsibleSection({
   id,
@@ -80,13 +81,19 @@ function CollapsibleSection({
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
-  const hashMatches = id && typeof window !== "undefined" && window.location.hash === `#${id}`;
-  const [open, setOpen] = useState(defaultOpen || Boolean(hashMatches));
+  const matchesHash = (sectionId: string) => {
+    if (typeof window === "undefined") return false;
+    const hash = window.location.hash;
+    if (hash === `#${sectionId}`) return true;
+    // Legacy deep link from before the Team accounts rename.
+    return sectionId === "team-accounts" && hash === "#event-owners";
+  };
+  const [open, setOpen] = useState(defaultOpen || Boolean(id && matchesHash(id)));
 
   // Respect a deep link that arrives after first paint (e.g. client-side nav).
   useEffect(() => {
     if (!id) return;
-    if (window.location.hash === `#${id}`) setOpen(true);
+    if (matchesHash(id)) setOpen(true);
   }, [id]);
 
   return (
@@ -365,19 +372,19 @@ export function SettingsPage() {
 
           {isAdmin && (
             <CollapsibleSection
-              id="event-owners"
-              title="Event Owners (Accounts)"
-              description="Each event owner is a login. Add a contact number and tick Programme officer when they should appear on the event form. Adding one generates a one-time temporary password — share it with the owner securely. They will be prompted to choose their own password on first sign-in."
+              id="team-accounts"
+              title="Team accounts"
+              description="Create logins, set permissions, and hand out one-time temporary passwords. Event owner and programme officer are separate designations — someone can hold either, both, or neither."
               defaultOpen
             >
-              <EventOwnersSection />
+              <TeamAccountsSection />
             </CollapsibleSection>
           )}
 
           {isAdmin && (
             <CollapsibleSection
               title="Master Lists"
-              description="Manage the Event Owner, Caterer, and Decorator option lists used in the Add Event form. Deactivating soft-deletes the option (existing events keep their value)."
+              description="Manage the Caterer and Decorator option lists used in the Add Event form. Deactivating soft-deletes the option (existing events keep their value)."
             >
               <MasterListsSection listKeys={["caterer", "decorator"]} />
             </CollapsibleSection>
@@ -689,17 +696,18 @@ function ListEditor({
 
 // ---- Team accounts ----
 // Each team member is a real login with an explicit permission list — there
-// are no roles. Adding a person here creates both a users row (with a
-// one-time temporary password) and a handled_by dropdown option, so they
-// appear in the Event Owner dropdown AND can sign in. Presets are just
-// tick-box shortcuts; every account stores its own list.
-type OwnerUser = {
+// are no roles. Event owner and programme officer are independent designations
+// on that account (either, both, or neither). Only event owners get a
+// handled_by dropdown option for calendar filters. Presets are just tick-box
+// shortcuts; every account stores its own permission list.
+type TeamUser = {
   id: string;
   email: string;
   name: string;
   permissions: Permission[];
   organisation: string | null;
   contact_number: string | null;
+  is_event_owner: boolean;
   is_programme_officer: boolean;
   is_active: number;
   must_change_password: number;
@@ -760,12 +768,54 @@ function PermissionEditor({ value, onChange }: { value: Permission[]; onChange: 
   );
 }
 
-function EventOwnersSection() {
+function DesignationChecks({
+  isEventOwner,
+  isProgrammeOfficer,
+  onEventOwnerChange,
+  onProgrammeOfficerChange,
+}: {
+  isEventOwner: boolean;
+  isProgrammeOfficer: boolean;
+  onEventOwnerChange: (next: boolean) => void;
+  onProgrammeOfficerChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-2">
+      <label className="flex items-start gap-2 text-xs text-ink-secondary etched">
+        <input
+          type="checkbox"
+          checked={isEventOwner}
+          onChange={(e) => onEventOwnerChange(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-ink-muted"
+        />
+        <span>
+          <span className="font-medium text-ink-primary">Event owner</span>
+          <span className="block text-[11px] text-ink-muted">Can be assigned as owner of an event (tasks route to them).</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-xs text-ink-secondary etched">
+        <input
+          type="checkbox"
+          checked={isProgrammeOfficer}
+          onChange={(e) => onProgrammeOfficerChange(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-ink-muted"
+        />
+        <span>
+          <span className="font-medium text-ink-primary">Programme officer</span>
+          <span className="block text-[11px] text-ink-muted">Appears in the Program Officer dropdown on the event form.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function TeamAccountsSection() {
   const qc = useQueryClient();
   const { user: me } = useAuth();
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newContact, setNewContact] = useState("");
+  const [newIsEventOwner, setNewIsEventOwner] = useState(false);
   const [newIsProgrammeOfficer, setNewIsProgrammeOfficer] = useState(false);
   const [newPermissions, setNewPermissions] = useState<Permission[]>([...DEFAULT_NEW_PERMISSIONS]);
   const [showNewPermissions, setShowNewPermissions] = useState(false);
@@ -775,11 +825,12 @@ function EventOwnersSection() {
     name: string;
     email: string;
     contact_number: string;
+    is_event_owner: boolean;
     is_programme_officer: boolean;
     permissions: Permission[];
   }>>({});
 
-  const { data, isLoading } = useQuery<{ users: OwnerUser[] }>({
+  const { data, isLoading } = useQuery<{ users: TeamUser[] }>({
     queryKey: ["users"],
     queryFn: () => apiGet("/users"),
   });
@@ -789,13 +840,15 @@ function EventOwnersSection() {
       name: string;
       email: string;
       contact_number?: string | null;
+      is_event_owner?: boolean;
       is_programme_officer?: boolean;
       permissions: Permission[];
     }) =>
       apiPost<{ id: string; email: string; name: string; temporaryPassword: string }>("/users", input),
     onSuccess: (res) => {
       setCreated({ name: res.name, email: res.email, temporaryPassword: res.temporaryPassword });
-      setNewName(""); setNewEmail(""); setNewContact(""); setNewIsProgrammeOfficer(false);
+      setNewName(""); setNewEmail(""); setNewContact("");
+      setNewIsEventOwner(false); setNewIsProgrammeOfficer(false);
       setNewPermissions([...DEFAULT_NEW_PERMISSIONS]); setShowNewPermissions(false);
       setErr(null);
       qc.invalidateQueries({ queryKey: ["users"] });
@@ -809,6 +862,7 @@ function EventOwnersSection() {
       name?: string;
       email?: string;
       contact_number?: string | null;
+      is_event_owner?: boolean;
       is_programme_officer?: boolean;
       permissions?: Permission[];
     } }) =>
@@ -848,7 +902,7 @@ function EventOwnersSection() {
       {created && (
         <div className="mb-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3">
           <p className="text-xs font-medium text-status-awaitingApproval etched">
-            ⚠ Temporary password for <strong>{created.name}</strong> ({created.email}) — shown once:
+            ⚠ Temporary password for <strong>{created.name}</strong> ({created.email}) — shown once. Share it securely; they must choose their own password on first sign-in.
           </p>
           <code className="mt-1 block rounded-lg bg-marble-shadow/40 px-3 py-2 font-mono text-sm text-ink-primary">
             {created.temporaryPassword}
@@ -859,8 +913,9 @@ function EventOwnersSection() {
         </div>
       )}
 
-      {/* Add team member */}
+      {/* Add team member — account first; designations are optional and independent */}
       <div className="mb-5 rounded-xl bg-marble-shadow/30 p-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">New login</p>
         <div className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_auto_auto]">
           <input value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="Contact no." className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
@@ -879,6 +934,7 @@ function EventOwnersSection() {
               name: newName.trim(),
               email: newEmail.trim().toLowerCase(),
               contact_number: newContact.trim() || null,
+              is_event_owner: newIsEventOwner,
               is_programme_officer: newIsProgrammeOfficer,
               permissions: newPermissions,
             })}
@@ -887,15 +943,15 @@ function EventOwnersSection() {
             {create.isPending ? "Creating…" : "+ Add person"}
           </button>
         </div>
-        <label className="mt-2 flex items-center gap-2 text-xs text-ink-secondary etched">
-          <input
-            type="checkbox"
-            checked={newIsProgrammeOfficer}
-            onChange={(e) => setNewIsProgrammeOfficer(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-ink-muted"
+        <div className="mt-3 border-t border-ink-muted/10 pt-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Designations (optional)</p>
+          <DesignationChecks
+            isEventOwner={newIsEventOwner}
+            isProgrammeOfficer={newIsProgrammeOfficer}
+            onEventOwnerChange={setNewIsEventOwner}
+            onProgrammeOfficerChange={setNewIsProgrammeOfficer}
           />
-          Programme officer?
-        </label>
+        </div>
         {showNewPermissions && (
           <div className="mt-2">
             <PermissionEditor value={newPermissions} onChange={setNewPermissions} />
@@ -924,15 +980,12 @@ function EventOwnersSection() {
                       <button type="button" disabled={update.isPending || ed.permissions.length === 0} onClick={() => update.mutate({ id: u.id, patch: { ...ed, contact_number: ed.contact_number.trim() || null } })} className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40">Save</button>
                       <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[u.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
                     </div>
-                    <label className="flex items-center gap-2 text-xs text-ink-secondary etched">
-                      <input
-                        type="checkbox"
-                        checked={ed.is_programme_officer}
-                        onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_programme_officer: e.target.checked } }))}
-                        className="h-3.5 w-3.5 rounded border-ink-muted"
-                      />
-                      Programme officer?
-                    </label>
+                    <DesignationChecks
+                      isEventOwner={ed.is_event_owner}
+                      isProgrammeOfficer={ed.is_programme_officer}
+                      onEventOwnerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_event_owner: next } }))}
+                      onProgrammeOfficerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_programme_officer: next } }))}
+                    />
                     <PermissionEditor value={ed.permissions} onChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, permissions: next } }))} />
                   </div>
                 ) : (
@@ -941,6 +994,7 @@ function EventOwnersSection() {
                       <div className="flex flex-wrap items-center gap-2">
                         {u.contact_number && <span className="text-sm tabular-nums text-ink-secondary etched">{u.contact_number}</span>}
                         <span className={"text-sm font-medium " + (u.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{u.name}</span>
+                        {u.is_event_owner && <span className="rounded-full bg-terracotta-btn/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-terracotta-text">event owner</span>}
                         {u.is_programme_officer && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">programme officer</span>}
                         {isSelf && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">you</span>}
                         {u.permissions.includes("user.manage") && <span className="rounded-full bg-status-awaitingApproval/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval">manages accounts</span>}
@@ -956,6 +1010,7 @@ function EventOwnersSection() {
                           name: u.name,
                           email: u.email,
                           contact_number: u.contact_number ?? "",
+                          is_event_owner: u.is_event_owner,
                           is_programme_officer: u.is_programme_officer,
                           permissions: [...u.permissions],
                         },

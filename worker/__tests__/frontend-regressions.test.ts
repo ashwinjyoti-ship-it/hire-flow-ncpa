@@ -466,24 +466,27 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain("apiPatch(`/tasks/");
   });
 
-  it("manages event owners as real accounts (not a free-text master list)", () => {
-    // Phase 8a: event owners are now logins. handled_by is no longer a free-text
-    // master list in Settings — it's managed via the EventOwnersSection, which
-    // creates a users row + dropdown option together. Caterer/decorator remain
-    // free-text master lists.
+  it("manages team accounts with independent owner and programme-officer designations", () => {
+    // Team accounts are real logins. Event owner and programme officer are
+    // independent flags — neither implies the other. handled_by is no longer a
+    // free-text master list; only event owners sync a handled_by option.
+    // Caterer/decorator remain free-text master lists.
     const settings = readFileSync(resolve(root, "src/pages/SettingsPage.tsx"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
-    // Phase 8b: the event form now sources its owner dropdown from real accounts
-    // (/users) and sets event_owner_id, not the free-text handled_by lookup.
+    // The event form sources owner / PO dropdowns from /users with independent filters.
     expect(eventForm).toContain('queryKey: ["users"]');
     expect(eventForm).toContain("apiGet(\"/users\")");
     expect(eventForm).toContain("event_owner_id");
+    expect(eventForm).toContain("u.is_event_owner");
+    expect(eventForm).toContain("u.is_programme_officer");
     expect(eventForm).not.toContain("lookups?.lookups.handled_by");
     // Settings must NOT present handled_by as a free-text master list anymore.
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
     expect(settings).toContain('listKeys={["caterer", "decorator"]}');
-    expect(settings).toContain("EventOwnersSection");
+    expect(settings).toContain("TeamAccountsSection");
+    expect(settings).toContain("is_event_owner");
+    expect(settings).toContain("is_programme_officer");
     expect(settings).toContain("Check List Intervals");
     expect(settings).toContain("ChecklistIntervalsSection");
   });

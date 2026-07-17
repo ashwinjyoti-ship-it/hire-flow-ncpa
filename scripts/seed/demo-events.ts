@@ -69,12 +69,12 @@ const SOURCES = ["Referral", "Website", "Repeat Client", "Phone Call", "Email"];
 const DEMO_TODAY = "2026-07-08";
 const DEMO_PASSWORD_HASH = `scrypt:${"00".repeat(16)}:${"00".repeat(32)}`;
 const DEMO_USERS = [
-  { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations" },
-  { id: "demo_user_aditi", email: "aditi.rao@ncpa.local", name: "Aditi Rao", role: "venue_manager", organisation: "Venue Hire" },
-  { id: "demo_user_dev", email: "dev.mehta@ncpa.local", name: "Dev Mehta", role: "coordinator", organisation: "Venue Hire" },
-  { id: "demo_user_farah", email: "farah.contractor@ncpa.local", name: "Farah Contractor", role: "coordinator", organisation: "Accounts" },
-  { id: "demo_user_kabir", email: "kabir.shah@ncpa.local", name: "Kabir Shah", role: "coordinator", organisation: "Technical" },
-  { id: "demo_user_leena", email: "leena.iyer@ncpa.local", name: "Leena Iyer", role: "viewer", organisation: "Management" },
+  { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations", is_event_owner: false, is_programme_officer: false },
+  { id: "demo_user_aditi", email: "aditi.rao@ncpa.local", name: "Aditi Rao", role: "venue_manager", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: true },
+  { id: "demo_user_dev", email: "dev.mehta@ncpa.local", name: "Dev Mehta", role: "coordinator", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: false },
+  { id: "demo_user_farah", email: "farah.contractor@ncpa.local", name: "Farah Contractor", role: "coordinator", organisation: "Accounts", is_event_owner: true, is_programme_officer: true },
+  { id: "demo_user_kabir", email: "kabir.shah@ncpa.local", name: "Kabir Shah", role: "coordinator", organisation: "Technical", is_event_owner: true, is_programme_officer: false },
+  { id: "demo_user_leena", email: "leena.iyer@ncpa.local", name: "Leena Iyer", role: "viewer", organisation: "Management", is_event_owner: false, is_programme_officer: true },
 ];
 
 function parseEnv(): SeedEnv {
@@ -346,15 +346,20 @@ function seedVenueLookups(batch: SqlBatch, timestamp: string): void {
 function seedDemoUsers(batch: SqlBatch, timestamp: string): void {
   DEMO_USERS.forEach((user) => {
     // Demo accounts carry explicit permission lists (roles are legacy-only).
+    // Event owner / programme officer are independent designations.
     const permissions = JSON.stringify(LEGACY_ROLE_PERMISSIONS[user.role] ?? []);
     batch.add(
-      `INSERT INTO users (id, email, name, permissions, organisation, password_hash, password_algo, password_updated_at, is_active, created_at, updated_at)
+      `INSERT INTO users (id, email, name, permissions, organisation, password_hash, password_algo, password_updated_at,
+        is_event_owner, is_programme_officer, is_active, created_at, updated_at)
        VALUES (${sqlStr(user.id)}, ${sqlStr(user.email)}, ${sqlStr(user.name)}, ${sqlStr(permissions)}, ${sqlStr(user.organisation)},
-       ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)}, 1, ${sqlStr(timestamp)}, ${sqlStr(timestamp)})
+       ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)}, ${user.is_event_owner ? 1 : 0}, ${user.is_programme_officer ? 1 : 0},
+       1, ${sqlStr(timestamp)}, ${sqlStr(timestamp)})
        ON CONFLICT(email) DO UPDATE SET
          name = excluded.name,
          permissions = excluded.permissions,
          organisation = excluded.organisation,
+         is_event_owner = excluded.is_event_owner,
+         is_programme_officer = excluded.is_programme_officer,
          is_active = 1,
          updated_at = excluded.updated_at;`
     );
