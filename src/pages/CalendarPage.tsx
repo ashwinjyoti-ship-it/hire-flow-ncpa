@@ -308,80 +308,6 @@ export function CalendarPage() {
 
   const showCreate = can(user?.permissions, "event.create");
 
-  function renderViewToggle() {
-    return (
-      <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
-        {(["lifecycle", "show"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setView(v)}
-            className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-muted hover:text-ink-secondary")}
-          >
-            {v === "show" ? "Show Calendar" : "Life Cycle"}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  function renderMonthNav() {
-    return (
-      <div className="mx-auto flex items-center gap-2 rounded-full bg-marble-shadow/30 px-2 py-1">
-        <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
-          <Chevron dir="left" />
-        </button>
-        <div className="min-w-[9rem] text-center">
-          <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
-        </div>
-        <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Next month">
-          <Chevron dir="right" />
-        </button>
-      </div>
-    );
-  }
-
-  function renderFilterControls() {
-    return (
-      <>
-        <details className="group relative">
-          <summary className={"carved-btn-terracotta flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-terracotta-btn text-terracotta-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
-            Filter
-            {activeFilterCount > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-terracotta-text">
-                {activeFilterCount}
-              </span>
-            )}
-          </summary>
-          <div className="carved-card absolute right-0 z-30 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-marble-highlight/95 p-3 backdrop-blur-md">
-            <div className="space-y-2">
-              <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilter("status", v)} options={filterOptions.status} />
-              <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilter("venue", v)} options={filterOptions.venue} />
-              <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilter("type", v)} options={filterOptions.type} />
-              <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilter("owner", v)} options={filterOptions.owner} />
-              {view === "lifecycle" && (
-                <label className="flex items-center gap-2 rounded-lg bg-marble-shadow/25 px-3 py-2 text-xs font-medium text-ink-secondary etched">
-                  <input
-                    type="checkbox"
-                    checked={filters.pocIncomplete}
-                    onChange={(e) => setPocIncompleteFilter(e.target.checked)}
-                    className="h-4 w-4 rounded border-ink-muted accent-terracotta"
-                  />
-                  POC incomplete only
-                </label>
-              )}
-            </div>
-          </div>
-        </details>
-        <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
-          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-terracotta" />
-          My events
-        </label>
-      </>
-    );
-  }
-
   return (
     <div>
       <PageHeader
@@ -393,21 +319,74 @@ export function CalendarPage() {
         ) : null}
       />
 
-      {/*
-        Sticky month context: on small screens only the ~48px month frame sticks
-        (toggle/filters scroll away). On xl the one-row toolbar stays sticky as a whole.
-      */}
-      <div className="mb-3 flex justify-center xl:hidden">{renderViewToggle()}</div>
+      {/* Sticky controls: one bar so toggle/filters don't slide under the month nav while scrolling. */}
+      <div className="sticky top-0 z-20 mb-6">
+        <div className="carved-header grid grid-cols-1 items-center gap-3 rounded-2xl bg-marble-highlight p-3 xl:grid-cols-[1fr_auto_1fr]">
+          <div className="flex justify-center xl:justify-start">
+            <div className="flex items-center gap-1 rounded-full bg-marble-shadow/40 p-1">
+              {(["lifecycle", "show"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  className={"rounded-full px-4 py-1.5 text-xs font-semibold etched " + (view === v ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-muted hover:text-ink-secondary")}
+                >
+                  {v === "show" ? "Show Calendar" : "Life Cycle"}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="sticky top-0 z-20 mb-3 xl:mb-6">
-        <div className="carved-header grid grid-cols-1 items-center gap-3 rounded-2xl bg-marble-highlight/95 p-3 shadow-[0_8px_24px_rgba(73,88,58,0.08)] backdrop-blur-md xl:grid-cols-[1fr_auto_1fr]">
-          <div className="hidden justify-start xl:flex">{renderViewToggle()}</div>
-          {renderMonthNav()}
-          <div className="hidden flex-wrap items-center justify-end gap-2 xl:flex">{renderFilterControls()}</div>
+          <div className="mx-auto flex items-center gap-2 rounded-full bg-marble-shadow/30 px-2 py-1">
+            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Previous month">
+              <Chevron dir="left" />
+            </button>
+            <div className="min-w-[9rem] text-center">
+              <div className="text-lg font-semibold leading-tight text-ink-primary etched-deep">{title}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{isCurrentMonth ? "This month" : "Viewing"}</div>
+            </div>
+            <button type="button" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="carved-btn-sage flex h-8 w-8 items-center justify-center rounded-full bg-sage-btn text-sage-text hover:bg-sage-btn-hover" aria-label="Next month">
+              <Chevron dir="right" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 xl:justify-end">
+            <details className="group relative">
+              <summary className={"carved-btn-terracotta flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-terracotta-btn text-terracotta-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
+                Filter
+                {activeFilterCount > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-terracotta-text">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </summary>
+              <div className="carved-card absolute right-0 z-30 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-marble-highlight/95 p-3 backdrop-blur-md">
+                <div className="space-y-2">
+                  <FilterSelect label="Status" value={filters.status} onChange={(v) => setFilter("status", v)} options={filterOptions.status} />
+                  <FilterSelect label="Venue" value={filters.venue} onChange={(v) => setFilter("venue", v)} options={filterOptions.venue} />
+                  <FilterSelect label="Type" value={filters.type} onChange={(v) => setFilter("type", v)} options={filterOptions.type} />
+                  <FilterSelect label="Owner" value={filters.owner} onChange={(v) => setFilter("owner", v)} options={filterOptions.owner} />
+                  {view === "lifecycle" && (
+                    <label className="flex items-center gap-2 rounded-lg bg-marble-shadow/25 px-3 py-2 text-xs font-medium text-ink-secondary etched">
+                      <input
+                        type="checkbox"
+                        checked={filters.pocIncomplete}
+                        onChange={(e) => setPocIncompleteFilter(e.target.checked)}
+                        className="h-4 w-4 rounded border-ink-muted accent-terracotta"
+                      />
+                      POC incomplete only
+                    </label>
+                  )}
+                </div>
+              </div>
+            </details>
+            <label className="inline-flex items-center gap-1.5 px-1 text-xs font-medium text-ink-secondary etched">
+              <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 rounded border-ink-muted accent-terracotta" />
+              My events
+            </label>
+          </div>
         </div>
       </div>
-
-      <div className="mb-6 flex flex-wrap items-center justify-center gap-2 xl:hidden">{renderFilterControls()}</div>
 
       {/* Legend */}
       <div className="mb-4 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
