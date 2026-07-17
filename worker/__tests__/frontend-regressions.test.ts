@@ -466,27 +466,25 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain("apiPatch(`/tasks/");
   });
 
-  it("manages team accounts with independent owner and programme-officer designations", () => {
-    // Team accounts are real logins. Event owner and programme officer are
-    // independent flags — neither implies the other. handled_by is no longer a
-    // free-text master list; only event owners sync a handled_by option.
-    // Caterer/decorator remain free-text master lists.
+  it("separates team-account event owners from programme-officer name+contact list", () => {
+    // Event owners are logins (is_event_owner). Programme officers are a
+    // name+contact master list (no login) under ProgrammeOfficersSection.
+    // An owner may also be marked as PO (contact required) and syncs to that list.
     const settings = readFileSync(resolve(root, "src/pages/SettingsPage.tsx"), "utf8");
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
-    // The event form sources owner / PO dropdowns from /users with independent filters.
     expect(eventForm).toContain('queryKey: ["users"]');
     expect(eventForm).toContain("apiGet(\"/users\")");
     expect(eventForm).toContain("event_owner_id");
     expect(eventForm).toContain("u.is_event_owner");
-    expect(eventForm).toContain("u.is_programme_officer");
+    expect(eventForm).toContain("lookups?.lookups.program_officer");
     expect(eventForm).not.toContain("lookups?.lookups.handled_by");
-    // Settings must NOT present handled_by as a free-text master list anymore.
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
     expect(settings).toContain('listKeys={["caterer", "decorator"]}');
     expect(settings).toContain("TeamAccountsSection");
+    expect(settings).toContain("ProgrammeOfficersSection");
     expect(settings).toContain("is_event_owner");
-    expect(settings).toContain("is_programme_officer");
+    expect(settings).toContain("Also programme officer");
     expect(settings).toContain("Check List Intervals");
     expect(settings).toContain("ChecklistIntervalsSection");
   });
@@ -591,7 +589,7 @@ describe("frontend regression guards", () => {
     expect(fields).toContain('value="Awaiting"');
     expect(fields).toContain(">Awaiting</option>");
     expect(eventForm).toContain("programmeOfficers");
-    expect(eventForm).not.toContain("lookups?.lookups.program_officer");
+    expect(eventForm).toContain("lookups?.lookups.program_officer");
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
     expect(fields).toContain('Field fieldKey="interval" label="Interval"');

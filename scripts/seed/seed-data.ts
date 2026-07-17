@@ -57,13 +57,13 @@ export const DROPDOWN_LISTS: DropdownSeed[] = [
   { list_key: "event_status", value: "regret", sort_order: 5, metadata: { terminal: true } },
   { list_key: "event_status", value: "cancelled", sort_order: 6, metadata: { terminal: true } },
 
-  // Staff: Program Officer — legacy seed list; programme officers are now flagged on owner accounts.
-  { list_key: "program_officer", value: "Farha", sort_order: 1 },
-  { list_key: "program_officer", value: "Nasha", sort_order: 2 },
-  { list_key: "program_officer", value: "Delzeen", sort_order: 3 },
-  { list_key: "program_officer", value: "Binaifar", sort_order: 4 },
-  { list_key: "program_officer", value: "Sangeeta", sort_order: 5 },
-  { list_key: "program_officer", value: "Adil", sort_order: 6 },
+  // Staff: Program Officer — name + contact list (no login). Contact in metadata.
+  { list_key: "program_officer", value: "Farha", sort_order: 1, metadata: { contact_number: "022 66223801" } },
+  { list_key: "program_officer", value: "Nasha", sort_order: 2, metadata: { contact_number: "022 66223802" } },
+  { list_key: "program_officer", value: "Delzeen", sort_order: 3, metadata: { contact_number: "022 66223803" } },
+  { list_key: "program_officer", value: "Binaifar", sort_order: 4, metadata: { contact_number: "022 66223804" } },
+  { list_key: "program_officer", value: "Sangeeta", sort_order: 5, metadata: { contact_number: "022 66223805" } },
+  { list_key: "program_officer", value: "Adil", sort_order: 6, metadata: { contact_number: "022 66223806" } },
 
   // Staff: Handled By / Event Owner (Dropdown_Master Handled By)
   { list_key: "handled_by", value: "Farha", sort_order: 1 },

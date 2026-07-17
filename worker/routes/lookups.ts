@@ -2,11 +2,14 @@
  * Lookup (dropdown_options) CRUD routes — admin-managed master lists.
  *   GET    /lookups/:list_key            — list options for a key (active+inactive)
  *   POST   /lookups/:list_key            — add a value
- *   PUT    /lookups/:list_key/:id        — edit (rename / activate-deactivate)
+ *   PUT    /lookups/:list_key/:id        — edit (rename / activate-deactivate / metadata)
  *   DELETE /lookups/:list_key/:id        — soft-delete (is_active = 0)
  *
  * Reuses the existing dropdown_options table. The public read endpoint
  * (active options grouped by key) remains in app.ts.
+ *
+ * programme officers (list_key = program_officer) store contact_number in
+ * metadata — they are not login accounts.
  */
 import { Hono } from "hono";
 import { z } from "zod";
@@ -18,7 +21,9 @@ import { makeId } from "../lib/id";
 export const lookupRoutes = new Hono<AuthEnv>();
 
 // Lists that admins may manage via this endpoint.
-const MANAGED_LISTS = new Set(["handled_by", "caterer", "decorator"]);
+const MANAGED_LISTS = new Set(["handled_by", "caterer", "decorator", "program_officer"]);
+
+const MetadataBody = z.record(z.unknown()).nullish();
 
 lookupRoutes.get("/:list_key", requireUser, async (c) => {
   const listKey = c.req.param("list_key");
@@ -26,12 +31,28 @@ lookupRoutes.get("/:list_key", requireUser, async (c) => {
     `SELECT id, value, sort_order, is_active, metadata, created_at
      FROM dropdown_options WHERE list_key = ? ORDER BY sort_order, value`
   ).bind(listKey).all();
-  return c.json({ options: results });
+  const options = (results ?? []).map((row) => {
+    const r = row as {
+      id: string;
+      value: string;
+      sort_order: number;
+      is_active: number;
+      metadata: string | null;
+      created_at: string;
+    };
+    let metadata: Record<string, unknown> | null = null;
+    if (r.metadata) {
+      try { metadata = JSON.parse(r.metadata) as Record<string, unknown>; } catch { metadata = null; }
+    }
+    return { ...r, metadata };
+  });
+  return c.json({ options });
 });
 
 const CreateBody = z.object({
   value: z.string().min(1).max(200),
   sort_order: z.number().int().nonnegative().optional(),
+  metadata: MetadataBody,
 });
 
 lookupRoutes.post("/:list_key", requirePermission("settings.manage"), async (c) => {
@@ -48,6 +69,15 @@ lookupRoutes.post("/:list_key", requirePermission("settings.manage"), async (c) 
   const now = new Date().toISOString();
   const value = parsed.data.value.trim();
 
+  if (listKey === "program_officer") {
+    const contact = typeof parsed.data.metadata?.contact_number === "string"
+      ? parsed.data.metadata.contact_number.trim()
+      : "";
+    if (!contact) {
+      return c.json({ error: "Programme officers need a contact number" }, 400);
+    }
+  }
+
   // Compute next sort_order if not provided.
   let sortOrder = parsed.data.sort_order;
   if (sortOrder == null) {
@@ -57,11 +87,13 @@ lookupRoutes.post("/:list_key", requirePermission("settings.manage"), async (c) 
     sortOrder = row?.next ?? 1;
   }
 
+  const metadataJson = parsed.data.metadata == null ? null : JSON.stringify(parsed.data.metadata);
+
   try {
     await db.prepare(
       `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
-       VALUES (?, ?, ?, ?, 1, NULL, ?)`
-    ).bind(id, listKey, value, sortOrder, now).run();
+       VALUES (?, ?, ?, ?, 1, ?, ?)`
+    ).bind(id, listKey, value, sortOrder, metadataJson, now).run();
   } catch {
     return c.json({ error: `Value '${value}' already exists in '${listKey}'` }, 409);
   }
@@ -74,6 +106,7 @@ const UpdateBody = z.object({
   value: z.string().min(1).max(200).optional(),
   sort_order: z.number().int().nonnegative().optional(),
   is_active: z.boolean().optional(),
+  metadata: MetadataBody,
 });
 
 lookupRoutes.put("/:list_key/:id", requirePermission("settings.manage"), async (c) => {
@@ -89,18 +122,34 @@ lookupRoutes.put("/:list_key/:id", requirePermission("settings.manage"), async (
   const user = c.get("user")!;
   const d = parsed.data;
 
-  await db.prepare(
-    `UPDATE dropdown_options
-       SET value = COALESCE(?, value),
-           sort_order = COALESCE(?, sort_order),
-           is_active = COALESCE(?, is_active)
-     WHERE id = ? AND list_key = ?`
-  ).bind(
+  if (listKey === "program_officer" && d.metadata !== undefined) {
+    const contact = typeof d.metadata?.contact_number === "string"
+      ? d.metadata.contact_number.trim()
+      : "";
+    if (d.metadata !== null && !contact) {
+      return c.json({ error: "Programme officers need a contact number" }, 400);
+    }
+  }
+
+  const setClauses = [
+    "value = COALESCE(?, value)",
+    "sort_order = COALESCE(?, sort_order)",
+    "is_active = COALESCE(?, is_active)",
+  ];
+  const binds: unknown[] = [
     d.value?.trim() ?? null,
     d.sort_order ?? null,
     d.is_active == null ? null : d.is_active ? 1 : 0,
-    id, listKey
-  ).run();
+  ];
+  if (d.metadata !== undefined) {
+    setClauses.push("metadata = ?");
+    binds.push(d.metadata == null ? null : JSON.stringify(d.metadata));
+  }
+  binds.push(id, listKey);
+
+  await db.prepare(
+    `UPDATE dropdown_options SET ${setClauses.join(", ")} WHERE id = ? AND list_key = ?`
+  ).bind(...binds).run();
 
   await audit({ db, actor: actorFrom(user), action: "lookup.updated", targetType: "dropdown_options", targetId: id, detail: { list_key: listKey, ...d } });
   return c.json({ ok: true });
