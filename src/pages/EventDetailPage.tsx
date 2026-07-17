@@ -855,7 +855,7 @@ function LifecyclePanel({
 
   return (
     <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
-      <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(12rem,16rem)_auto] lg:items-start lg:gap-5">
+      <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start lg:gap-5">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -874,7 +874,7 @@ function LifecyclePanel({
           </div>
         </div>
 
-        <div className="min-w-0 rounded-xl bg-marble-shadow/20 px-3.5 py-3">
+        <div className="min-w-0 w-full rounded-xl bg-marble-shadow/20 px-3.5 py-3 lg:w-[16rem] lg:justify-self-center">
           <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Completion</h3>
           <div className="space-y-2">
             <ProgressBar label="Operations" value={completion.operations} compact />
@@ -883,7 +883,7 @@ function LifecyclePanel({
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-56 lg:items-end">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-56 lg:justify-self-end lg:items-end">
           <button
             type="button"
             onClick={onGenerateMom}
