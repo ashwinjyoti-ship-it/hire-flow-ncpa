@@ -119,6 +119,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain("With AC");
   });
 
+  it("drops overview tab and shows completion inside lifecycle", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(source).not.toContain('["overview", "Overview"]');
+    expect(source).toContain('parseEventDetailTab(searchParams.get("tab")) ?? "operations"');
+    expect(source).toContain("completion={{");
+    expect(source).toContain("<h3 className=\"mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched\">Completion</h3>");
+  });
+
   it("warns on post-show operational dates without generic reopen controls", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 

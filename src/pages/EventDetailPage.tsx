@@ -114,7 +114,7 @@ type EventPageFreshState = {
   tasks: { tasks: Array<Record<string, unknown>> };
 };
 
-type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "venues" | "documents";
+type EventDetailTab = "operations" | "accounts" | "tasks" | "venues" | "documents";
 
 type ScheduleEntryView = {
   id: string;
@@ -148,7 +148,7 @@ export function EventDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "overview");
+  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "operations");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
@@ -397,8 +397,9 @@ export function EventDetailPage() {
   function selectTab(next: EventDetailTab, fieldKey: string | null = null) {
     setTab(next);
     setFocusedFieldKey(fieldKey);
+    scrolledToFieldRef.current = null;
     const params = new URLSearchParams(searchParams);
-    if (next === "overview") params.delete("tab");
+    if (next === "operations" && !fieldKey) params.delete("tab");
     else params.set("tab", next);
     if (fieldKey) params.set("field", fieldKey);
     else params.delete("field");
@@ -471,6 +472,11 @@ export function EventDetailPage() {
           setStatusModal(status);
           setReason("");
         }}
+        completion={{
+          operations: e.ops_completion,
+          accounts: e.accounts_completion,
+          overall: e.overall_completion,
+        }}
       />
 
       {momOpen && (
@@ -534,7 +540,6 @@ export function EventDetailPage() {
 
       <div className="mb-4 flex flex-wrap gap-1">
         {([
-          ["overview", "Overview"],
           ["operations", "Operations"],
           ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
@@ -554,23 +559,6 @@ export function EventDetailPage() {
           </button>
         ))}
       </div>
-
-      {tab === "overview" && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Description</h3>
-            <p className="whitespace-pre-wrap text-sm text-ink-secondary etched">{e.description || e.notes || "No description provided."}</p>
-          </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Completion</h3>
-            <div className="space-y-3">
-              <ProgressBar label="Operations" value={e.ops_completion} />
-              <ProgressBar label="Accounts" value={e.accounts_completion} />
-              <ProgressBar label="Overall" value={e.overall_completion} emphasis />
-            </div>
-          </section>
-        </div>
-      )}
 
       {tab === "operations" && (
         <OperationsFlow
@@ -827,6 +815,7 @@ function LifecyclePanel({
   onPrintEventForm,
   onExportEventFormPdf,
   onChoose,
+  completion,
 }: {
   event: DetailResponse["event"];
   actions: LifecycleAction[];
@@ -838,6 +827,11 @@ function LifecyclePanel({
   onPrintEventForm: () => void;
   onExportEventFormPdf: () => void;
   onChoose: (status: EventStatus) => void;
+  completion: {
+    operations: number | null;
+    accounts: number | null;
+    overall: number | null;
+  };
 }) {
   const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
   const visibleActions = useMemo(() => {
@@ -861,8 +855,8 @@ function LifecyclePanel({
 
   return (
     <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(12rem,16rem)_auto] lg:items-start lg:gap-5">
+        <div className="min-w-0">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} />
@@ -874,12 +868,22 @@ function LifecyclePanel({
               <span className="rounded-full bg-marble-shadow/50 px-3 py-1 text-xs text-ink-muted etched">No next lifecycle action</span>
             )}
           </div>
-          <div className="mt-3 grid max-w-md grid-cols-2 gap-2 text-xs">
+          <div className="mt-3 grid max-w-sm grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
             <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
           </div>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-64 lg:items-end">
+
+        <div className="min-w-0 rounded-xl bg-marble-shadow/20 px-3.5 py-3">
+          <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Completion</h3>
+          <div className="space-y-2">
+            <ProgressBar label="Operations" value={completion.operations} compact />
+            <ProgressBar label="Accounts" value={completion.accounts} compact />
+            <ProgressBar label="Overall" value={completion.overall} emphasis compact />
+          </div>
+        </div>
+
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-56 lg:items-end">
           <button
             type="button"
             onClick={onGenerateMom}
@@ -887,7 +891,7 @@ function LifecyclePanel({
           >
             Generate MoM
           </button>
-          <div className="rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-64">
+          <div className="w-full rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-56">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Event form</p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -1263,7 +1267,7 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
 }
 
 function parseEventDetailTab(value: string | null): EventDetailTab | null {
-  if (value === "operations" || value === "accounts" || value === "tasks" || value === "venues" || value === "documents" || value === "overview") {
+  if (value === "operations" || value === "accounts" || value === "tasks" || value === "venues" || value === "documents") {
     return value;
   }
   return null;
@@ -1680,15 +1684,25 @@ function formatEventType(value: string | null | undefined): string {
   return normaliseEventType(value) ?? "-";
 }
 
-function ProgressBar({ label, value, emphasis }: { label: string; value: number | null; emphasis?: boolean }) {
+function ProgressBar({
+  label,
+  value,
+  emphasis,
+  compact,
+}: {
+  label: string;
+  value: number | null;
+  emphasis?: boolean;
+  compact?: boolean;
+}) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
     <div>
-      <div className="mb-1 flex justify-between text-xs">
+      <div className={`mb-0.5 flex justify-between ${compact ? "text-[11px]" : "text-xs"}`}>
         <span className={emphasis ? "font-semibold text-ink-primary etched-deep" : "text-ink-secondary etched"}>{label}</span>
-        <span className={emphasis ? "font-semibold text-sage-text etched" : "text-ink-muted etched"}>{pct}%</span>
+        <span className={`tabular-nums ${emphasis ? "font-semibold text-sage-text etched" : "text-ink-muted etched"}`}>{pct}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-marble-shadow/60">
+      <div className={`overflow-hidden rounded-full bg-marble-shadow/60 ${compact ? "h-1.5" : "h-2"}`}>
         <div className="h-full rounded-full bg-sage-btn" style={{ width: `${pct}%` }} />
       </div>
     </div>
