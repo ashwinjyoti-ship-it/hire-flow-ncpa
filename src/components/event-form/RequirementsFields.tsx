@@ -291,12 +291,12 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             </div>
 
             {cateringRequired && (
-              <div id="requirement-field-catering_meals" className="rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-4 scroll-mt-24">
-                <div className="mb-3 flex items-baseline justify-between gap-3">
+              <div id="requirement-field-catering_meals" className="max-w-md rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-3 scroll-mt-24 sm:p-4">
+                <div className="mb-2 space-y-0.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
                   <p className="text-[10px] text-ink-muted etched">Default N/A — set Yes only for meals needed, then enter pax.</p>
                 </div>
-                <div className="hidden gap-3 border-b border-marble-shadow/25 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]">
+                <div className="hidden gap-2 border-b border-marble-shadow/25 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[minmax(10.5rem,max-content)_7.5rem_4.5rem] md:items-center">
                   <span>Meal</span>
                   <span>Required</span>
                   <span className="text-right">Pax</span>
@@ -311,7 +311,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                     return (
                       <div
                         key={meal.key}
-                        className="grid gap-3 py-3 first:pt-2 last:pb-1 md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] md:items-center md:gap-3 md:px-2"
+                        className="grid gap-2 py-2 first:pt-1.5 last:pb-0.5 md:grid-cols-[minmax(10.5rem,max-content)_7.5rem_4.5rem] md:items-center"
                       >
                         <span className="flex items-center gap-2 text-sm font-medium text-ink-primary etched">
                           {meal.label}
@@ -343,10 +343,10 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                               placeholder="0"
                               value={(reqs[paxKey] as string) ?? ""}
                               onChange={(e) => setReq(paxKey, e.target.value || null)}
-                              className={`carved input w-full max-w-[5.5rem] scroll-mt-24 justify-self-end text-right tabular-nums md:w-full ${focusedFieldKey === paxKey ? "ring-2 ring-terracotta/70 ring-offset-4 ring-offset-marble-base" : ""}`}
+                              className={`carved input w-full max-w-[4.5rem] scroll-mt-24 text-right tabular-nums md:w-full ${focusedFieldKey === paxKey ? "ring-2 ring-terracotta/70 ring-offset-4 ring-offset-marble-base" : ""}`}
                             />
                           ) : (
-                            <span className="hidden justify-self-end text-xs text-ink-muted etched md:block">—</span>
+                            <span className="hidden text-right text-xs text-ink-muted etched md:block">—</span>
                           )}
                         </label>
                       </div>
