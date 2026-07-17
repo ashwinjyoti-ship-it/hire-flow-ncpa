@@ -61,6 +61,10 @@ describe("frontend regression guards", () => {
     expect(source).toContain("forwardMilestoneButtonClass");
     expect(source).toContain('s === "confirmed" && action');
     expect(source).toContain("bg-status-confirmed/15");
+    // Continue/Advance stays disabled until blockers clear; blocker name link is the deep-link.
+    expect(source).toContain("disabled={!nextAction}");
+    expect(source).toContain("bg-marble-shadow/45 text-ink-muted");
+    expect(source).not.toContain("disabled={!nextAction && !visibleBlockerTarget}");
   });
 
   it("uses the established status palette for event-form readiness", () => {
