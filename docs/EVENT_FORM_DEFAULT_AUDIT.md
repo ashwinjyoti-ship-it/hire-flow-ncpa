@@ -9,7 +9,7 @@ The readiness model treats blank as **Unknown**, an explicit negative answer as 
 | `video_recording`, `piano_required` | No | empty/select | Unknown | Yes activates camera/recording or tuning details. |
 | `liquor_licence` | Not Required | empty/select | Unknown | Required activates licence details. |
 | `catering_required` | No | empty/select | Unknown | Yes activates caterer, interval, meal decisions, and pax. No marks Catering Not Applicable. |
-| `catering_*_required` | No | empty/select | Unknown | Each meal decision is intentional; Yes activates pax. |
+| `catering_*_required` | No | N/A (default) | Not required | Only rows set to Yes enter readiness and require pax; untouched, N/A, and No need no lifecycle action. |
 | `interval` | No | empty/select | Unknown | Counted only when catering applies. |
 | `decorator_required` | No | empty/select | Unknown | Yes activates decorator name. No marks Decorator Not Applicable. |
 | `orchestra_pit_chairs` | Keep | empty/select | Unknown | User must choose Keep or Remove. |

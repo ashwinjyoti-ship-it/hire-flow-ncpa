@@ -2,6 +2,7 @@ import {
   CATERING_MEAL_TYPES,
   cateringMealPaxKey,
   cateringMealRequiredKey,
+  isCateringMealRequired,
 } from "./catering-meals";
 
 export type ReadinessState = "missing" | "partial" | "almost" | "complete" | "not_applicable";
@@ -101,10 +102,13 @@ const SECTIONS: SectionDefinition[] = [
       const fields: FieldRequirement[] = [decision("catering_required", "Catering decision")];
       if (!isYes(values.catering_required)) return fields;
       fields.push(decision("catering_provider", "Caterer"), decision("interval", "Interval decision"));
+      // Meals are optional even when catering applies. Only rows marked Yes
+      // enter readiness; untouched / N/A / No rows do not create lifecycle work.
       for (const meal of CATERING_MEAL_TYPES) {
         const requiredKey = cateringMealRequiredKey(meal.key);
+        if (!isCateringMealRequired(values[requiredKey])) continue;
         fields.push(decision(requiredKey, `${meal.label} decision`));
-        if (isYes(values[requiredKey])) fields.push(decision(cateringMealPaxKey(meal.key), `${meal.label} pax`));
+        fields.push(decision(cateringMealPaxKey(meal.key), `${meal.label} pax`));
       }
       return fields;
     },

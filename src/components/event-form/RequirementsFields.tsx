@@ -1,8 +1,10 @@
 import { createContext, useContext } from "react";
 import {
   CATERING_MEAL_TYPES,
+  CATERING_MEAL_NOT_APPLICABLE,
   cateringMealPaxKey,
   cateringMealRequiredKey,
+  isCateringMealRequired,
 } from "../../../worker/lib/catering-meals";
 import { withDefaultVenueRequirements } from "../../lib/event-edit-form";
 import { useLookups } from "../../lib/use-lookups";
@@ -65,6 +67,36 @@ function YesNoSelect({
       <option value="">Select…</option>
       <option value={noValue}>{noValue}</option>
       <option value={yesValue}>{yesValue}</option>
+    </select>
+  );
+}
+
+/** Meal rows default to N/A; only Yes activates pax and lifecycle readiness. */
+function MealRequiredSelect({
+  value,
+  onChange,
+  id,
+  focused = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  id?: string;
+  focused?: boolean;
+}) {
+  const displayValue = value || CATERING_MEAL_NOT_APPLICABLE;
+  return (
+    <select
+      id={id}
+      value={displayValue}
+      onChange={(e) => {
+        const next = e.target.value;
+        onChange(next === CATERING_MEAL_NOT_APPLICABLE ? "" : next);
+      }}
+      className={`carved input scroll-mt-24 ${focused ? "ring-2 ring-terracotta/70 ring-offset-4 ring-offset-marble-base" : ""}`}
+    >
+      <option value={CATERING_MEAL_NOT_APPLICABLE}>{CATERING_MEAL_NOT_APPLICABLE}</option>
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
     </select>
   );
 }
@@ -219,7 +251,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
               <div className="rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-4">
                 <div className="mb-3 flex items-baseline justify-between gap-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
-                  <p className="text-[10px] text-ink-muted etched">Select meals required, then enter pax for each.</p>
+                  <p className="text-[10px] text-ink-muted etched">Default N/A — set Yes only for meals needed, then enter pax.</p>
                 </div>
                 <div className="hidden gap-3 border-b border-marble-shadow/25 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]">
                   <span>Meal</span>
@@ -230,25 +262,30 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                   {CATERING_MEAL_TYPES.map((meal) => {
                     const requiredKey = cateringMealRequiredKey(meal.key);
                     const paxKey = cateringMealPaxKey(meal.key);
-                    const mealRequired = isYes(reqs[requiredKey], "Yes");
+                    const mealRequired = isCateringMealRequired(reqs[requiredKey]);
+                    const mealValue = (reqs[requiredKey] as string) ?? "";
+                    const mealStatusLabel = mealRequired ? "Yes" : mealValue === "No" ? "No" : CATERING_MEAL_NOT_APPLICABLE;
                     return (
                       <div
                         key={meal.key}
                         className="grid gap-3 py-3 first:pt-2 last:pb-1 md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem] md:items-center md:gap-3 md:px-2"
                       >
-                        <span className="text-sm font-medium text-ink-primary etched">{meal.label}</span>
+                        <span className="flex items-center gap-2 text-sm font-medium text-ink-primary etched">
+                          {meal.label}
+                          <span className="rounded-full bg-marble-shadow/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">
+                            {mealStatusLabel}
+                          </span>
+                        </span>
                         <label className="block md:contents">
                           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched md:hidden">Required</span>
-                          <YesNoSelect
+                          <MealRequiredSelect
                             id={`requirement-field-${requiredKey}`}
-                            value={(reqs[requiredKey] as string) ?? ""}
+                            value={mealValue}
                             onChange={(v) => {
                               const next = { ...reqs, [requiredKey]: v || null };
                               if (v !== "Yes") next[paxKey] = null;
                               onChange(next);
                             }}
-                            yesValue="Yes"
-                            noValue="No"
                             focused={focusedFieldKey === requiredKey}
                           />
                         </label>

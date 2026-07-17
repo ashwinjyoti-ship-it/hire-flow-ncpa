@@ -33,9 +33,33 @@ describe("event form readiness", () => {
       catering_breakfast_required: "Yes",
     });
     const catering = readiness.sections.find((section) => section.key === "catering");
-    expect(catering?.state).toBe("partial");
+    expect(catering?.state).toBe("almost");
     expect(catering?.missingKeys).toContain("catering_breakfast_pax");
     expect(catering?.missingLabels).toContain("Breakfast pax");
+  });
+
+  it("does not require untouched meal rows when catering applies", () => {
+    const readiness = calculateEventFormReadiness({
+      catering_required: "Yes",
+      catering_provider: "NCPA caterer",
+      interval: "No",
+    });
+    const catering = readiness.sections.find((section) => section.key === "catering");
+    expect(catering?.state).toBe("complete");
+    expect(catering?.missingKeys).not.toContain("catering_breakfast_required");
+    expect(catering?.missingKeys).not.toContain("catering_lunch_required");
+  });
+
+  it("treats explicit No on a meal as settled without requiring pax", () => {
+    const readiness = calculateEventFormReadiness({
+      catering_required: "Yes",
+      catering_provider: "NCPA caterer",
+      interval: "No",
+      catering_dinner_required: "No",
+    });
+    const catering = readiness.sections.find((section) => section.key === "catering");
+    expect(catering?.state).toBe("complete");
+    expect(catering?.missingKeys).not.toContain("catering_dinner_required");
   });
 
   it("round-trips readiness task rules", () => {
