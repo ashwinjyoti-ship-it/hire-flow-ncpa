@@ -8,7 +8,7 @@ import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncomplete
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
 import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
-import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
+import { formatDate, formatDateTime, formatDuration, formatTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
@@ -31,6 +31,9 @@ import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
+import { omitEventLevelRequirements, parseRequirements } from "../lib/event-edit-form";
+import { formatActivityType } from "../../worker/lib/types";
+import { isOptionalAffirmative } from "../../worker/lib/optional-requirements";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -111,26 +114,22 @@ type EventPageFreshState = {
   tasks: { tasks: Array<Record<string, unknown>> };
 };
 
-type ConflictsResponse = {
-  conflicts: Array<Record<string, unknown> & { level: string; venue: string; title: string; status: string; activity_date: string; activity_type: string }>;
-};
+type EventDetailTab = "operations" | "accounts" | "tasks" | "venues" | "documents";
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  created: "Event created",
-  updated: "Event updated",
-  status_changed: "Status changed",
-  venue_added: "Venue added",
-  venue_removed: "Venue removed",
-  confirmed: "Event confirmed",
-  completed: "Event completed",
-  closed: "Event closed",
-  note_added: "Note added",
-  task_created: "Task created",
-  task_completed: "Task completed",
-  checklist_updated: "Checklist updated",
+type ScheduleEntryView = {
+  id: string;
+  activity_type: string;
+  activity_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  with_ac_start: string | null;
+  with_ac_end: string | null;
+  with_ac_minutes: number | null;
+  without_ac_start: string | null;
+  without_ac_end: string | null;
+  without_ac_minutes: number | null;
+  notes: string | null;
 };
-
-type EventDetailTab = "overview" | "operations" | "accounts" | "tasks" | "documents" | "venues" | "conflicts" | "activity";
 
 type EventDocument = {
   id: string;
@@ -149,7 +148,7 @@ export function EventDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "overview");
+  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "operations");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
@@ -177,11 +176,6 @@ export function EventDetailPage() {
   const { data: taskData } = useQuery({
     queryKey: ["tasks", id],
     queryFn: () => apiGet<{ tasks: Array<Record<string, unknown>> }>(`/tasks?event=${id}&status=all`),
-  });
-
-  const { data: conflictsData } = useQuery({
-    queryKey: ["event", id, "conflicts"],
-    queryFn: () => apiGet<ConflictsResponse>(`/events/${id}/conflicts`),
   });
 
   const { data: documentsData } = useQuery({
@@ -403,8 +397,9 @@ export function EventDetailPage() {
   function selectTab(next: EventDetailTab, fieldKey: string | null = null) {
     setTab(next);
     setFocusedFieldKey(fieldKey);
+    scrolledToFieldRef.current = null;
     const params = new URLSearchParams(searchParams);
-    if (next === "overview") params.delete("tab");
+    if (next === "operations" && !fieldKey) params.delete("tab");
     else params.set("tab", next);
     if (fieldKey) params.set("field", fieldKey);
     else params.delete("field");
@@ -477,6 +472,11 @@ export function EventDetailPage() {
           setStatusModal(status);
           setReason("");
         }}
+        completion={{
+          operations: e.ops_completion,
+          accounts: e.accounts_completion,
+          overall: e.overall_completion,
+        }}
       />
 
       {momOpen && (
@@ -540,14 +540,11 @@ export function EventDetailPage() {
 
       <div className="mb-4 flex flex-wrap gap-1">
         {([
-          ["overview", "Overview"],
           ["operations", "Operations"],
           ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
-          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
           ["venues", `Venues & Schedule${data?.venue_bookings.length ? ` (${data.venue_bookings.length})` : ""}`],
-          ["conflicts", `Conflicts${conflictsData?.conflicts.length ? ` (${conflictsData.conflicts.length})` : ""}`],
-          ["activity", "Activity"],
+          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -562,23 +559,6 @@ export function EventDetailPage() {
           </button>
         ))}
       </div>
-
-      {tab === "overview" && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Description</h3>
-            <p className="whitespace-pre-wrap text-sm text-ink-secondary etched">{e.description || e.notes || "No description provided."}</p>
-          </section>
-          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Completion</h3>
-            <div className="space-y-3">
-              <ProgressBar label="Operations" value={e.ops_completion} />
-              <ProgressBar label="Accounts" value={e.accounts_completion} />
-              <ProgressBar label="Overall" value={e.overall_completion} emphasis />
-            </div>
-          </section>
-        </div>
-      )}
 
       {tab === "operations" && (
         <OperationsFlow
@@ -628,6 +608,14 @@ export function EventDetailPage() {
         </section>
       )}
 
+      {tab === "venues" && (
+        <VenuesView
+          bookings={data?.venue_bookings ?? []}
+          eventRequirements={e.requirements}
+          canEdit={can(user?.permissions, "event.edit")}
+          eventId={id}
+        />
+      )}
       {tab === "documents" && (
         <DocumentsView
           eventId={id}
@@ -636,9 +624,6 @@ export function EventDetailPage() {
           canArchive={can(user?.permissions, "document.delete")}
         />
       )}
-      {tab === "venues" && <VenuesView bookings={data?.venue_bookings ?? []} />}
-      {tab === "conflicts" && <ConflictsView conflicts={conflictsData?.conflicts ?? []} />}
-      {tab === "activity" && <ActivityView activity={data?.activity ?? []} />}
 
       {deleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setDeleteModal(false)}>
@@ -830,6 +815,7 @@ function LifecyclePanel({
   onPrintEventForm,
   onExportEventFormPdf,
   onChoose,
+  completion,
 }: {
   event: DetailResponse["event"];
   actions: LifecycleAction[];
@@ -841,6 +827,11 @@ function LifecyclePanel({
   onPrintEventForm: () => void;
   onExportEventFormPdf: () => void;
   onChoose: (status: EventStatus) => void;
+  completion: {
+    operations: number | null;
+    accounts: number | null;
+    overall: number | null;
+  };
 }) {
   const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
   const visibleActions = useMemo(() => {
@@ -864,8 +855,8 @@ function LifecyclePanel({
 
   return (
     <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(12rem,16rem)_auto] lg:items-start lg:gap-5">
+        <div className="min-w-0">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} />
@@ -877,12 +868,22 @@ function LifecyclePanel({
               <span className="rounded-full bg-marble-shadow/50 px-3 py-1 text-xs text-ink-muted etched">No next lifecycle action</span>
             )}
           </div>
-          <div className="mt-3 grid max-w-md grid-cols-2 gap-2 text-xs">
+          <div className="mt-3 grid max-w-sm grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <SummaryItem label="Approval" value={prettyState(event.approval_status)} />
             <SummaryItem label="Confirmation" value={prettyState(event.confirmation_status)} />
           </div>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-64 lg:items-end">
+
+        <div className="min-w-0 rounded-xl bg-marble-shadow/20 px-3.5 py-3">
+          <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Completion</h3>
+          <div className="space-y-2">
+            <ProgressBar label="Operations" value={completion.operations} compact />
+            <ProgressBar label="Accounts" value={completion.accounts} compact />
+            <ProgressBar label="Overall" value={completion.overall} emphasis compact />
+          </div>
+        </div>
+
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-56 lg:items-end">
           <button
             type="button"
             onClick={onGenerateMom}
@@ -890,7 +891,7 @@ function LifecyclePanel({
           >
             Generate MoM
           </button>
-          <div className="rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-64">
+          <div className="w-full rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-56">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Event form</p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -1266,7 +1267,7 @@ function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
 }
 
 function parseEventDetailTab(value: string | null): EventDetailTab | null {
-  if (value === "operations" || value === "accounts" || value === "tasks" || value === "documents" || value === "venues" || value === "conflicts" || value === "activity" || value === "overview") {
+  if (value === "operations" || value === "accounts" || value === "tasks" || value === "venues" || value === "documents") {
     return value;
   }
   return null;
@@ -1434,142 +1435,222 @@ function DocumentsView({
   );
 }
 
-function VenuesView({ bookings }: { bookings: DetailResponse["venue_bookings"] }) {
+function requirementText(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" && !Number.isNaN(value)) return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function resolveVenueRequirements(
+  booking: DetailResponse["venue_bookings"][number],
+  eventRequirements: DetailResponse["event"]["requirements"],
+): Record<string, unknown> {
+  const venueReqs = parseRequirements(booking.requirements) ?? {};
+  if (Object.keys(venueReqs).length > 0) return venueReqs;
+  return omitEventLevelRequirements(parseRequirements(eventRequirements) ?? {});
+}
+
+function formatAcTiming(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  minutes: number | null | undefined,
+): string | null {
+  if (!start && !end) return null;
+  const range = formatTimeRange(start, end);
+  return minutes != null ? `${range} (${formatDuration(minutes)})` : range;
+}
+
+function VenueTimingCell({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
   return (
-    <div className="space-y-4">
-      {bookings.map((vb, idx) => (
-        <section key={vb.id as string} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-ink-primary etched-deep">
-              <span className="text-sage">Venue {idx + 1}:</span> {vb.venue as string}
-            </h3>
-            <span className="text-[11px] uppercase tracking-wider text-ink-muted etched">{vb.booking_status as string}</span>
-          </div>
-          <div className="mb-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
-            <SummaryItem label="Shows" value={String(vb.number_of_shows ?? 1)} />
-            <SummaryItem label="Booking" value={String(vb.booking_status ?? "-")} />
-          </div>
-          {vb.schedule_entries.length > 0 ? (
-            <div className="rounded-lg bg-marble-shadow/30 p-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</div>
-              <div className="space-y-2">
-                {vb.schedule_entries.map((se) => {
-                  const entry = se as {
-                    id: string;
-                    activity_type: string;
-                    activity_date: string;
-                    start_time: string | null;
-                    end_time: string | null;
-                    with_ac_start: string | null;
-                    with_ac_end: string | null;
-                    with_ac_minutes: number | null;
-                    without_ac_start: string | null;
-                    without_ac_end: string | null;
-                    without_ac_minutes: number | null;
-                    notes: string | null;
-                  };
-                  return (
-                    <div key={entry.id} className="rounded-md bg-marble-highlight/50 px-2 py-1.5">
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-ink-secondary etched">
-                        <span className="inline-block w-24 font-medium capitalize text-sage-text">{entry.activity_type.replace(/_/g, " ")}</span>
-                        <span>{formatDate(entry.activity_date)}</span>
-                        {entry.start_time && <span>{formatTimeRange(entry.start_time, entry.end_time)}</span>}
-                        {entry.notes && <span className="text-ink-muted">· {entry.notes}</span>}
-                      </div>
-                      {(entry.with_ac_start || entry.without_ac_start) && (
-                        <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-ink-muted etched">
-                          {entry.with_ac_start && (
-                            <span>With AC: {formatTimeRange(entry.with_ac_start, entry.with_ac_end)}{entry.with_ac_minutes != null ? ` (${formatDuration(entry.with_ac_minutes)})` : ""}</span>
-                          )}
-                          {entry.without_ac_start && (
-                            <span>Without AC: {formatTimeRange(entry.without_ac_start, entry.without_ac_end)}{entry.without_ac_minutes != null ? ` (${formatDuration(entry.without_ac_minutes)})` : ""}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-ink-muted etched">No schedule entries.</p>
-          )}
-        </section>
-      ))}
+    <div className="rounded-xl bg-marble-highlight/70 px-3 py-2.5">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
+      <div className="mt-0.5 text-sm font-semibold tabular-nums text-ink-primary etched-deep">{value}</div>
     </div>
   );
 }
 
-function ConflictsView({ conflicts }: { conflicts: ConflictsResponse["conflicts"] }) {
+function VenueDetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-      {conflicts.length === 0 ? (
-        <p className="text-sm text-ink-muted etched">No venue conflicts detected.</p>
-      ) : (
-        <div className="space-y-2">
-          {conflicts.map((c, i) => (
-            <div key={i} className={"rounded-lg px-3 py-2 text-sm " + (c.level === "conflict" ? "bg-status-cancelled/10 text-status-cancelled" : "bg-status-awaitingApproval/10 text-status-awaitingApproval")}>
-              <span className="font-medium uppercase">{c.level === "conflict" ? "Conflict" : "Potential conflict"}</span> with{" "}
-              <Link to={`/events/${String(c.event_id)}`} className="underline">{String(c.title)}</Link> ({c.venue}, {formatDate(c.activity_date)} · {c.activity_type}) - status {c.status}
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="grid gap-1 border-b border-marble-shadow/25 py-2 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</dt>
+      <dd className="whitespace-pre-wrap text-sm text-ink-primary etched-deep">{value}</dd>
     </div>
   );
 }
 
-function ActivityView({ activity }: { activity: DetailResponse["activity"] }) {
+function VenuesView({
+  bookings,
+  eventRequirements,
+  canEdit,
+  eventId,
+}: {
+  bookings: DetailResponse["venue_bookings"];
+  eventRequirements: DetailResponse["event"]["requirements"];
+  canEdit: boolean;
+  eventId: string;
+}) {
+  if (bookings.length === 0) {
+    return (
+      <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+        <h3 className="text-sm font-semibold text-ink-primary etched-deep">No venues booked</h3>
+        <p className="mt-2 text-sm text-ink-secondary etched">
+          Venue bookings, activity timings, AC windows, and call times will appear here once they are added on the event form.
+        </p>
+        {canEdit && (
+          <Link
+            to={`/events/${eventId}/edit`}
+            className="carved-btn-sage mt-4 inline-block rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
+          >
+            Add venues &amp; schedule
+          </Link>
+        )}
+      </section>
+    );
+  }
+
   return (
-    <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-      <ol className="space-y-3">
-        {activity.map((a) => {
-          const detail = formatActivityDetail(a);
-          return (
-            <li key={a.id as string} className="flex items-start gap-3 text-sm">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sage" />
+    <div className="space-y-5">
+      {bookings.map((vb, idx) => {
+        const reqs = resolveVenueRequirements(vb, eventRequirements);
+        const entries = (vb.schedule_entries as ScheduleEntryView[]) ?? [];
+        const soundCall = requirementText(reqs.sound_call_time);
+        const lightCall = requirementText(reqs.light_call_time);
+        const ushersCall = requirementText(reqs.ushers_call_time);
+        const loadersCall = requirementText(reqs.loaders_call_time);
+        const pianoTuning = requirementText(reqs.piano_tuning_time);
+        const callTimes = [
+          { label: "Sound call", value: soundCall ? formatTime(soundCall) : null },
+          { label: "Light call", value: lightCall ? formatTime(lightCall) : null },
+          { label: "Ushers call", value: ushersCall ? formatTime(ushersCall) : null },
+          { label: "Loaders call", value: loadersCall ? formatTime(loadersCall) : null },
+          { label: "Piano tuning", value: pianoTuning ? formatTime(pianoTuning) : null },
+        ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+
+        const staffingRows: Array<{ label: string; value: string }> = [];
+        if (isOptionalAffirmative(reqs.ushers_required)) {
+          staffingRows.push({ label: "Ushers", value: "Required" });
+        }
+        if (isOptionalAffirmative(reqs.loaders_required)) {
+          staffingRows.push({ label: "Loaders", value: "Required" });
+        }
+        if (isOptionalAffirmative(reqs.green_rooms_required) || requirementText(reqs.green_room_amenities)) {
+          const parts = [
+            isOptionalAffirmative(reqs.green_rooms_required) ? "Required" : null,
+            requirementText(reqs.green_room_amenities),
+          ].filter(Boolean) as string[];
+          if (parts.length) staffingRows.push({ label: "Green rooms", value: parts.join(" · ") });
+        }
+        if (isOptionalAffirmative(reqs.piano_required)) {
+          staffingRows.push({ label: "Piano", value: "Required" });
+        }
+
+        const sound = requirementText(reqs.sound);
+        const light = requirementText(reqs.light);
+        const venueNotes = requirementText(vb.notes);
+        const hasOpsDetails = callTimes.length > 0 || Boolean(sound || light || staffingRows.length || venueNotes);
+
+        return (
+          <section key={(vb.id as string) ?? `venue-${idx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-marble-shadow/30 pb-4">
               <div>
-                <span className="font-medium text-ink-primary etched-deep">{ACTIVITY_LABELS[a.activity_type as string] ?? String(a.activity_type)}</span>
-                {a.actor_name ? <span className="text-ink-muted"> · {a.actor_name as string}</span> : null}
-                {detail && <div className="mt-1 whitespace-pre-wrap text-xs text-ink-secondary etched">{detail}</div>}
-                <div className="text-[11px] text-ink-muted">{formatDateTime(a.created_at as string)}</div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Venue {idx + 1}</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{(vb.venue as string) || "Untitled venue"}</h3>
               </div>
-            </li>
-          );
-        })}
-        {activity.length === 0 && <li className="text-sm text-ink-muted etched">No activity yet.</li>}
-      </ol>
+              <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wider">
+                <span className="rounded-full bg-marble-shadow/40 px-3 py-1 font-medium text-ink-secondary etched">
+                  {String(vb.booking_status ?? "—")}
+                </span>
+                <span className="rounded-full bg-marble-shadow/40 px-3 py-1 font-medium text-ink-secondary etched">
+                  {Number(vb.number_of_shows ?? 1)} {Number(vb.number_of_shows ?? 1) === 1 ? "show" : "shows"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Activity timings</h4>
+              {entries.length === 0 ? (
+                <p className="text-sm text-ink-muted etched">No schedule entries for this venue.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl bg-marble-shadow/25">
+                  <table className="min-w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-marble-shadow/30 text-[10px] uppercase tracking-wider text-ink-muted">
+                        <th className="px-3 py-2.5 font-semibold etched">Activity</th>
+                        <th className="px-3 py-2.5 font-semibold etched">Date</th>
+                        <th className="px-3 py-2.5 font-semibold etched">Time</th>
+                        <th className="px-3 py-2.5 font-semibold etched">With AC</th>
+                        <th className="px-3 py-2.5 font-semibold etched">Without AC</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entries.map((entry, entryIdx) => {
+                        const withAc = formatAcTiming(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes);
+                        const withoutAc = formatAcTiming(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes);
+                        return (
+                          <tr
+                            key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`}
+                            className="border-b border-marble-shadow/20 last:border-b-0 align-top"
+                          >
+                            <td className="px-3 py-3">
+                              <div className="font-medium text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</div>
+                              {entry.notes && <div className="mt-1 text-xs text-ink-muted etched">{entry.notes}</div>}
+                            </td>
+                            <td className="px-3 py-3 text-ink-secondary etched">{entry.activity_date ? formatDate(entry.activity_date) : "—"}</td>
+                            <td className="px-3 py-3 tabular-nums text-ink-primary etched-deep">
+                              {entry.start_time || entry.end_time ? formatTimeRange(entry.start_time, entry.end_time) : "—"}
+                            </td>
+                            <td className="px-3 py-3 tabular-nums text-ink-secondary etched">{withAc ?? "—"}</td>
+                            <td className="px-3 py-3 tabular-nums text-ink-secondary etched">{withoutAc ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {hasOpsDetails ? (
+              <div className="space-y-4">
+                {callTimes.length > 0 && (
+                  <div>
+                    <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Call times</h4>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                      {callTimes.map((item) => (
+                        <VenueTimingCell key={item.label} label={item.label} value={item.value} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(sound || light || staffingRows.length > 0 || venueNotes) && (
+                  <div>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Sound, light &amp; staffing</h4>
+                    <dl className="rounded-xl bg-marble-shadow/20 px-3 py-1">
+                      {sound && <VenueDetailRow label="Sound" value={sound} />}
+                      {light && <VenueDetailRow label="Light" value={light} />}
+                      {staffingRows.map((row) => (
+                        <VenueDetailRow key={row.label} label={row.label} value={row.value} />
+                      ))}
+                      {venueNotes && <VenueDetailRow label="Venue notes" value={venueNotes} />}
+                    </dl>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-muted etched">No call times or staffing details recorded for this venue.</p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
-}
-
-function formatActivityDetail(activity: Record<string, unknown>): string | null {
-  const detail = parseActivityDetail(activity.detail);
-  if (!detail) return null;
-
-  if (activity.activity_type === "status_changed") {
-    const from = typeof detail.from === "string" ? statusLabel(detail.from as EventStatus) : null;
-    const to = typeof detail.to === "string" ? statusLabel(detail.to as EventStatus) : null;
-    const lines = from && to ? [`${from} to ${to}`] : [];
-    if (typeof detail.reason === "string" && detail.reason.trim()) lines.push(`Reason: ${detail.reason.trim()}`);
-    if (typeof detail.note === "string" && detail.note.trim()) lines.push(`Lifecycle note: ${detail.note.trim()}`);
-    return lines.join("\n") || null;
-  }
-
-  if (typeof detail.note === "string" && detail.note.trim()) return detail.note.trim();
-  return null;
-}
-
-function parseActivityDetail(raw: unknown): Record<string, unknown> | null {
-  if (!raw) return null;
-  if (typeof raw === "object") return raw as Record<string, unknown>;
-  if (typeof raw !== "string") return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
 }
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
@@ -1603,15 +1684,25 @@ function formatEventType(value: string | null | undefined): string {
   return normaliseEventType(value) ?? "-";
 }
 
-function ProgressBar({ label, value, emphasis }: { label: string; value: number | null; emphasis?: boolean }) {
+function ProgressBar({
+  label,
+  value,
+  emphasis,
+  compact,
+}: {
+  label: string;
+  value: number | null;
+  emphasis?: boolean;
+  compact?: boolean;
+}) {
   const pct = value != null ? Math.round(value * 100) : 0;
   return (
     <div>
-      <div className="mb-1 flex justify-between text-xs">
+      <div className={`mb-0.5 flex justify-between ${compact ? "text-[11px]" : "text-xs"}`}>
         <span className={emphasis ? "font-semibold text-ink-primary etched-deep" : "text-ink-secondary etched"}>{label}</span>
-        <span className={emphasis ? "font-semibold text-sage-text etched" : "text-ink-muted etched"}>{pct}%</span>
+        <span className={`tabular-nums ${emphasis ? "font-semibold text-sage-text etched" : "text-ink-muted etched"}`}>{pct}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-marble-shadow/60">
+      <div className={`overflow-hidden rounded-full bg-marble-shadow/60 ${compact ? "h-1.5" : "h-2"}`}>
         <div className="h-full rounded-full bg-sage-btn" style={{ width: `${pct}%` }} />
       </div>
     </div>

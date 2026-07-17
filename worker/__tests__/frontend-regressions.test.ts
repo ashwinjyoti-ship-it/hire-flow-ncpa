@@ -99,12 +99,32 @@ describe("frontend regression guards", () => {
     expect(source).toContain("useNavigate");
   });
 
-  it("keeps lifecycle decision notes visible in activity", () => {
+  it("keeps lifecycle decision notes on status transitions", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
     expect(source).toContain("note: args.note");
-    expect(source).toContain("formatActivityDetail");
-    expect(source).toContain("Lifecycle note");
+  });
+
+  it("shows venues and schedule before documents and omits conflict/activity tabs", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const venuesIdx = source.indexOf('["venues", `Venues & Schedule');
+    const documentsIdx = source.indexOf('["documents", `Documents');
+    expect(venuesIdx).toBeGreaterThan(-1);
+    expect(documentsIdx).toBeGreaterThan(-1);
+    expect(venuesIdx).toBeLessThan(documentsIdx);
+    expect(source).not.toContain('["conflicts"');
+    expect(source).not.toContain('["activity", "Activity"]');
+    expect(source).toContain("Activity timings");
+    expect(source).toContain("Call times");
+    expect(source).toContain("With AC");
+  });
+
+  it("drops overview tab and shows completion inside lifecycle", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(source).not.toContain('["overview", "Overview"]');
+    expect(source).toContain('parseEventDetailTab(searchParams.get("tab")) ?? "operations"');
+    expect(source).toContain("completion={{");
+    expect(source).toContain("<h3 className=\"mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched\">Completion</h3>");
   });
 
   it("warns on post-show operational dates without generic reopen controls", () => {
