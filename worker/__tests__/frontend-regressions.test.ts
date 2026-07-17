@@ -485,6 +485,14 @@ describe("frontend regression guards", () => {
     expect(settings).toContain("ProgrammeOfficersSection");
     expect(settings).toContain("is_event_owner");
     expect(settings).toContain("Also programme officer");
+    // Permission presets / checkbox editor stay in rbac backend — not in Settings UI.
+    expect(settings).not.toContain("PERMISSION_PRESETS");
+    expect(settings).not.toContain("PermissionEditor");
+    expect(settings).not.toContain("Event manager");
+    expect(settings).not.toContain("Full access");
+    // Deactivated accounts stay out of the way in a collapsed subsection.
+    expect(settings).toContain("Deactivated (");
+    expect(settings).toContain("showDeactivated");
     expect(settings).toContain("Check List Intervals");
     expect(settings).toContain("ChecklistIntervalsSection");
   });
