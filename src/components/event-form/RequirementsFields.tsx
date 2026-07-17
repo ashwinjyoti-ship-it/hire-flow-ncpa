@@ -296,7 +296,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
                   <p className="text-[10px] text-ink-muted etched">Default N/A — set Yes only for meals needed, then enter pax.</p>
                 </div>
-                <div className="hidden gap-2 border-b border-marble-shadow/25 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[7.5rem_6.5rem_4.5rem] md:items-center">
+                <div className="hidden gap-2 border-b border-marble-shadow/25 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-[8rem_7.5rem_4.5rem] md:items-center">
                   <span>Meal</span>
                   <span>Required</span>
                   <span className="text-right">Pax</span>
@@ -310,7 +310,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                     return (
                       <div
                         key={meal.key}
-                        className="grid gap-2 py-2 first:pt-1.5 last:pb-0.5 md:grid-cols-[7.5rem_6.5rem_4.5rem] md:items-center"
+                        className="grid gap-2 py-2 first:pt-1.5 last:pb-0.5 md:grid-cols-[8rem_7.5rem_4.5rem] md:items-center"
                       >
                         <span className="text-sm font-medium text-ink-primary etched">{meal.label}</span>
                         <label className="block md:contents">
