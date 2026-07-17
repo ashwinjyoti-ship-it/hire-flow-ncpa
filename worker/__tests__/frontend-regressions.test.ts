@@ -61,6 +61,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("forwardMilestoneButtonClass");
     expect(source).toContain('s === "confirmed" && action');
     expect(source).toContain("bg-status-confirmed/15");
+    expect(source).toContain("currentMilestoneTrackClass");
+    expect(source).toContain("getEventStatusSurface");
   });
 
   it("uses the established status palette for event-form readiness", () => {
