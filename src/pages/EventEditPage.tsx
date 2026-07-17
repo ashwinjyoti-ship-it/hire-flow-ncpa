@@ -304,26 +304,26 @@ export function EventEditPage() {
   const sources = lookups?.lookups.enquiry_source ?? [];
   const isVfh = form.event_type === "VFH";
 
-  // Event Owner / Programme Officer dropdowns are sourced from team accounts.
-  // The two designations are independent — a person may hold either, both, or neither.
+  // Event owners are login accounts (is_event_owner). Programme officers are a
+  // separate name+contact list (no login) from lookups.program_officer.
   // Choosing an owner sets both the display label (event_owner) and the identity FK
   // (event_owner_id), so tasks auto-route and "My events" works.
   const { data: usersData } = useQuery<{
     users: Array<{
       id: string;
       name: string;
-      contact_number?: string | null;
       is_event_owner?: boolean;
-      is_programme_officer?: boolean;
       is_active: number;
     }>;
   }>({
     queryKey: ["users"],
     queryFn: () => apiGet("/users"),
   });
-  const activeUsers = (usersData?.users ?? []).filter((u) => u.is_active === 1);
-  const activeOwners = activeUsers.filter((u) => u.is_event_owner);
-  const programmeOfficers = activeUsers.filter((u) => u.is_programme_officer);
+  const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1 && u.is_event_owner);
+  const programmeOfficers = (lookups?.lookups.program_officer ?? []).map((o) => ({
+    name: o.value,
+    contact_number: typeof o.metadata?.contact_number === "string" ? o.metadata.contact_number : null,
+  }));
   const trimmedTitle = form.title.trim();
   const selectedDuplicateVenues = useMemo(
     () => Array.from(new Set(pruneEmptyVenueBookings(form.venue_bookings).map((booking) => booking.venue.trim()).filter(Boolean))),
@@ -605,7 +605,7 @@ export function EventEditPage() {
                 className="carved input"
               >
                 <option value="">Select…</option>
-                {programmeOfficers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+                {programmeOfficers.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
               </select>
             </Field>
             <Field label="Program Officer Contact">

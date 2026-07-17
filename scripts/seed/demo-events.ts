@@ -69,12 +69,12 @@ const SOURCES = ["Referral", "Website", "Repeat Client", "Phone Call", "Email"];
 const DEMO_TODAY = "2026-07-08";
 const DEMO_PASSWORD_HASH = `scrypt:${"00".repeat(16)}:${"00".repeat(32)}`;
 const DEMO_USERS = [
-  { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations", is_event_owner: false, is_programme_officer: false },
-  { id: "demo_user_aditi", email: "aditi.rao@ncpa.local", name: "Aditi Rao", role: "venue_manager", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: true },
-  { id: "demo_user_dev", email: "dev.mehta@ncpa.local", name: "Dev Mehta", role: "coordinator", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: false },
-  { id: "demo_user_farah", email: "farah.contractor@ncpa.local", name: "Farah Contractor", role: "coordinator", organisation: "Accounts", is_event_owner: true, is_programme_officer: true },
-  { id: "demo_user_kabir", email: "kabir.shah@ncpa.local", name: "Kabir Shah", role: "coordinator", organisation: "Technical", is_event_owner: true, is_programme_officer: false },
-  { id: "demo_user_leena", email: "leena.iyer@ncpa.local", name: "Leena Iyer", role: "viewer", organisation: "Management", is_event_owner: false, is_programme_officer: true },
+  { id: "demo_user_admin", email: "demo.admin@ncpa.local", name: "Demo Admin", role: "admin", organisation: "Operations", is_event_owner: false, is_programme_officer: false, contact_number: null as string | null },
+  { id: "demo_user_aditi", email: "aditi.rao@ncpa.local", name: "Aditi Rao", role: "venue_manager", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: true, contact_number: "022 66223901" },
+  { id: "demo_user_dev", email: "dev.mehta@ncpa.local", name: "Dev Mehta", role: "coordinator", organisation: "Venue Hire", is_event_owner: true, is_programme_officer: false, contact_number: null as string | null },
+  { id: "demo_user_farah", email: "farah.contractor@ncpa.local", name: "Farah Contractor", role: "coordinator", organisation: "Accounts", is_event_owner: true, is_programme_officer: true, contact_number: "022 66223902" },
+  { id: "demo_user_kabir", email: "kabir.shah@ncpa.local", name: "Kabir Shah", role: "coordinator", organisation: "Technical", is_event_owner: true, is_programme_officer: false, contact_number: null as string | null },
+  { id: "demo_user_leena", email: "leena.iyer@ncpa.local", name: "Leena Iyer", role: "viewer", organisation: "Management", is_event_owner: false, is_programme_officer: false, contact_number: null as string | null },
 ];
 
 function parseEnv(): SeedEnv {
@@ -346,22 +346,49 @@ function seedVenueLookups(batch: SqlBatch, timestamp: string): void {
 function seedDemoUsers(batch: SqlBatch, timestamp: string): void {
   DEMO_USERS.forEach((user) => {
     // Demo accounts carry explicit permission lists (roles are legacy-only).
-    // Event owner / programme officer are independent designations.
+    // Event owners are logins; "also programme officer" syncs name+contact into the PO list.
     const permissions = JSON.stringify(LEGACY_ROLE_PERMISSIONS[user.role] ?? []);
     batch.add(
-      `INSERT INTO users (id, email, name, permissions, organisation, password_hash, password_algo, password_updated_at,
+      `INSERT INTO users (id, email, name, permissions, organisation, contact_number, password_hash, password_algo, password_updated_at,
         is_event_owner, is_programme_officer, is_active, created_at, updated_at)
        VALUES (${sqlStr(user.id)}, ${sqlStr(user.email)}, ${sqlStr(user.name)}, ${sqlStr(permissions)}, ${sqlStr(user.organisation)},
-       ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)}, ${user.is_event_owner ? 1 : 0}, ${user.is_programme_officer ? 1 : 0},
+       ${sqlStr(user.contact_number)}, ${sqlStr(DEMO_PASSWORD_HASH)}, 'scrypt', ${sqlStr(timestamp)},
+       ${user.is_event_owner ? 1 : 0}, ${user.is_programme_officer ? 1 : 0},
        1, ${sqlStr(timestamp)}, ${sqlStr(timestamp)})
        ON CONFLICT(email) DO UPDATE SET
          name = excluded.name,
          permissions = excluded.permissions,
          organisation = excluded.organisation,
+         contact_number = excluded.contact_number,
          is_event_owner = excluded.is_event_owner,
          is_programme_officer = excluded.is_programme_officer,
          is_active = 1,
          updated_at = excluded.updated_at;`
+    );
+    if (user.is_event_owner) {
+      batch.add(
+        `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
+         VALUES (${sqlStr(`demo_hb_${user.id}`)}, 'handled_by', ${sqlStr(user.name)}, 1, 1, NULL, ${sqlStr(timestamp)})
+         ON CONFLICT(list_key, value) DO UPDATE SET is_active = 1;`
+      );
+    }
+    if (user.is_programme_officer && user.contact_number) {
+      batch.add(
+        `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
+         VALUES (${sqlStr(`demo_po_${user.id}`)}, 'program_officer', ${sqlStr(user.name)}, 1, 1,
+         ${sqlStr(JSON.stringify({ contact_number: user.contact_number, user_id: user.id }))}, ${sqlStr(timestamp)})
+         ON CONFLICT(list_key, value) DO UPDATE SET is_active = 1, metadata = excluded.metadata;`
+      );
+    }
+  });
+
+  // Standalone programme officers (no login) — name + contact only.
+  OFFICERS.forEach((name, i) => {
+    batch.add(
+      `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
+       VALUES (${sqlStr(`demo_po_list_${slug(name)}`)}, 'program_officer', ${sqlStr(name)}, ${i + 10}, 1,
+       ${sqlStr(JSON.stringify({ contact_number: `022 66224${String(900 + i).slice(-3)}` }))}, ${sqlStr(timestamp)})
+       ON CONFLICT(list_key, value) DO UPDATE SET is_active = 1, metadata = excluded.metadata;`
     );
   });
 }

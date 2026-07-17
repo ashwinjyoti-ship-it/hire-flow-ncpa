@@ -4,8 +4,6 @@ import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
-import { describeAccess, PERMISSION_GROUPS, PERMISSION_PRESETS, type Permission } from "../../worker/lib/rbac";
-
 type Settings = {
   resend: { configured: boolean; keyHint: string | null; source: string };
   mailFrom: string;
@@ -374,10 +372,20 @@ export function SettingsPage() {
             <CollapsibleSection
               id="team-accounts"
               title="Team accounts"
-              description="Create logins, set permissions, and hand out one-time temporary passwords. Event owner and programme officer are separate designations — someone can hold either, both, or neither."
+              description="Create a login (name, email, one-time password). Tick Event owner so they can own events. Contact is only needed if they are also a programme officer."
               defaultOpen
             >
               <TeamAccountsSection />
+            </CollapsibleSection>
+          )}
+
+          {isAdmin && (
+            <CollapsibleSection
+              id="programme-officers"
+              title="Programme officers"
+              description="Name and contact only — no login. Appears in the Program Officer dropdown on the event form."
+            >
+              <ProgrammeOfficersSection />
             </CollapsibleSection>
           )}
 
@@ -578,13 +586,202 @@ type LookupOption = {
   value: string;
   sort_order: number;
   is_active: number;
+  metadata?: Record<string, unknown> | null;
 };
 
 const LIST_LABELS: Record<string, string> = {
   handled_by: "Event Owners",
   caterer: "Caterers",
   decorator: "Decorators",
+  program_officer: "Programme officers",
 };
+
+/** Programme officers: name + contact only (no login account). */
+function ProgrammeOfficersSection() {
+  const qc = useQueryClient();
+  const [newName, setNewName] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [editing, setEditing] = useState<Record<string, { value: string; contact: string }>>({});
+  const [err, setErr] = useState<string | null>(null);
+  const [showDeactivated, setShowDeactivated] = useState(false);
+
+  const { data, isLoading } = useQuery<{ options: LookupOption[] }>({
+    queryKey: ["lookup", "program_officer"],
+    queryFn: () => apiGet("/lookups/program_officer"),
+  });
+
+  const add = useMutation({
+    mutationFn: async () =>
+      apiPost("/lookups/program_officer", {
+        value: newName.trim(),
+        metadata: { contact_number: newContact.trim() },
+      }),
+    onSuccess: () => {
+      setNewName("");
+      setNewContact("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, value, contact }: { id: string; value: string; contact: string }) =>
+      apiPut(`/lookups/program_officer/${id}`, {
+        value,
+        metadata: { contact_number: contact },
+      }),
+    onSuccess: () => {
+      setEditing({});
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const toggle = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) =>
+      apiPut(`/lookups/program_officer/${id}`, { is_active: active }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => apiDelete(`/lookups/program_officer/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const options = data?.options ?? [];
+  const activeOptions = options.filter((o) => o.is_active);
+  const deactivatedOptions = options.filter((o) => !o.is_active);
+  const contactOf = (o: LookupOption) =>
+    typeof o.metadata?.contact_number === "string" ? o.metadata.contact_number : "";
+
+  const renderOptionRow = (o: LookupOption) => {
+    const ed = editing[o.id];
+    return (
+      <li key={o.id} className="rounded-xl bg-marble-shadow/30 px-4 py-3">
+        {ed ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={ed.value}
+              onChange={(e) => setEditing((s) => ({ ...s, [o.id]: { ...ed, value: e.target.value } }))}
+              className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none"
+            />
+            <input
+              value={ed.contact}
+              onChange={(e) => setEditing((s) => ({ ...s, [o.id]: { ...ed, contact: e.target.value } }))}
+              placeholder="Contact no."
+              className="carved w-40 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={update.isPending || !ed.value.trim() || !ed.contact.trim()}
+              onClick={() => update.mutate({ id: o.id, value: ed.value.trim(), contact: ed.contact.trim() })}
+              className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40"
+            >
+              Save
+            </button>
+            <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[o.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <span className={"text-sm font-medium " + (o.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{o.value}</span>
+              {contactOf(o) && <span className="ml-2 text-sm tabular-nums text-ink-secondary etched">{contactOf(o)}</span>}
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
+              <button
+                type="button"
+                onClick={() => setEditing((s) => ({ ...s, [o.id]: { value: o.value, contact: contactOf(o) } }))}
+                className="text-xs text-sage-text hover:underline"
+              >
+                Edit
+              </button>
+              <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: o.id, active: !o.is_active })} className="text-xs text-ink-secondary hover:underline">
+                {o.is_active ? "Deactivate" : "Activate"}
+              </button>
+              <button type="button" disabled={remove.isPending} onClick={() => remove.mutate(o.id)} className="text-xs text-status-cancelled hover:underline">Delete</button>
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  return (
+    <div>
+      {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">{err}</div>}
+
+      <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Name"
+          className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+        />
+        <input
+          value={newContact}
+          onChange={(e) => setNewContact(e.target.value)}
+          placeholder="Contact no."
+          className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={add.isPending || !newName.trim() || !newContact.trim()}
+          onClick={() => add.mutate()}
+          className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-xs font-semibold text-sage-text etched disabled:opacity-60"
+        >
+          {add.isPending ? "Adding…" : "+ Add"}
+        </button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-ink-muted etched">Loading…</p>
+      ) : activeOptions.length === 0 && deactivatedOptions.length === 0 ? (
+        <p className="text-sm text-ink-muted etched">No programme officers yet.</p>
+      ) : (
+        <>
+          {activeOptions.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No active programme officers.</p>
+          ) : (
+            <ul className="space-y-2">
+              {activeOptions.map(renderOptionRow)}
+            </ul>
+          )}
+
+          {deactivatedOptions.length > 0 && (
+            <div className="mt-4 border-t border-ink-muted/10 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowDeactivated((o) => !o)}
+                aria-expanded={showDeactivated}
+                className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-muted etched hover:text-ink-secondary"
+              >
+                <span>Deactivated ({deactivatedOptions.length})</span>
+                <span aria-hidden="true">{showDeactivated ? "▴" : "▾"}</span>
+              </button>
+              {showDeactivated && (
+                <ul className="mt-2 space-y-2">
+                  {deactivatedOptions.map(renderOptionRow)}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 function MasterListsSection({ listKeys }: { listKeys: string[] }) {
   const qc = useQueryClient();
@@ -695,17 +892,13 @@ function ListEditor({
 }
 
 // ---- Team accounts ----
-// Each team member is a real login with an explicit permission list — there
-// are no roles. Event owner and programme officer are independent designations
-// on that account (either, both, or neither). Only event owners get a
-// handled_by dropdown option for calendar filters. Presets are just tick-box
-// shortcuts; every account stores its own permission list.
+// Logins for people who need to sign in. Permissions stay on the backend
+// (API default = event-manager access); the UI does not expose presets or
+// permission checkboxes. Event owner / also-PO are the only designations here.
 type TeamUser = {
   id: string;
   email: string;
   name: string;
-  permissions: Permission[];
-  organisation: string | null;
   contact_number: string | null;
   is_event_owner: boolean;
   is_programme_officer: boolean;
@@ -715,96 +908,51 @@ type TeamUser = {
   created_at: string;
 };
 
-const DEFAULT_NEW_PERMISSIONS = PERMISSION_PRESETS.find((p) => p.label === "Event manager")?.permissions ?? [];
-
-/** Preset shortcut buttons + grouped permission checkboxes. */
-function PermissionEditor({ value, onChange }: { value: Permission[]; onChange: (next: Permission[]) => void }) {
-  const set = new Set(value);
-  const toggle = (key: Permission) => {
-    const next = new Set(set);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    onChange([...next]);
-  };
-  return (
-    <div className="rounded-xl bg-marble-highlight/60 p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Presets:</span>
-        {PERMISSION_PRESETS.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => onChange([...preset.permissions])}
-            className={
-              "rounded-full px-2.5 py-0.5 text-[11px] font-medium etched " +
-              (describeAccess(value) === preset.label ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "bg-marble-shadow/50 text-ink-secondary hover:bg-marble-shadow/70")
-            }
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {PERMISSION_GROUPS.map((group) => (
-          <div key={group.group}>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">{group.group}</p>
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <label key={item.key} className="flex items-center gap-2 text-xs text-ink-secondary etched">
-                  <input
-                    type="checkbox"
-                    checked={set.has(item.key)}
-                    onChange={() => toggle(item.key)}
-                    className="h-3.5 w-3.5 rounded border-ink-muted"
-                  />
-                  {item.label}
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function DesignationChecks({
   isEventOwner,
   isProgrammeOfficer,
+  contact,
   onEventOwnerChange,
   onProgrammeOfficerChange,
+  onContactChange,
 }: {
   isEventOwner: boolean;
   isProgrammeOfficer: boolean;
+  contact: string;
   onEventOwnerChange: (next: boolean) => void;
   onProgrammeOfficerChange: (next: boolean) => void;
+  onContactChange: (next: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-2">
-      <label className="flex items-start gap-2 text-xs text-ink-secondary etched">
-        <input
-          type="checkbox"
-          checked={isEventOwner}
-          onChange={(e) => onEventOwnerChange(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-ink-muted"
-        />
-        <span>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <label className="flex items-center gap-2 text-xs text-ink-secondary etched">
+          <input
+            type="checkbox"
+            checked={isEventOwner}
+            onChange={(e) => onEventOwnerChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-ink-muted"
+          />
           <span className="font-medium text-ink-primary">Event owner</span>
-          <span className="block text-[11px] text-ink-muted">Can be assigned as owner of an event (tasks route to them).</span>
-        </span>
-      </label>
-      <label className="flex items-start gap-2 text-xs text-ink-secondary etched">
+        </label>
+        <label className="flex items-center gap-2 text-xs text-ink-secondary etched">
+          <input
+            type="checkbox"
+            checked={isProgrammeOfficer}
+            onChange={(e) => onProgrammeOfficerChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-ink-muted"
+          />
+          <span className="font-medium text-ink-primary">Also programme officer</span>
+        </label>
+      </div>
+      {isProgrammeOfficer && (
         <input
-          type="checkbox"
-          checked={isProgrammeOfficer}
-          onChange={(e) => onProgrammeOfficerChange(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-ink-muted"
+          value={contact}
+          onChange={(e) => onContactChange(e.target.value)}
+          placeholder="Contact number (required)"
+          className="carved w-full max-w-xs rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none"
         />
-        <span>
-          <span className="font-medium text-ink-primary">Programme officer</span>
-          <span className="block text-[11px] text-ink-muted">Appears in the Program Officer dropdown on the event form.</span>
-        </span>
-      </label>
+      )}
     </div>
   );
 }
@@ -815,11 +963,10 @@ function TeamAccountsSection() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newContact, setNewContact] = useState("");
-  const [newIsEventOwner, setNewIsEventOwner] = useState(false);
+  const [newIsEventOwner, setNewIsEventOwner] = useState(true);
   const [newIsProgrammeOfficer, setNewIsProgrammeOfficer] = useState(false);
-  const [newPermissions, setNewPermissions] = useState<Permission[]>([...DEFAULT_NEW_PERMISSIONS]);
-  const [showNewPermissions, setShowNewPermissions] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showDeactivated, setShowDeactivated] = useState(false);
   const [created, setCreated] = useState<{ name: string; email: string; temporaryPassword: string } | null>(null);
   const [editing, setEditing] = useState<Record<string, {
     name: string;
@@ -827,7 +974,6 @@ function TeamAccountsSection() {
     contact_number: string;
     is_event_owner: boolean;
     is_programme_officer: boolean;
-    permissions: Permission[];
   }>>({});
 
   const { data, isLoading } = useQuery<{ users: TeamUser[] }>({
@@ -842,17 +988,17 @@ function TeamAccountsSection() {
       contact_number?: string | null;
       is_event_owner?: boolean;
       is_programme_officer?: boolean;
-      permissions: Permission[];
     }) =>
+      // Permissions omitted — API applies the default event-manager set.
       apiPost<{ id: string; email: string; name: string; temporaryPassword: string }>("/users", input),
     onSuccess: (res) => {
       setCreated({ name: res.name, email: res.email, temporaryPassword: res.temporaryPassword });
       setNewName(""); setNewEmail(""); setNewContact("");
-      setNewIsEventOwner(false); setNewIsProgrammeOfficer(false);
-      setNewPermissions([...DEFAULT_NEW_PERMISSIONS]); setShowNewPermissions(false);
+      setNewIsEventOwner(true); setNewIsProgrammeOfficer(false);
       setErr(null);
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["lookups"] });
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -864,13 +1010,13 @@ function TeamAccountsSection() {
       contact_number?: string | null;
       is_event_owner?: boolean;
       is_programme_officer?: boolean;
-      permissions?: Permission[];
     } }) =>
       apiPut(`/users/${id}`, patch),
     onSuccess: () => {
       setEditing({});
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["lookups"] });
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
       qc.invalidateQueries({ queryKey: ["auth", "me"] });
     },
     onError: (e: Error) => setErr(e.message),
@@ -889,11 +1035,94 @@ function TeamAccountsSection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["lookups"] });
+      qc.invalidateQueries({ queryKey: ["lookup", "program_officer"] });
     },
     onError: (e: Error) => setErr(e.message),
   });
 
   const users = data?.users ?? [];
+  const activeUsers = users.filter((u) => u.is_active);
+  const deactivatedUsers = users.filter((u) => !u.is_active);
+  const canCreate = Boolean(
+    newName.trim()
+    && newEmail.trim()
+    && (!newIsProgrammeOfficer || newContact.trim()),
+  );
+
+  const renderUserRow = (u: TeamUser) => {
+    const ed = editing[u.id];
+    const isSelf = u.id === me?.id;
+    return (
+      <li key={u.id} className="rounded-xl bg-marble-shadow/30 px-4 py-3">
+        {ed ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <input value={ed.name} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, name: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
+              <input value={ed.email} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, email: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
+              <button
+                type="button"
+                disabled={update.isPending || !ed.name.trim() || !ed.email.trim() || (ed.is_programme_officer && !ed.contact_number.trim())}
+                onClick={() => update.mutate({
+                  id: u.id,
+                  patch: {
+                    name: ed.name.trim(),
+                    email: ed.email.trim(),
+                    is_event_owner: ed.is_event_owner,
+                    is_programme_officer: ed.is_programme_officer,
+                    contact_number: ed.is_programme_officer ? (ed.contact_number.trim() || null) : null,
+                  },
+                })}
+                className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40"
+              >
+                Save
+              </button>
+              <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[u.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
+            </div>
+            <DesignationChecks
+              isEventOwner={ed.is_event_owner}
+              isProgrammeOfficer={ed.is_programme_officer}
+              contact={ed.contact_number}
+              onEventOwnerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_event_owner: next } }))}
+              onProgrammeOfficerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_programme_officer: next } }))}
+              onContactChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, contact_number: next } }))}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={"text-sm font-medium " + (u.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{u.name}</span>
+                {u.is_event_owner && <span className="rounded-full bg-terracotta-btn/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-terracotta-text">event owner</span>}
+                {u.is_programme_officer && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">also programme officer</span>}
+                {u.is_programme_officer && u.contact_number && <span className="text-sm tabular-nums text-ink-secondary etched">{u.contact_number}</span>}
+                {isSelf && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">you</span>}
+                {Boolean(u.must_change_password) && <span className="rounded-full bg-status-cancelled/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled">must reset</span>}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-ink-muted etched">{u.email}</div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
+              <button type="button" onClick={() => setEditing((s) => ({
+                ...s,
+                [u.id]: {
+                  name: u.name,
+                  email: u.email,
+                  contact_number: u.contact_number ?? "",
+                  is_event_owner: u.is_event_owner,
+                  is_programme_officer: u.is_programme_officer,
+                },
+              }))} className="text-xs text-sage-text hover:underline">Edit</button>
+              <button type="button" disabled={reset.isPending} onClick={() => { if (window.confirm(`Reset ${u.name}'s password? This signs them out everywhere.`)) reset.mutate(u.id); }} className="text-xs text-ink-secondary hover:underline">Reset password</button>
+              {u.is_active ? (
+                <button type="button" disabled={toggle.isPending || isSelf} onClick={() => toggle.mutate({ id: u.id, active: false })} className="text-xs text-ink-secondary hover:underline disabled:opacity-40">Deactivate</button>
+              ) : (
+                <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: u.id, active: true })} className="text-xs text-sage-text hover:underline">Activate</button>
+              )}
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div>
@@ -902,7 +1131,7 @@ function TeamAccountsSection() {
       {created && (
         <div className="mb-4 rounded-xl bg-status-awaitingApproval/10 px-4 py-3">
           <p className="text-xs font-medium text-status-awaitingApproval etched">
-            ⚠ Temporary password for <strong>{created.name}</strong> ({created.email}) — shown once. Share it securely; they must choose their own password on first sign-in.
+            Temporary password for <strong>{created.name}</strong> ({created.email}) — shown once. Share it securely; they choose their own password on first sign-in.
           </p>
           <code className="mt-1 block rounded-lg bg-marble-shadow/40 px-3 py-2 font-mono text-sm text-ink-primary">
             {created.temporaryPassword}
@@ -913,121 +1142,71 @@ function TeamAccountsSection() {
         </div>
       )}
 
-      {/* Add team member — account first; designations are optional and independent */}
       <div className="mb-5 rounded-xl bg-marble-shadow/30 p-3">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">New login</p>
-        <div className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_auto_auto]">
-          <input value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="Contact no." className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
+        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="person@example.com" type="email" className="carved rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none" />
           <button
             type="button"
-            onClick={() => setShowNewPermissions((v) => !v)}
-            className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-xs font-medium text-ink-secondary etched"
-          >
-            {describeAccess(newPermissions)} {showNewPermissions ? "▴" : "▾"}
-          </button>
-          <button
-            type="button"
-            disabled={create.isPending || !newName.trim() || !newEmail.trim() || newPermissions.length === 0}
+            disabled={create.isPending || !canCreate}
             onClick={() => create.mutate({
               name: newName.trim(),
               email: newEmail.trim().toLowerCase(),
-              contact_number: newContact.trim() || null,
+              contact_number: newIsProgrammeOfficer ? (newContact.trim() || null) : null,
               is_event_owner: newIsEventOwner,
               is_programme_officer: newIsProgrammeOfficer,
-              permissions: newPermissions,
             })}
             className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-xs font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
           >
-            {create.isPending ? "Creating…" : "+ Add person"}
+            {create.isPending ? "Creating…" : "+ Add"}
           </button>
         </div>
         <div className="mt-3 border-t border-ink-muted/10 pt-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Designations (optional)</p>
           <DesignationChecks
             isEventOwner={newIsEventOwner}
             isProgrammeOfficer={newIsProgrammeOfficer}
+            contact={newContact}
             onEventOwnerChange={setNewIsEventOwner}
             onProgrammeOfficerChange={setNewIsProgrammeOfficer}
+            onContactChange={setNewContact}
           />
         </div>
-        {showNewPermissions && (
-          <div className="mt-2">
-            <PermissionEditor value={newPermissions} onChange={setNewPermissions} />
-          </div>
-        )}
       </div>
 
-      {/* List */}
       {isLoading ? (
         <p className="text-sm text-ink-muted etched">Loading…</p>
-      ) : users.length === 0 ? (
+      ) : activeUsers.length === 0 && deactivatedUsers.length === 0 ? (
         <p className="text-sm text-ink-muted etched">No accounts yet.</p>
       ) : (
-        <ul className="space-y-2">
-          {users.map((u) => {
-            const ed = editing[u.id];
-            const isSelf = u.id === me?.id;
-            return (
-              <li key={u.id} className="rounded-xl bg-marble-shadow/30 px-4 py-3">
-                {ed ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <input value={ed.contact_number} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, contact_number: e.target.value } }))} placeholder="Contact no." className="carved w-36 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                      <input value={ed.name} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, name: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                      <input value={ed.email} onChange={(e) => setEditing((s) => ({ ...s, [u.id]: { ...ed, email: e.target.value } }))} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                      <button type="button" disabled={update.isPending || ed.permissions.length === 0} onClick={() => update.mutate({ id: u.id, patch: { ...ed, contact_number: ed.contact_number.trim() || null } })} className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40">Save</button>
-                      <button type="button" onClick={() => setEditing((s) => { const n = { ...s }; delete n[u.id]; return n; })} className="text-xs text-ink-muted hover:underline">Cancel</button>
-                    </div>
-                    <DesignationChecks
-                      isEventOwner={ed.is_event_owner}
-                      isProgrammeOfficer={ed.is_programme_officer}
-                      onEventOwnerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_event_owner: next } }))}
-                      onProgrammeOfficerChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, is_programme_officer: next } }))}
-                    />
-                    <PermissionEditor value={ed.permissions} onChange={(next) => setEditing((s) => ({ ...s, [u.id]: { ...ed, permissions: next } }))} />
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {u.contact_number && <span className="text-sm tabular-nums text-ink-secondary etched">{u.contact_number}</span>}
-                        <span className={"text-sm font-medium " + (u.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{u.name}</span>
-                        {u.is_event_owner && <span className="rounded-full bg-terracotta-btn/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-terracotta-text">event owner</span>}
-                        {u.is_programme_officer && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">programme officer</span>}
-                        {isSelf && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">you</span>}
-                        {u.permissions.includes("user.manage") && <span className="rounded-full bg-status-awaitingApproval/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval">manages accounts</span>}
-                        {Boolean(u.must_change_password) && <span className="rounded-full bg-status-cancelled/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-cancelled">must reset</span>}
-                        {Boolean(u.mfa_enrolled) && <span className="rounded-full bg-sage/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text">MFA</span>}
-                      </div>
-                      <div className="mt-0.5 truncate text-xs text-ink-muted etched">{u.email} · {describeAccess(u.permissions)}</div>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
-                      <button type="button" onClick={() => setEditing((s) => ({
-                        ...s,
-                        [u.id]: {
-                          name: u.name,
-                          email: u.email,
-                          contact_number: u.contact_number ?? "",
-                          is_event_owner: u.is_event_owner,
-                          is_programme_officer: u.is_programme_officer,
-                          permissions: [...u.permissions],
-                        },
-                      }))} className="text-xs text-sage-text hover:underline">Edit</button>
-                      <button type="button" disabled={reset.isPending} onClick={() => { if (window.confirm(`Reset ${u.name}'s password? This signs them out everywhere.`)) reset.mutate(u.id); }} className="text-xs text-ink-secondary hover:underline">Reset password</button>
-                      {u.is_active ? (
-                        <button type="button" disabled={toggle.isPending || isSelf} onClick={() => toggle.mutate({ id: u.id, active: false })} className="text-xs text-ink-secondary hover:underline disabled:opacity-40">Deactivate</button>
-                      ) : (
-                        <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: u.id, active: true })} className="text-xs text-sage-text hover:underline">Activate</button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {activeUsers.length === 0 ? (
+            <p className="text-sm text-ink-muted etched">No active accounts.</p>
+          ) : (
+            <ul className="space-y-2">
+              {activeUsers.map(renderUserRow)}
+            </ul>
+          )}
+
+          {deactivatedUsers.length > 0 && (
+            <div className="mt-4 border-t border-ink-muted/10 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowDeactivated((o) => !o)}
+                aria-expanded={showDeactivated}
+                className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-muted etched hover:text-ink-secondary"
+              >
+                <span>Deactivated ({deactivatedUsers.length})</span>
+                <span aria-hidden="true">{showDeactivated ? "▴" : "▾"}</span>
+              </button>
+              {showDeactivated && (
+                <ul className="mt-2 space-y-2">
+                  {deactivatedUsers.map(renderUserRow)}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

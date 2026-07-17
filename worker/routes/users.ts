@@ -1,22 +1,17 @@
 /**
  * User (account) management routes — Phase 8a identity layer.
- *   GET    /users                       — list all accounts (user.manage; also
- *                                         readable by event editors for the
- *                                         Event Owner / Programme Officer dropdowns)
- *   POST   /users                       — create an account (optional owner/PO flags)
+ *   GET    /users                       — list accounts (user.manage; limited
+ *                                         fields for event editors — Event Owner dropdown)
+ *   POST   /users                       — create a login account
  *   PUT    /users/:id                   — edit name/email/permissions/designations
  *   POST   /users/:id/reset             — admin-forced password reset
  *   POST   /users/:id/deactivate        — soft-deactivate (user + handled_by option)
  *   POST   /users/:id/activate          — reactivate
  *
- * Design: access is per-user permissions, not roles. Whoever holds
- * `user.manage` is the gatekeeper: creating an account produces a real login
- * (no self-registration) with an explicit permission list. Each new account
- * gets a one-time temporary password and must_change_password = 1.
- *
- * Event owner and programme officer are independent designations on an account.
- * Neither implies the other. Only event owners get a matching handled_by
- * dropdown option (for calendar filters / legacy lists).
+ * Design: access is per-user permissions, not roles. Event owners are logins
+ * (is_event_owner). Programme officers are NOT logins — they live in the
+ * program_officer dropdown list (name + contact). An event owner may also be
+ * a programme officer: that requires a contact and syncs a program_officer row.
  *
  * Lock-out guard: the system refuses any edit or deactivation that would
  * leave zero active accounts holding `user.manage`.
@@ -42,11 +37,6 @@ function canListUsers(permissions: readonly string[]): boolean {
 
 const PermissionList = z.array(z.enum(ALL_PERMISSIONS as [Permission, ...Permission[]]));
 
-/**
- * Count active accounts (other than `exceptId`) that hold user.manage — used
- * to refuse changes that would lock everyone out of account management.
- * Pre-0016 rows (permissions IS NULL) count via their legacy admin role.
- */
 async function otherGatekeepers(db: D1Database, exceptId: string): Promise<number> {
   const row = await db.prepare(
     `SELECT COUNT(*) AS c FROM users
@@ -87,7 +77,6 @@ async function syncHandledByOption(
     return;
   }
 
-  // Name changed but no row under the old name — try the new name, else insert.
   const underNew = await db.prepare(
     "SELECT id FROM dropdown_options WHERE list_key = 'handled_by' AND LOWER(value) = LOWER(?)"
   ).bind(name).first<{ id: string }>();
@@ -108,7 +97,79 @@ async function syncHandledByOption(
   ).bind(optionId, name, sortOrderRow?.next ?? 1, now).run();
 }
 
-// ---- GET / — list accounts (full for user.manage; limited fields for event editors) ----
+/**
+ * Sync a linked program_officer row for an event-owner account that is also a PO.
+ * Metadata carries contact_number + user_id so we only deactivate linked rows
+ * (standalone PO list entries without user_id are left alone).
+ */
+async function syncProgrammeOfficerOption(
+  db: D1Database,
+  opts: {
+    userId: string;
+    name: string;
+    previousName?: string | null;
+    contact: string | null;
+    enabled: boolean;
+    now: string;
+  },
+): Promise<void> {
+  const { userId, name, previousName, contact, enabled, now } = opts;
+  const linked = await db.prepare(
+    `SELECT id, value FROM dropdown_options
+     WHERE list_key = 'program_officer' AND metadata LIKE ?`
+  ).bind(`%"user_id":"${userId}"%`).first<{ id: string; value: string }>();
+
+  if (!enabled) {
+    if (linked) {
+      await db.prepare(
+        "UPDATE dropdown_options SET is_active = 0 WHERE id = ?"
+      ).bind(linked.id).run();
+    }
+    return;
+  }
+
+  const metadata = JSON.stringify({ contact_number: contact, user_id: userId });
+
+  if (linked) {
+    await db.prepare(
+      "UPDATE dropdown_options SET value = ?, metadata = ?, is_active = 1 WHERE id = ?"
+    ).bind(name, metadata, linked.id).run();
+    return;
+  }
+
+  // Prefer updating an existing standalone row with the same name (attach user_id).
+  const byName = await db.prepare(
+    "SELECT id FROM dropdown_options WHERE list_key = 'program_officer' AND LOWER(value) = LOWER(?)"
+  ).bind(previousName ?? name).first<{ id: string }>();
+
+  if (byName) {
+    await db.prepare(
+      "UPDATE dropdown_options SET value = ?, metadata = ?, is_active = 1 WHERE id = ?"
+    ).bind(name, metadata, byName.id).run();
+    return;
+  }
+
+  const byNewName = await db.prepare(
+    "SELECT id FROM dropdown_options WHERE list_key = 'program_officer' AND LOWER(value) = LOWER(?)"
+  ).bind(name).first<{ id: string }>();
+  if (byNewName) {
+    await db.prepare(
+      "UPDATE dropdown_options SET metadata = ?, is_active = 1 WHERE id = ?"
+    ).bind(metadata, byNewName.id).run();
+    return;
+  }
+
+  const sortOrderRow = await db.prepare(
+    "SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM dropdown_options WHERE list_key = 'program_officer'"
+  ).first<{ next: number }>();
+  const optionId = makeId("dd_po");
+  await db.prepare(
+    `INSERT INTO dropdown_options (id, list_key, value, sort_order, is_active, metadata, created_at)
+     VALUES (?, 'program_officer', ?, ?, 1, ?, ?)`
+  ).bind(optionId, name, sortOrderRow?.next ?? 1, metadata, now).run();
+}
+
+// ---- GET / — list accounts ----
 userRoutes.get("/", async (c) => {
   const actor = c.get("user");
   if (!actor) return c.json({ error: "Authentication required" }, 401);
@@ -123,7 +184,7 @@ userRoutes.get("/", async (c) => {
                 is_event_owner, is_programme_officer, is_active, must_change_password,
                 totp_secret IS NOT NULL AS mfa_enrolled, created_at, updated_at
          FROM users ORDER BY is_active DESC, name`
-      : `SELECT id, name, contact_number, is_event_owner, is_programme_officer, is_active
+      : `SELECT id, name, is_event_owner, is_active
          FROM users WHERE is_active = 1 ORDER BY name`
   ).all<Record<string, unknown>>();
   const users = (results ?? []).map((u) => {
@@ -131,9 +192,7 @@ userRoutes.get("/", async (c) => {
       return {
         id: u.id,
         name: u.name,
-        contact_number: u.contact_number ?? null,
         is_event_owner: Number(u.is_event_owner) === 1,
-        is_programme_officer: Number(u.is_programme_officer) === 1,
         is_active: u.is_active,
       };
     }
@@ -153,12 +212,8 @@ userRoutes.get("/", async (c) => {
   return c.json({ users });
 });
 
-// Gatekeeper-only for mutating routes. User management is a sensitive surface.
 userRoutes.use("*", requirePermission("user.manage"));
 
-// ---- POST / — create an account ----
-// Creates a users row. When is_event_owner is set, also creates a handled_by
-// dropdown option so they appear in calendar owner filters.
 const CreateBody = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email(),
@@ -166,6 +221,7 @@ const CreateBody = z.object({
   organisation: z.string().nullish(),
   contact_number: z.string().max(50).nullish(),
   is_event_owner: z.boolean().optional(),
+  /** Also appear as a programme officer (requires contact; syncs program_officer list). */
   is_programme_officer: z.boolean().optional(),
 });
 
@@ -180,12 +236,15 @@ userRoutes.post("/", async (c) => {
   const trimmedName = name.trim();
   const asOwner = Boolean(is_event_owner);
   const asProgrammeOfficer = Boolean(is_programme_officer);
+  const contact = contact_number?.trim() || null;
 
-  // Reject if the email is already in use.
+  if (asProgrammeOfficer && !contact) {
+    return c.json({ error: "A contact number is required when this person is also a programme officer." }, 400);
+  }
+
   const existing = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email.toLowerCase()).first();
   if (existing) return c.json({ error: "A user with that email already exists" }, 409);
 
-  // Reject a duplicate owner name when designating as event owner.
   if (asOwner) {
     const dupOption = await db.prepare(
       "SELECT id FROM dropdown_options WHERE list_key = 'handled_by' AND LOWER(value) = LOWER(?)"
@@ -196,13 +255,12 @@ userRoutes.post("/", async (c) => {
   const temporaryPassword = generateTemporaryPassword();
   const userId = (await createUser(db, { email, name: trimmedName, permissions, password: temporaryPassword, organisation: organisation ?? null })).id;
 
-  // Force a password change on first sign-in (createUser doesn't set this).
   await db.prepare(
     `UPDATE users SET must_change_password = 1, contact_number = ?,
        is_event_owner = ?, is_programme_officer = ?, updated_at = ?
      WHERE id = ?`
   ).bind(
-    contact_number?.trim() || null,
+    contact,
     asOwner ? 1 : 0,
     asProgrammeOfficer ? 1 : 0,
     now,
@@ -211,6 +269,11 @@ userRoutes.post("/", async (c) => {
 
   if (asOwner) {
     await syncHandledByOption(db, { name: trimmedName, enabled: true, now });
+  }
+  if (asProgrammeOfficer) {
+    await syncProgrammeOfficerOption(db, {
+      userId, name: trimmedName, contact, enabled: true, now,
+    });
   }
 
   await audit({
@@ -224,11 +287,9 @@ userRoutes.post("/", async (c) => {
     ipHint: ipHint(c.req.raw),
   });
 
-  // The temporary password is returned ONCE for the admin to hand over out-of-band.
   return c.json({ id: userId, email, name: trimmedName, permissions, temporaryPassword }, 201);
 });
 
-// ---- PUT /:id — edit name/email/permissions/designations ----
 const UpdateBody = z.object({
   name: z.string().min(1).max(100).optional(),
   email: z.string().email().optional(),
@@ -249,7 +310,7 @@ userRoutes.put("/:id", async (c) => {
   const d = parsed.data;
 
   const current = await db.prepare(
-    `SELECT name, email, role, permissions, is_active, is_event_owner, is_programme_officer
+    `SELECT name, email, role, permissions, is_active, is_event_owner, is_programme_officer, contact_number
      FROM users WHERE id = ?`
   ).bind(id)
     .first<{
@@ -260,6 +321,7 @@ userRoutes.put("/:id", async (c) => {
       is_active: number;
       is_event_owner: number;
       is_programme_officer: number;
+      contact_number: string | null;
     }>();
   if (!current) return c.json({ error: "User not found" }, 404);
 
@@ -270,8 +332,14 @@ userRoutes.put("/:id", async (c) => {
   const nextProgrammeOfficer = d.is_programme_officer !== undefined
     ? (d.is_programme_officer ? 1 : 0)
     : current.is_programme_officer;
+  const nextContact = d.contact_number !== undefined
+    ? (d.contact_number?.trim() || null)
+    : current.contact_number;
 
-  // Lock-out guard: never let the last active user.manage holder lose it.
+  if (nextProgrammeOfficer === 1 && !nextContact) {
+    return c.json({ error: "A contact number is required when this person is also a programme officer." }, 400);
+  }
+
   if (nextPermissions && !nextPermissions.includes("user.manage") && current.is_active === 1) {
     const held = permissionsFromRow(current.permissions, current.role).includes("user.manage");
     if (held && (await otherGatekeepers(db, id)) === 0) {
@@ -291,32 +359,27 @@ userRoutes.put("/:id", async (c) => {
     if (dupOption) return c.json({ error: "An event owner with that name already exists" }, 409);
   }
 
-  const nextContact = d.contact_number !== undefined ? (d.contact_number?.trim() || null) : undefined;
-
-  const setClauses = [
-    "name = ?",
-    "email = ?",
-    "permissions = COALESCE(?, permissions)",
-    "organisation = COALESCE(?, organisation)",
-    "is_event_owner = ?",
-    "is_programme_officer = ?",
-    "updated_at = ?",
-  ];
-  const binds: unknown[] = [
+  await db.prepare(
+    `UPDATE users SET
+       name = ?, email = ?,
+       permissions = COALESCE(?, permissions),
+       organisation = COALESCE(?, organisation),
+       contact_number = ?,
+       is_event_owner = ?,
+       is_programme_officer = ?,
+       updated_at = ?
+     WHERE id = ?`
+  ).bind(
     nextName,
     nextEmail,
     nextPermissions ? JSON.stringify(nextPermissions) : null,
     d.organisation ?? null,
+    nextContact,
     nextEventOwner,
     nextProgrammeOfficer,
     now,
-  ];
-  if (nextContact !== undefined) {
-    setClauses.push("contact_number = ?");
-    binds.push(nextContact);
-  }
-  binds.push(id);
-  await db.prepare(`UPDATE users SET ${setClauses.join(", ")} WHERE id = ?`).bind(...binds).run();
+    id,
+  ).run();
 
   const ownerDesignationChanged = d.is_event_owner !== undefined && nextEventOwner !== current.is_event_owner;
   const nameChanged = Boolean(d.name) && nextName.toLowerCase() !== current.name.toLowerCase();
@@ -325,6 +388,20 @@ userRoutes.put("/:id", async (c) => {
       name: nextName,
       previousName: current.name,
       enabled: nextEventOwner === 1 && current.is_active === 1,
+      now,
+    });
+  }
+
+  const poChanged = d.is_programme_officer !== undefined
+    || d.contact_number !== undefined
+    || nameChanged;
+  if (poChanged || nextProgrammeOfficer === 1) {
+    await syncProgrammeOfficerOption(db, {
+      userId: id,
+      name: nextName,
+      previousName: current.name,
+      contact: nextContact,
+      enabled: nextProgrammeOfficer === 1 && current.is_active === 1,
       now,
     });
   }
@@ -343,8 +420,6 @@ userRoutes.put("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// ---- POST /:id/reset — admin-forced password reset ----
-// Mirrors auth.ts /password/admin-reset, routed by through the users surface.
 userRoutes.post("/:id/reset", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
@@ -368,9 +443,6 @@ userRoutes.post("/:id/reset", async (c) => {
   return c.json({ ok: true, email: target.email, name: target.name, temporaryPassword });
 });
 
-// ---- POST /:id/deactivate & /:id/activate ----
-// Soft-toggle the user AND the matching handled_by option so deactivated owners
-// stop appearing as an assignable Event Owner but keep historical events valid.
 userRoutes.post("/:id/deactivate", async (c) => {
   return toggleActive(c, c.req.param("id"), false);
 });
@@ -384,16 +456,22 @@ async function toggleActive(c: Context<AuthEnv>, id: string, active: boolean) {
   const now = new Date().toISOString();
 
   const target = await db.prepare(
-    "SELECT id, name, role, permissions, is_event_owner FROM users WHERE id = ?"
+    "SELECT id, name, role, permissions, is_event_owner, is_programme_officer, contact_number FROM users WHERE id = ?"
   ).bind(id)
-    .first<{ id: string; name: string; role: string | null; permissions: string | null; is_event_owner: number }>();
+    .first<{
+      id: string;
+      name: string;
+      role: string | null;
+      permissions: string | null;
+      is_event_owner: number;
+      is_programme_officer: number;
+      contact_number: string | null;
+    }>();
   if (!target) return c.json({ error: "User not found" }, 404);
 
-  // Refuse to let the admin deactivate themselves (would lock the workspace out).
   if (!active && target.id === admin.id) {
     return c.json({ error: "You cannot deactivate your own account" }, 422);
   }
-  // Lock-out guard: never deactivate the last active user.manage holder.
   if (!active && permissionsFromRow(target.permissions, target.role).includes("user.manage")
       && (await otherGatekeepers(db, target.id)) === 0) {
     return c.json({ error: "This is the only active account that can manage team accounts — grant that permission to someone else first." }, 422);
@@ -401,10 +479,18 @@ async function toggleActive(c: Context<AuthEnv>, id: string, active: boolean) {
 
   await db.prepare("UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?").bind(active ? 1 : 0, now, target.id).run();
 
-  // Only event owners participate in the handled_by list.
   if (Number(target.is_event_owner) === 1) {
     await syncHandledByOption(db, {
       name: target.name,
+      enabled: active,
+      now,
+    });
+  }
+  if (Number(target.is_programme_officer) === 1) {
+    await syncProgrammeOfficerOption(db, {
+      userId: target.id,
+      name: target.name,
+      contact: target.contact_number,
       enabled: active,
       now,
     });
