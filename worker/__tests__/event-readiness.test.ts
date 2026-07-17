@@ -61,7 +61,17 @@ describe("event form readiness", () => {
     expect(catering?.total).toBe(3);
   });
 
-  it("only surfaces meals when a Yes row is missing pax", () => {
+  it("treats legacy No on a meal the same as N/A", () => {
+    const readiness = calculateEventFormReadiness({
+      catering_required: "Yes",
+      catering_provider: "NCPA caterer",
+      interval: "No",
+      catering_dinner_required: "No",
+    });
+    expect(readiness.sections.find((section) => section.key === "catering")?.state).toBe("complete");
+  });
+
+  it("completes catering when only one meal is required and pax is filled", () => {
     const readiness = calculateEventFormReadiness({
       catering_required: "Yes",
       catering_provider: "NCPA caterer",

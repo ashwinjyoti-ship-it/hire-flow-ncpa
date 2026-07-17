@@ -3,6 +3,7 @@ import {
   OPTIONAL_NOT_APPLICABLE,
   isOptionalAffirmative,
   isOptionalSettled,
+  optionalDisplayValue,
   optionalGroupDetailsFilled,
   optionalGroupNotApplicable,
 } from "../lib/optional-requirements";
@@ -38,5 +39,13 @@ describe("optional requirements", () => {
   it("marks groups not applicable when nothing is affirmative", () => {
     expect(optionalGroupNotApplicable({ a: "", b: "No" }, ["a", "b"])).toBe(true);
     expect(optionalGroupNotApplicable({ a: "Yes" }, ["a"])).toBe(false);
+  });
+
+  it("maps legacy No to N/A for display (documented: N/A = No)", () => {
+    expect(optionalDisplayValue("No")).toBe("N/A");
+    expect(optionalDisplayValue("Not Required")).toBe("N/A");
+    expect(optionalDisplayValue("Remove")).toBe("N/A");
+    expect(optionalDisplayValue("Yes")).toBe("Yes");
+    expect(optionalDisplayValue("Required")).toBe("Required");
   });
 });
