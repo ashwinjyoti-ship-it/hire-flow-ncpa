@@ -2,7 +2,13 @@ import {
   CATERING_MEAL_TYPES,
   cateringMealPaxKey,
   cateringMealRequiredKey,
+  isCateringMealRequired,
 } from "./catering-meals";
+import {
+  optionalDetailFilled,
+  optionalGroupDetailsFilled,
+  optionalGroupNotApplicable,
+} from "./optional-requirements";
 
 export type ReadinessState = "missing" | "partial" | "almost" | "complete" | "not_applicable";
 
@@ -27,14 +33,39 @@ export type EventFormReadiness = {
 };
 
 type RequirementValues = Record<string, unknown>;
-type FieldRequirement = { key: string; label: string; active?: (values: RequirementValues) => boolean };
+
+type FieldRequirement = {
+  key: string;
+  label: string;
+  active?: (values: RequirementValues) => boolean;
+  filled?: (values: RequirementValues) => boolean;
+};
+
 type SectionDefinition = {
   key: string;
   label: string;
   formSection: string;
   fields: (values: RequirementValues) => FieldRequirement[];
+  /** Validated only when they fail — not counted when satisfied (N/A or complete). */
+  gaps?: (values: RequirementValues) => FieldRequirement[];
   notApplicable?: (values: RequirementValues) => boolean;
 };
+
+const ROLLUP = {
+  cateringMeals: "catering_meals",
+  staffingOptions: "staffing_facilities_options",
+  recordingOptions: "recording_special_options",
+  additionalOptions: "additional_options",
+} as const;
+
+const STAFFING_TOGGLES = [
+  "green_rooms_required",
+  "ushers_required",
+  "loaders_required",
+  "house_seats_release",
+] as const;
+
+const RECORDING_TOGGLES = ["video_recording", "piano_required", "liquor_licence"] as const;
 
 const text = (value: unknown): string => String(value ?? "").trim();
 const lower = (value: unknown): string => text(value).toLowerCase();
@@ -43,7 +74,53 @@ const isYes = (value: unknown): boolean => ["yes", "required", "keep"].includes(
 const isNo = (value: unknown): boolean => ["no", "not required", "remove"].includes(lower(value));
 
 const decision = (key: string, label: string): FieldRequirement => ({ key, label });
-const detail = (key: string, label: string, when: (values: RequirementValues) => boolean): FieldRequirement => ({ key, label, active: when });
+const rollup = (key: string, label: string, filledFn: (values: RequirementValues) => boolean): FieldRequirement => ({
+  key,
+  label,
+  filled: filledFn,
+});
+
+function isFieldMissing(field: FieldRequirement, values: RequirementValues): boolean {
+  if (field.active && !field.active(values)) return false;
+  if (field.filled) return !field.filled(values);
+  return !filled(values[field.key]);
+}
+
+function cateringMealsFilled(values: RequirementValues): boolean {
+  for (const meal of CATERING_MEAL_TYPES) {
+    const requiredKey = cateringMealRequiredKey(meal.key);
+    if (!isCateringMealRequired(values[requiredKey])) continue;
+    if (!optionalDetailFilled(values[cateringMealPaxKey(meal.key)])) return false;
+  }
+  return true;
+}
+
+function staffingOptionsFilled(values: RequirementValues): boolean {
+  return optionalGroupDetailsFilled(values, [
+    { toggle: "green_rooms_required", details: ["green_room_amenities"] },
+    { toggle: "ushers_required", details: ["ushers_call_time"] },
+    { toggle: "loaders_required", details: ["loaders_call_time"] },
+    { toggle: "house_seats_release", details: ["house_tickets"] },
+  ]);
+}
+
+function recordingOptionsFilled(values: RequirementValues): boolean {
+  return optionalGroupDetailsFilled(values, [
+    { toggle: "video_recording", details: ["camera_count", "recording_type"] },
+    { toggle: "piano_required", details: ["piano_tuning_time"] },
+    { toggle: "liquor_licence", details: ["liquor_licence_details"] },
+  ]);
+}
+
+function additionalOptionsFilled(values: RequirementValues): boolean {
+  return optionalGroupDetailsFilled(values, [
+    { toggle: "digital_standee", details: ["digital_standee_note"] },
+    { toggle: "car_display", details: ["car_display_note"] },
+    { toggle: "bike_display", details: ["bike_display_note"] },
+    { toggle: "stalls", details: ["stalls_note"] },
+    { toggle: "telecasting_media", details: ["telecasting_media_note"] },
+  ]);
+}
 
 const SECTIONS: SectionDefinition[] = [
   {
@@ -61,37 +138,23 @@ const SECTIONS: SectionDefinition[] = [
     key: "staffing_facilities",
     label: "Staffing / facilities",
     formSection: "staffing_facilities",
-    fields: (values) => [
-      decision("green_rooms_required", "Green rooms decision"),
-      detail("green_room_amenities", "Green room amenities", (v) => isYes(v.green_rooms_required)),
-      decision("ushers_required", "Ushers decision"),
-      detail("ushers_call_time", "Ushers call time", (v) => isYes(v.ushers_required)),
-      decision("loaders_required", "Loaders decision"),
-      detail("loaders_call_time", "Loaders call time", (v) => isYes(v.loaders_required)),
-      decision("house_seats_release", "House seats decision"),
-      detail("house_tickets", "House ticket type", (v) => isYes(v.house_seats_release)),
-    ].filter((field) => field.active?.(values) ?? true),
-    notApplicable: (values) => [
-      values.green_rooms_required,
-      values.ushers_required,
-      values.loaders_required,
-      values.house_seats_release,
-    ].every(isNo),
+    fields: () => [],
+    gaps: (values) => {
+      if (optionalGroupNotApplicable(values, [...STAFFING_TOGGLES])) return [];
+      return [rollup(ROLLUP.staffingOptions, "Are staffing options filled?", staffingOptionsFilled)];
+    },
+    notApplicable: (values) => optionalGroupNotApplicable(values, [...STAFFING_TOGGLES]),
   },
   {
     key: "recording_special",
     label: "Recording / special",
     formSection: "recording_special",
-    fields: (values) => [
-      decision("video_recording", "Video recording decision"),
-      detail("camera_count", "Camera count", (v) => isYes(v.video_recording)),
-      detail("recording_type", "Recording type", (v) => isYes(v.video_recording)),
-      decision("piano_required", "Piano decision"),
-      detail("piano_tuning_time", "Piano tuning time", (v) => isYes(v.piano_required)),
-      decision("liquor_licence", "Liquor licence decision"),
-      detail("liquor_licence_details", "Liquor licence details", (v) => isYes(v.liquor_licence)),
-    ].filter((field) => field.active?.(values) ?? true),
-    notApplicable: (values) => [values.video_recording, values.piano_required, values.liquor_licence].every(isNo),
+    fields: () => [],
+    gaps: (values) => {
+      if (optionalGroupNotApplicable(values, [...RECORDING_TOGGLES])) return [];
+      return [rollup(ROLLUP.recordingOptions, "Are recording options filled?", recordingOptionsFilled)];
+    },
+    notApplicable: (values) => optionalGroupNotApplicable(values, [...RECORDING_TOGGLES]),
   },
   {
     key: "catering",
@@ -101,12 +164,12 @@ const SECTIONS: SectionDefinition[] = [
       const fields: FieldRequirement[] = [decision("catering_required", "Catering decision")];
       if (!isYes(values.catering_required)) return fields;
       fields.push(decision("catering_provider", "Caterer"), decision("interval", "Interval decision"));
-      for (const meal of CATERING_MEAL_TYPES) {
-        const requiredKey = cateringMealRequiredKey(meal.key);
-        fields.push(decision(requiredKey, `${meal.label} decision`));
-        if (isYes(values[requiredKey])) fields.push(decision(cateringMealPaxKey(meal.key), `${meal.label} pax`));
-      }
       return fields;
+    },
+    gaps: (values) => {
+      if (!isYes(values.catering_required)) return [];
+      if (cateringMealsFilled(values)) return [];
+      return [rollup(ROLLUP.cateringMeals, "Are meals filled?", cateringMealsFilled)];
     },
     notApplicable: (values) => isNo(values.catering_required),
   },
@@ -116,7 +179,11 @@ const SECTIONS: SectionDefinition[] = [
     formSection: "decorator",
     fields: (values) => [
       decision("decorator_required", "Decorator decision"),
-      detail("decorator_name", "Decorator name", (v) => isYes(v.decorator_required)),
+      {
+        key: "decorator_name",
+        label: "Decorator name",
+        active: (v: RequirementValues) => isYes(v.decorator_required),
+      },
     ].filter((field) => field.active?.(values) ?? true),
     notApplicable: (values) => isNo(values.decorator_required),
   },
@@ -130,28 +197,25 @@ const SECTIONS: SectionDefinition[] = [
       decision("housekeeping", "Housekeeping"),
       decision("crew_cards", "Crew cards"),
       decision("licenses_status", "Licences decision"),
-      detail("licenses", "Licence types", (v) => ["required", "awaiting", "received"].includes(lower(v.licenses_status))),
+      {
+        key: "licenses",
+        label: "Licence types",
+        active: (v: RequirementValues) => ["required", "awaiting", "received"].includes(lower(v.licenses_status)),
+      },
     ].filter((field) => field.active?.(values) ?? true),
   },
   {
     key: "additional",
     label: "Additional requirements",
     formSection: "additional",
-    fields: (values) => [
-      decision("orchestra_pit_chairs", "Orchestra pit chairs decision"),
-      decision("digital_standee", "Digital standee decision"),
-      detail("digital_standee_note", "Digital standee details", (v) => isYes(v.digital_standee)),
-      decision("car_display", "Car display decision"),
-      detail("car_display_note", "Car display details", (v) => isYes(v.car_display)),
-      decision("bike_display", "Bike display decision"),
-      detail("bike_display_note", "Bike display details", (v) => isYes(v.bike_display)),
-      decision("stalls", "Stalls decision"),
-      detail("stalls_note", "Stalls details", (v) => isYes(v.stalls)),
-      decision("telecasting_media", "Telecasting / media decision"),
-      detail("telecasting_media_note", "Telecasting / media details", (v) => isYes(v.telecasting_media)),
+    fields: () => [
       decision("stage_setup", "Stage setup"),
       decision("foyer_setup", "Foyer setup"),
-    ].filter((field) => field.active?.(values) ?? true),
+    ],
+    gaps: (values) => {
+      if (additionalOptionsFilled(values)) return [];
+      return [rollup(ROLLUP.additionalOptions, "Are optional add-ons filled?", additionalOptionsFilled)];
+    },
   },
 ];
 
@@ -170,21 +234,28 @@ export function parseRequirementValues(raw: unknown): RequirementValues {
 export function calculateEventFormReadiness(raw: unknown): EventFormReadiness {
   const values = parseRequirementValues(raw);
   const sections = SECTIONS.map((definition): ReadinessSection => {
-    const fields = definition.fields(values);
-    const missing = fields.filter((field) => !filled(values[field.key]));
+    const baseFields = definition.fields(values);
+    const gapFields = definition.gaps?.(values) ?? [];
+    const baseMissing = baseFields.filter((field) => isFieldMissing(field, values));
+    const gapMissing = gapFields.filter((field) => isFieldMissing(field, values));
+    const missing = [...baseMissing, ...gapMissing];
     const isNotApplicable = Boolean(definition.notApplicable?.(values)) && missing.length === 0;
-    const total = fields.length;
-    const filledCount = total - missing.length;
-    const percentage = total ? Math.round((filledCount / total) * 100) : 100;
+    const total = baseFields.length;
+    const filledCount = total - baseMissing.length;
+    const percentage = total ? Math.round((filledCount / total) * 100) : (missing.length === 0 ? 100 : 0);
     const state: ReadinessState = isNotApplicable
       ? "not_applicable"
-      : percentage === 100
+      : missing.length === 0
         ? "complete"
-        : percentage === 0
-          ? "missing"
-          : percentage >= 70
-            ? "almost"
-            : "partial";
+        : missing.length > 0 && total === 0
+          ? "partial"
+          : total === 0
+            ? "missing"
+          : percentage === 0
+            ? "missing"
+            : percentage >= 70
+              ? "almost"
+              : "partial";
     return {
       key: definition.key,
       label: definition.label,
@@ -206,6 +277,22 @@ export function calculateEventFormReadiness(raw: unknown): EventFormReadiness {
     applicableSections: applicable.length,
     missingCount: applicable.reduce((sum, section) => sum + section.missingKeys.length, 0),
     sections,
+  };
+}
+
+/** Lifecycle task copy — gap labels (e.g. "Are meals filled?") only appear when something is actually missing. */
+export function readinessTaskCopy(section: ReadinessSection): { title: string; description: string } {
+  if (section.missingLabels.length === 0) {
+    return {
+      title: `Complete event form: ${section.label}`,
+      description: `${section.filled} of ${section.total} details filled.`,
+    };
+  }
+  const shortMissing = section.missingLabels.slice(0, 2).join(", ");
+  const remaining = section.missingLabels.length - 2;
+  return {
+    title: `Complete event form: ${section.label} — ${shortMissing}${remaining > 0 ? ` +${remaining} more` : ""}`,
+    description: `${section.filled} of ${section.total} details filled. Still needed: ${section.missingLabels.join(", ")}.`,
   };
 }
 

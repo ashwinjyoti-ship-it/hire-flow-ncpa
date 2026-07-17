@@ -1,22 +1,29 @@
 # Event-form requirement default audit
 
-The readiness model treats blank as **Unknown**, an explicit negative answer as **Not required**, a workflow status as **Not yet**, and affirmative answers as **Positive / Required / Yes**. New venue requirement records therefore start empty. Existing saved decisions are preserved because the application cannot reliably distinguish an old silent default from an intentional user choice.
+## Optional sub-rows: N/A and Yes only
 
-| Field(s) | Previous default | New default | State category | Notes |
-| --- | --- | --- | --- | --- |
-| `green_rooms_required`, `ushers_required`, `loaders_required` | Not Required | empty/select | Unknown | A user chooses Required or Not Required. Conditional detail is counted only when Required. |
-| `house_seats_release` | No | empty/select | Unknown | Yes activates house-ticket type. |
-| `video_recording`, `piano_required` | No | empty/select | Unknown | Yes activates camera/recording or tuning details. |
-| `liquor_licence` | Not Required | empty/select | Unknown | Required activates licence details. |
-| `catering_required` | No | empty/select | Unknown | Yes activates caterer, interval, meal decisions, and pax. No marks Catering Not Applicable. |
-| `catering_*_required` | No | empty/select | Unknown | Each meal decision is intentional; Yes activates pax. |
-| `interval` | No | empty/select | Unknown | Counted only when catering applies. |
-| `decorator_required` | No | empty/select | Unknown | Yes activates decorator name. No marks Decorator Not Applicable. |
-| `orchestra_pit_chairs` | Keep | empty/select | Unknown | User must choose Keep or Remove. |
-| `digital_standee`, `car_display`, `bike_display`, `stalls`, `telecasting_media` | No | empty/select | Unknown | Yes activates the matching detail field. |
-| `licenses_status` | Not required | empty/select | Unknown | User chooses Required, Awaiting, Received, or Not required; applicable states activate licence types. |
-| Text, time, date, number, and notes fields | empty | empty | Unknown | They count only when entered and applicable. |
-| `vendor_registration_form` | No Applicable | Not Applicable | Not required by policy | This is the sole event-form policy default; the label is corrected. |
-| Checklist workflow fields | negative workflow values | unchanged | Not yet | Payment, confirmation, Minutes, feedback, and similar action states remain negative until completed. |
+For meals, staffing toggles, recording options, and additional add-ons, the event form shows **N/A** (default) and **Yes** / **Required** / **Keep** only. There is no separate **No** option in the UI.
 
-No event-form requirement begins Positive / Required / Yes. Readiness is calculated by `worker/lib/event-readiness.ts` and is not user-editable.
+**Documentation convention: N/A = No.** Any legacy stored value of `No`, `Not Required`, or `Remove` is treated the same as N/A for readiness, lifecycle tasks, and display. Existing saved events keep working; the dropdown shows N/A for those rows.
+
+Parent section gates (`catering_required`, `decorator_required`, etc.) still use **Yes / No** because the team must decide whether the whole section applies.
+
+The readiness model treats blank optional rows as **N/A (not required)**. Affirmative answers require details (pax, notes, call times). Workflow checklist fields remain unchanged.
+
+| Field(s) | UI options | Documented meaning | Lifecycle |
+| --- | --- | --- | --- |
+| `catering_*_required` | N/A, Yes | N/A = not needed; Yes = need pax | Gap only if Yes without pax |
+| `green_rooms_required`, `ushers_required`, `loaders_required` | N/A, Required | N/A = No | Gap only if Required without details |
+| `house_seats_release` | N/A, Yes | N/A = No | Gap only if Yes without ticket type |
+| `video_recording`, `piano_required` | N/A, Yes | N/A = No | Gap only if Yes without details |
+| `liquor_licence` | N/A, Required | N/A = No | Gap only if Required without details |
+| `digital_standee`, `car_display`, `bike_display`, `stalls`, `telecasting_media` | N/A, Yes | N/A = No | Gap only if Yes without notes |
+| `orchestra_pit_chairs` | N/A, Keep | N/A = No / Remove | Not in add-ons rollup |
+| `catering_required`, `decorator_required` | Yes, No (section gate) | No = whole section N/A | Section not_applicable |
+| `interval` | Yes, No | Counted when catering applies | Required field when catering Yes |
+| `licenses_status` | Select (incl. Not required) | Standard licence workflow | Required when applicable |
+| Text, time, date, number, notes | empty | Unknown until entered | Count when applicable |
+| `vendor_registration_form` | Not Applicable (policy default) | Not required by policy | — |
+| Checklist workflow fields | negative workflow values | Not yet | Unchanged |
+
+Readiness is calculated by `worker/lib/event-readiness.ts` and is not user-editable.
