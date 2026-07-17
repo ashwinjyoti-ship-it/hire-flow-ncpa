@@ -304,14 +304,16 @@ export function EventEditPage() {
   const sources = lookups?.lookups.enquiry_source ?? [];
   const isVfh = form.event_type === "VFH";
 
-  // Phase 8b: the Event Owner dropdown is sourced from real accounts. Choosing
-  // one sets both the display label (event_owner) and the identity FK
+  // Event Owner / Programme Officer dropdowns are sourced from team accounts.
+  // The two designations are independent — a person may hold either, both, or neither.
+  // Choosing an owner sets both the display label (event_owner) and the identity FK
   // (event_owner_id), so tasks auto-route and "My events" works.
   const { data: usersData } = useQuery<{
     users: Array<{
       id: string;
       name: string;
       contact_number?: string | null;
+      is_event_owner?: boolean;
       is_programme_officer?: boolean;
       is_active: number;
     }>;
@@ -319,8 +321,9 @@ export function EventEditPage() {
     queryKey: ["users"],
     queryFn: () => apiGet("/users"),
   });
-  const activeOwners = (usersData?.users ?? []).filter((u) => u.is_active === 1);
-  const programmeOfficers = activeOwners.filter((u) => u.is_programme_officer);
+  const activeUsers = (usersData?.users ?? []).filter((u) => u.is_active === 1);
+  const activeOwners = activeUsers.filter((u) => u.is_event_owner);
+  const programmeOfficers = activeUsers.filter((u) => u.is_programme_officer);
   const trimmedTitle = form.title.trim();
   const selectedDuplicateVenues = useMemo(
     () => Array.from(new Set(pruneEmptyVenueBookings(form.venue_bookings).map((booking) => booking.venue.trim()).filter(Boolean))),

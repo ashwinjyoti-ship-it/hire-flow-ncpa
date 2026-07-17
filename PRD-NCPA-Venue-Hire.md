@@ -237,7 +237,7 @@ enquiry → tentative → approved (VFH only) → confirmed
 ### 4.12 Settings & admin
 | ID | Requirement | Acceptance criteria |
 |---|---|---|
-| SET-01 | Settings (admin) | Email/Resend config, master lists, event owner accounts |
+| SET-01 | Settings (admin) | Email/Resend config, master lists, team accounts (with independent event-owner / programme-officer designations) |
 | USR-01 | User management (admin only) | Create/edit users, assign roles, admin password reset |
 | USR-02 | Non-admin cannot access `/admin/users` | Redirect or denied |
 | PRF-01 | Profile self-service | Password change + MFA setup |

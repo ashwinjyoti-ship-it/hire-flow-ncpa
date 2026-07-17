@@ -58,7 +58,7 @@ function viewerSession() {
 }
 
 describe("User management (Phase 8a)", () => {
-  it("creates a user + handled_by option and returns a one-time temporary password", async () => {
+  it("creates an event-owner account + handled_by option and returns a one-time temporary password", async () => {
     const inserts: { table: string; binds: unknown[] }[] = [];
     const db = fakeDb((sql) => {
       const up = sql.toUpperCase();
@@ -79,7 +79,12 @@ describe("User management (Phase 8a)", () => {
       {
         method: "POST",
         headers: { Cookie: `${SESSION_COOKIE}=sess_admin`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Priya Nair", email: "priya@example.com", role: "venue_manager" }),
+        body: JSON.stringify({
+          name: "Priya Nair",
+          email: "priya@example.com",
+          role: "venue_manager",
+          is_event_owner: true,
+        }),
       },
       { DB: db } as never
     );
@@ -92,6 +97,40 @@ describe("User management (Phase 8a)", () => {
     // Both a user and a dropdown option were inserted.
     expect(inserts.some((i) => i.table === "users")).toBe(true);
     expect(inserts.some((i) => i.table === "dropdown_options")).toBe(true);
+  });
+
+  it("creates a programme officer without an event-owner designation (no handled_by option)", async () => {
+    const inserts: { table: string; binds: unknown[] }[] = [];
+    const db = fakeDb((sql) => {
+      const up = sql.toUpperCase();
+      if (sql.includes("FROM sessions")) return { first: adminSession };
+      if (up.startsWith("SELECT ID FROM USERS WHERE EMAIL")) return { first: () => null };
+      if (up.startsWith("INSERT INTO USERS")) return { run: () => { inserts.push({ table: "users", binds: [] }); return { success: true }; } };
+      if (up.startsWith("UPDATE USERS SET MUST_CHANGE_PASSWORD")) return { run: () => ({ success: true }) };
+      if (up.startsWith("INSERT INTO DROPDOWN_OPTIONS")) return { run: () => { inserts.push({ table: "dropdown_options", binds: [] }); return { success: true }; } };
+      if (up.startsWith("INSERT INTO AUDIT_LOGS")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/users",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_admin`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Farha",
+          email: "farha@example.com",
+          is_programme_officer: true,
+          is_event_owner: false,
+        }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(201);
+    expect(inserts.some((i) => i.table === "users")).toBe(true);
+    expect(inserts.some((i) => i.table === "dropdown_options")).toBe(false);
   });
 
   it("rejects a duplicate email with 409 and creates nothing", async () => {
@@ -119,13 +158,13 @@ describe("User management (Phase 8a)", () => {
     expect(userInsert).toBe(false);
   });
 
-  it("deactivates both the user and the matching handled_by option", async () => {
+  it("deactivates both the user and the matching handled_by option for event owners", async () => {
     const runs: string[] = [];
     const db = fakeDb((sql) => {
       const up = sql.toUpperCase();
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
-        return { first: () => ({ id: "user_owner_farha", name: "Farha", role: null, permissions: '["event.view","checklist.update"]' }) };
+      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS, IS_EVENT_OWNER FROM USERS")) {
+        return { first: () => ({ id: "user_owner_farha", name: "Farha", role: null, permissions: '["event.view","checklist.update"]', is_event_owner: 1 }) };
       }
       if (up.startsWith("UPDATE USERS SET IS_ACTIVE")) return { run: () => { runs.push("users"); return { success: true }; } };
       if (up.startsWith("UPDATE DROPDOWN_OPTIONS SET IS_ACTIVE")) return { run: () => { runs.push("dropdown_options"); return { success: true }; } };
@@ -149,8 +188,8 @@ describe("User management (Phase 8a)", () => {
   it("refuses to let an admin deactivate their own account", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (sql.toUpperCase().includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
-        return { first: () => ({ id: "user_admin", name: "Admin", role: "admin", permissions: null }) };
+      if (sql.toUpperCase().includes("SELECT ID, NAME, ROLE, PERMISSIONS, IS_EVENT_OWNER FROM USERS")) {
+        return { first: () => ({ id: "user_admin", name: "Admin", role: "admin", permissions: null, is_event_owner: 0 }) };
       }
       return {};
     });
@@ -171,8 +210,8 @@ describe("User management (Phase 8a)", () => {
     const db = fakeDb((sql) => {
       const up = sql.toUpperCase();
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS FROM USERS")) {
-        return { first: () => ({ id: "user_other_admin", name: "Other Admin", role: null, permissions: '["user.manage","event.view"]' }) };
+      if (up.includes("SELECT ID, NAME, ROLE, PERMISSIONS, IS_EVENT_OWNER FROM USERS")) {
+        return { first: () => ({ id: "user_other_admin", name: "Other Admin", role: null, permissions: '["user.manage","event.view"]', is_event_owner: 0 }) };
       }
       if (up.includes("COUNT(*)")) return { first: () => ({ c: 0 }) };
       return {};
@@ -192,10 +231,10 @@ describe("User management (Phase 8a)", () => {
 
   it("refuses to strip user.manage from the last active holder", async () => {
     const db = fakeDb((sql) => {
-      const up = sql.toUpperCase();
+      const up = sql.toUpperCase().replace(/\s+/g, " ");
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE FROM USERS")) {
-        return { first: () => ({ name: "Admin", email: "admin@example.com", role: null, permissions: '["user.manage","event.view"]', is_active: 1 }) };
+      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE, IS_EVENT_OWNER, IS_PROGRAMME_OFFICER FROM USERS")) {
+        return { first: () => ({ name: "Admin", email: "admin@example.com", role: null, permissions: '["user.manage","event.view"]', is_active: 1, is_event_owner: 0, is_programme_officer: 0 }) };
       }
       if (up.includes("COUNT(*)")) return { first: () => ({ c: 0 }) };
       return {};
@@ -220,10 +259,10 @@ describe("User management (Phase 8a)", () => {
   it("updates a user's permission list when another manager remains", async () => {
     let savedPermissions: string | null = null;
     const db = fakeDb((sql) => {
-      const up = sql.toUpperCase();
+      const up = sql.toUpperCase().replace(/\s+/g, " ");
       if (sql.includes("FROM sessions")) return { first: adminSession };
-      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE FROM USERS")) {
-        return { first: () => ({ name: "Priya", email: "priya@example.com", role: null, permissions: '["user.manage"]', is_active: 1 }) };
+      if (up.includes("SELECT NAME, EMAIL, ROLE, PERMISSIONS, IS_ACTIVE, IS_EVENT_OWNER, IS_PROGRAMME_OFFICER FROM USERS")) {
+        return { first: () => ({ name: "Priya", email: "priya@example.com", role: null, permissions: '["user.manage"]', is_active: 1, is_event_owner: 0, is_programme_officer: 0 }) };
       }
       if (up.includes("COUNT(*)")) return { first: () => ({ c: 1 }) };
       if (up.startsWith("UPDATE USERS SET NAME")) {
