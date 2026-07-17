@@ -4,16 +4,14 @@ The readiness model treats blank as **Unknown**, an explicit negative answer as 
 
 | Field(s) | Previous default | New default | State category | Notes |
 | --- | --- | --- | --- | --- |
-| `green_rooms_required`, `ushers_required`, `loaders_required` | Not Required | empty/select | Unknown | A user chooses Required or Not Required. Conditional detail is counted only when Required. |
-| `house_seats_release` | No | empty/select | Unknown | Yes activates house-ticket type. |
-| `video_recording`, `piano_required` | No | empty/select | Unknown | Yes activates camera/recording or tuning details. |
-| `liquor_licence` | Not Required | empty/select | Unknown | Required activates licence details. |
-| `catering_required` | No | empty/select | Unknown | Yes activates caterer, interval, meal decisions, and pax. No marks Catering Not Applicable. |
-| `catering_*_required` | No | N/A (default) | Not required | Only rows set to Yes enter readiness and require pax; untouched, N/A, and No need no lifecycle action. |
+| `green_rooms_required`, `ushers_required`, `loaders_required`, `house_seats_release` | Not Required / No | N/A (default) | Not required | Rollup task: "Are staffing options filled?"; only affirmative rows need details. |
+| `video_recording`, `piano_required`, `liquor_licence` | No / Not Required | N/A (default) | Not required | Rollup task: "Are recording options filled?". |
+| `catering_*_required` | No | N/A (default) | Not required | Satisfied when N/A/No/empty or Yes with pax; no lifecycle mention unless Yes lacks pax. |
+| `digital_standee`, `car_display`, `bike_display`, `stalls`, `telecasting_media` | No | N/A (default) | Not required | Rollup task: "Are optional add-ons filled?"; only Yes rows need notes. |
+| `catering_required` | No | empty/select | Unknown | Yes activates caterer, interval, and meals rollup. No marks Catering Not Applicable. |
 | `interval` | No | empty/select | Unknown | Counted only when catering applies. |
 | `decorator_required` | No | empty/select | Unknown | Yes activates decorator name. No marks Decorator Not Applicable. |
-| `orchestra_pit_chairs` | Keep | empty/select | Unknown | User must choose Keep or Remove. |
-| `digital_standee`, `car_display`, `bike_display`, `stalls`, `telecasting_media` | No | empty/select | Unknown | Yes activates the matching detail field. |
+| `orchestra_pit_chairs` | Keep | N/A (default) | Not required | Keep/Remove optional; not part of add-ons rollup. |
 | `licenses_status` | Not required | empty/select | Unknown | User chooses Required, Awaiting, Received, or Not required; applicable states activate licence types. |
 | Text, time, date, number, and notes fields | empty | empty | Unknown | They count only when entered and applicable. |
 | `vendor_registration_form` | No Applicable | Not Applicable | Not required by policy | This is the sole event-form policy default; the label is corrected. |

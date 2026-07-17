@@ -6,6 +6,7 @@ import {
   cateringMealRequiredKey,
   isCateringMealRequired,
 } from "../../../worker/lib/catering-meals";
+import { OPTIONAL_NOT_APPLICABLE, isOptionalAffirmative } from "../../../worker/lib/optional-requirements";
 import { withDefaultVenueRequirements } from "../../lib/event-edit-form";
 import { useLookups } from "../../lib/use-lookups";
 
@@ -71,6 +72,40 @@ function YesNoSelect({
   );
 }
 
+/** Optional sub-rows default to N/A; only affirmative values activate details and lifecycle checks. */
+function OptionalToggleSelect({
+  value,
+  onChange,
+  yesValue = "Yes",
+  noValue = "No",
+  id,
+  focused = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  yesValue?: string;
+  noValue?: string;
+  id?: string;
+  focused?: boolean;
+}) {
+  const displayValue = value || OPTIONAL_NOT_APPLICABLE;
+  return (
+    <select
+      id={id}
+      value={displayValue}
+      onChange={(e) => {
+        const next = e.target.value;
+        onChange(next === OPTIONAL_NOT_APPLICABLE ? "" : next);
+      }}
+      className={`carved input scroll-mt-24 ${focused ? "ring-2 ring-terracotta/70 ring-offset-4 ring-offset-marble-base" : ""}`}
+    >
+      <option value={OPTIONAL_NOT_APPLICABLE}>{OPTIONAL_NOT_APPLICABLE}</option>
+      <option value={yesValue}>{yesValue}</option>
+      <option value={noValue}>{noValue}</option>
+    </select>
+  );
+}
+
 /** Meal rows default to N/A; only Yes activates pax and lifecycle readiness. */
 function MealRequiredSelect({
   value,
@@ -113,12 +148,20 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
   const reqs = withDefaultVenueRequirements(value);
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
 
-  const loadersRequired = isYes(reqs.loaders_required);
-  const videoRecording = isYes(reqs.video_recording, "Yes");
-  const pianoRequired = isYes(reqs.piano_required);
+  const loadersRequired = isOptionalAffirmative(reqs.loaders_required);
+  const greenRoomsRequired = isOptionalAffirmative(reqs.green_rooms_required);
+  const ushersRequired = isOptionalAffirmative(reqs.ushers_required);
+  const houseSeatsRelease = isOptionalAffirmative(reqs.house_seats_release);
+  const videoRecording = isOptionalAffirmative(reqs.video_recording);
+  const pianoRequired = isOptionalAffirmative(reqs.piano_required);
+  const liquorLicence = isOptionalAffirmative(reqs.liquor_licence);
+  const digitalStandee = isOptionalAffirmative(reqs.digital_standee);
+  const carDisplay = isOptionalAffirmative(reqs.car_display);
+  const bikeDisplay = isOptionalAffirmative(reqs.bike_display);
+  const stalls = isOptionalAffirmative(reqs.stalls);
+  const telecastingMedia = isOptionalAffirmative(reqs.telecasting_media);
   const cateringRequired = isYes(reqs.catering_required, "Yes");
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
-  const liquorLicence = isYes(reqs.liquor_licence);
 
   return (
     <RequirementFocusContext.Provider value={focusedFieldKey}>
@@ -147,21 +190,26 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
       </section>
       <section id="requirement-staffing_facilities" className="carved-card scroll-mt-6 rounded-2xl bg-marble-highlight/50 p-5">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Staffing & Facilities</h3>
+        <p className="mb-4 text-[10px] text-ink-muted etched">Default N/A — set Required or Yes only for options needed on this event.</p>
         <div className="grid gap-4 md:grid-cols-2">
           <Field fieldKey="green_rooms_required" label="Green Rooms Required">
-            <YesNoSelect value={(reqs.green_rooms_required as string) ?? ""} onChange={(v) => setReq("green_rooms_required", v || null)} />
+            <OptionalToggleSelect value={(reqs.green_rooms_required as string) ?? ""} onChange={(v) => setReq("green_rooms_required", v || null)} yesValue="Required" noValue="Not Required" />
           </Field>
-          <Field fieldKey="green_room_amenities" label="Green Room Amenities">
-            <textarea value={(reqs.green_room_amenities as string) ?? ""} onChange={(e) => setReq("green_room_amenities", e.target.value || null)} className="carved input" rows={1} />
-          </Field>
+          {greenRoomsRequired && (
+            <Field fieldKey="green_room_amenities" label="Green Room Amenities">
+              <textarea value={(reqs.green_room_amenities as string) ?? ""} onChange={(e) => setReq("green_room_amenities", e.target.value || null)} className="carved input" rows={1} />
+            </Field>
+          )}
           <Field fieldKey="ushers_required" label="Ushers Required">
-            <YesNoSelect value={(reqs.ushers_required as string) ?? ""} onChange={(v) => setReq("ushers_required", v || null)} />
+            <OptionalToggleSelect value={(reqs.ushers_required as string) ?? ""} onChange={(v) => setReq("ushers_required", v || null)} yesValue="Required" noValue="Not Required" />
           </Field>
-          <Field fieldKey="ushers_call_time" label="Ushers Call Time">
-            <input type="time" lang="en-GB" value={(reqs.ushers_call_time as string) ?? ""} onChange={(e) => setReq("ushers_call_time", e.target.value || null)} className="carved input" />
-          </Field>
+          {ushersRequired && (
+            <Field fieldKey="ushers_call_time" label="Ushers Call Time">
+              <input type="time" lang="en-GB" value={(reqs.ushers_call_time as string) ?? ""} onChange={(e) => setReq("ushers_call_time", e.target.value || null)} className="carved input" />
+            </Field>
+          )}
           <Field fieldKey="loaders_required" label="Loaders Required">
-            <YesNoSelect value={(reqs.loaders_required as string) ?? ""} onChange={(v) => setReq("loaders_required", v || null)} />
+            <OptionalToggleSelect value={(reqs.loaders_required as string) ?? ""} onChange={(v) => setReq("loaders_required", v || null)} yesValue="Required" noValue="Not Required" />
           </Field>
           {loadersRequired && (
             <Field fieldKey="loaders_call_time" label="Loaders Call Time (conditional)">
@@ -169,22 +217,25 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             </Field>
           )}
           <Field fieldKey="house_seats_release" label="House Seats Release">
-            <YesNoSelect value={(reqs.house_seats_release as string) ?? ""} onChange={(v) => setReq("house_seats_release", v || null)} yesValue="Yes" noValue="No" />
+            <OptionalToggleSelect value={(reqs.house_seats_release as string) ?? ""} onChange={(v) => setReq("house_seats_release", v || null)} yesValue="Yes" noValue="No" />
           </Field>
-          <Field fieldKey="house_tickets" label="House Tickets">
-            <select value={(reqs.house_tickets as string) ?? ""} onChange={(e) => setReq("house_tickets", e.target.value || null)} className="carved input">
-              <option value="">Select…</option>
-              <option value="Client pass">Client pass</option>
-              <option value="NCPA pass">NCPA pass</option>
-            </select>
-          </Field>
+          {houseSeatsRelease && (
+            <Field fieldKey="house_tickets" label="House Tickets">
+              <select value={(reqs.house_tickets as string) ?? ""} onChange={(e) => setReq("house_tickets", e.target.value || null)} className="carved input">
+                <option value="">Select…</option>
+                <option value="Client pass">Client pass</option>
+                <option value="NCPA pass">NCPA pass</option>
+              </select>
+            </Field>
+          )}
         </div>
       </section>
       <section id="requirement-recording_special" className="carved-card scroll-mt-6 rounded-2xl bg-marble-highlight/50 p-5">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sage etched">Recording & Special</h3>
+        <p className="mb-4 text-[10px] text-ink-muted etched">Default N/A — set Yes or Required only for options needed on this event.</p>
         <div className="grid gap-4 md:grid-cols-2">
           <Field fieldKey="video_recording" label="Video Recording">
-            <YesNoSelect value={(reqs.video_recording as string) ?? ""} onChange={(v) => setReq("video_recording", v || null)} yesValue="Yes" noValue="No" />
+            <OptionalToggleSelect value={(reqs.video_recording as string) ?? ""} onChange={(v) => setReq("video_recording", v || null)} yesValue="Yes" noValue="No" />
           </Field>
           {videoRecording && (
             <>
@@ -201,7 +252,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             </>
           )}
           <Field fieldKey="piano_required" label="Piano Required">
-            <YesNoSelect value={(reqs.piano_required as string) ?? ""} onChange={(v) => setReq("piano_required", v || null)} yesValue="Yes" noValue="No" />
+            <OptionalToggleSelect value={(reqs.piano_required as string) ?? ""} onChange={(v) => setReq("piano_required", v || null)} yesValue="Yes" noValue="No" />
           </Field>
           {pianoRequired && (
             <Field fieldKey="piano_tuning_time" label="Piano Tuning Time (conditional)">
@@ -209,11 +260,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             </Field>
           )}
           <Field fieldKey="liquor_licence" label="Liquor Licence">
-            <select value={(reqs.liquor_licence as string) ?? ""} onChange={(e) => setReq("liquor_licence", e.target.value || null)} className="carved input">
-              <option value="">Select…</option>
-              <option value="Not Required">Not Required</option>
-              <option value="Required">Required</option>
-            </select>
+            <OptionalToggleSelect value={(reqs.liquor_licence as string) ?? ""} onChange={(v) => setReq("liquor_licence", v || null)} yesValue="Required" noValue="Not Required" />
           </Field>
           {liquorLicence && (
             <Field fieldKey="liquor_licence_details" label="Liquor Licence Details (conditional)">
@@ -248,7 +295,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             </div>
 
             {cateringRequired && (
-              <div className="rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-4">
+              <div id="requirement-field-catering_meals" className="rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-4 scroll-mt-24">
                 <div className="mb-3 flex items-baseline justify-between gap-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
                   <p className="text-[10px] text-ink-muted etched">Default N/A — set Yes only for meals needed, then enter pax.</p>
@@ -384,10 +431,11 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
             />
           </Field>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <p className="mb-4 text-[10px] text-ink-muted etched">Optional add-ons default to N/A — set Yes only when needed, then fill notes.</p>
+        <div id="requirement-field-additional_options" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Field fieldKey="orchestra_pit_chairs" label="Orchestra Pit Chairs">
-              <YesNoSelect value={(reqs.orchestra_pit_chairs as string) ?? ""} onChange={(v) => setReq("orchestra_pit_chairs", v || null)} yesValue="Keep" noValue="Remove" />
+              <OptionalToggleSelect value={(reqs.orchestra_pit_chairs as string) ?? ""} onChange={(v) => setReq("orchestra_pit_chairs", v || null)} yesValue="Keep" noValue="Remove" />
             </Field>
             <Field fieldKey="orchestra_pit_chairs_note" label="Orchestra Pit Chairs — notes">
               <input type="text" value={(reqs.orchestra_pit_chairs_note as string) ?? ""} onChange={(e) => setReq("orchestra_pit_chairs_note", e.target.value || null)} className="carved input" placeholder="Qty or other notes…" />
@@ -395,43 +443,53 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
           </div>
           <div className="space-y-2">
             <Field fieldKey="digital_standee" label="Digital Standee">
-              <YesNoSelect value={(reqs.digital_standee as string) ?? ""} onChange={(v) => setReq("digital_standee", v || null)} yesValue="Yes" noValue="No" />
+              <OptionalToggleSelect value={(reqs.digital_standee as string) ?? ""} onChange={(v) => setReq("digital_standee", v || null)} yesValue="Yes" noValue="No" />
             </Field>
-            <Field fieldKey="digital_standee_note" label="Digital Standee — notes">
-              <input type="text" value={(reqs.digital_standee_note as string) ?? ""} onChange={(e) => setReq("digital_standee_note", e.target.value || null)} className="carved input" />
-            </Field>
+            {digitalStandee && (
+              <Field fieldKey="digital_standee_note" label="Digital Standee — notes">
+                <input type="text" value={(reqs.digital_standee_note as string) ?? ""} onChange={(e) => setReq("digital_standee_note", e.target.value || null)} className="carved input" />
+              </Field>
+            )}
           </div>
           <div className="space-y-2">
             <Field fieldKey="car_display" label="Car Display">
-              <YesNoSelect value={(reqs.car_display as string) ?? ""} onChange={(v) => setReq("car_display", v || null)} yesValue="Yes" noValue="No" />
+              <OptionalToggleSelect value={(reqs.car_display as string) ?? ""} onChange={(v) => setReq("car_display", v || null)} yesValue="Yes" noValue="No" />
             </Field>
-            <Field fieldKey="car_display_note" label="Car Display — notes">
-              <input type="text" value={(reqs.car_display_note as string) ?? ""} onChange={(e) => setReq("car_display_note", e.target.value || null)} className="carved input" />
-            </Field>
+            {carDisplay && (
+              <Field fieldKey="car_display_note" label="Car Display — notes">
+                <input type="text" value={(reqs.car_display_note as string) ?? ""} onChange={(e) => setReq("car_display_note", e.target.value || null)} className="carved input" />
+              </Field>
+            )}
           </div>
           <div className="space-y-2">
             <Field fieldKey="bike_display" label="Bike Display">
-              <YesNoSelect value={(reqs.bike_display as string) ?? ""} onChange={(v) => setReq("bike_display", v || null)} yesValue="Yes" noValue="No" />
+              <OptionalToggleSelect value={(reqs.bike_display as string) ?? ""} onChange={(v) => setReq("bike_display", v || null)} yesValue="Yes" noValue="No" />
             </Field>
-            <Field fieldKey="bike_display_note" label="Bike Display — notes">
-              <input type="text" value={(reqs.bike_display_note as string) ?? ""} onChange={(e) => setReq("bike_display_note", e.target.value || null)} className="carved input" />
-            </Field>
+            {bikeDisplay && (
+              <Field fieldKey="bike_display_note" label="Bike Display — notes">
+                <input type="text" value={(reqs.bike_display_note as string) ?? ""} onChange={(e) => setReq("bike_display_note", e.target.value || null)} className="carved input" />
+              </Field>
+            )}
           </div>
           <div className="space-y-2">
             <Field fieldKey="stalls" label="Stalls">
-              <YesNoSelect value={(reqs.stalls as string) ?? ""} onChange={(v) => setReq("stalls", v || null)} yesValue="Yes" noValue="No" />
+              <OptionalToggleSelect value={(reqs.stalls as string) ?? ""} onChange={(v) => setReq("stalls", v || null)} yesValue="Yes" noValue="No" />
             </Field>
-            <Field fieldKey="stalls_note" label="Stalls — notes">
-              <input type="text" value={(reqs.stalls_note as string) ?? ""} onChange={(e) => setReq("stalls_note", e.target.value || null)} className="carved input" placeholder="No. of stalls…" />
-            </Field>
+            {stalls && (
+              <Field fieldKey="stalls_note" label="Stalls — notes">
+                <input type="text" value={(reqs.stalls_note as string) ?? ""} onChange={(e) => setReq("stalls_note", e.target.value || null)} className="carved input" placeholder="No. of stalls…" />
+              </Field>
+            )}
           </div>
           <div className="space-y-2">
             <Field fieldKey="telecasting_media" label="Telecasting / Media">
-              <YesNoSelect value={(reqs.telecasting_media as string) ?? ""} onChange={(v) => setReq("telecasting_media", v || null)} yesValue="Yes" noValue="No" />
+              <OptionalToggleSelect value={(reqs.telecasting_media as string) ?? ""} onChange={(v) => setReq("telecasting_media", v || null)} yesValue="Yes" noValue="No" />
             </Field>
-            <Field fieldKey="telecasting_media_note" label="Telecasting / Media — notes">
-              <input type="text" value={(reqs.telecasting_media_note as string) ?? ""} onChange={(e) => setReq("telecasting_media_note", e.target.value || null)} className="carved input" />
-            </Field>
+            {telecastingMedia && (
+              <Field fieldKey="telecasting_media_note" label="Telecasting / Media — notes">
+                <input type="text" value={(reqs.telecasting_media_note as string) ?? ""} onChange={(e) => setReq("telecasting_media_note", e.target.value || null)} className="carved input" />
+              </Field>
+            )}
           </div>
         </div>
         <div className="mt-4">

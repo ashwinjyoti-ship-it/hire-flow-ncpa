@@ -8,7 +8,7 @@ import {
 } from "./requirement-sections";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
-import { calculateEventFormReadiness, readinessTaskRule } from "./event-readiness";
+import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
 import { makeId } from "./id";
 import { POC_FIELD_KEYS } from "./poc-fields";
 import {
@@ -1108,9 +1108,7 @@ export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: s
       continue;
     }
 
-    const shortMissing = section.missingLabels.slice(0, 2).join(", ");
-    const remaining = section.missingLabels.length - 2;
-    const title = `Complete event form: ${section.label} — ${shortMissing}${remaining > 0 ? ` +${remaining} more` : ""}`;
+    const { title, description } = readinessTaskCopy(section);
     const result = await db.prepare(
       `INSERT INTO tasks
        (id, title, description, event_id, task_type, source_rule, idempotency_key,
@@ -1130,7 +1128,7 @@ export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: s
     ).bind(
       makeId("task"),
       title,
-      `${section.filled} of ${section.total} details filled. Missing: ${section.missingLabels.join(", ")}.`,
+      description,
       eventId,
       sourceRule,
       idempotency,
