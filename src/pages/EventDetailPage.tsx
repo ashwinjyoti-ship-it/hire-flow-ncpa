@@ -1310,20 +1310,50 @@ function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { i
 
 function TaskList({ tasks }: { tasks: Array<Record<string, unknown>> }) {
   if (!tasks.length) return <p className="text-sm text-ink-muted etched">No tasks for this event.</p>;
+
+  const openTasks = tasks.filter((task) => {
+    const status = String(task.status);
+    return status !== "completed" && status !== "cancelled";
+  });
+  const completedTasks = tasks.filter((task) => {
+    const status = String(task.status);
+    return status === "completed" || status === "cancelled";
+  });
+
   return (
-    <div className="space-y-2">
-      {tasks.map((task) => (
-        <div key={task.id as string} className="rounded-xl bg-marble-shadow/30 px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-medium text-ink-primary etched-deep">{task.title as string}</span>
-            <span className={statusClass(String(task.status))}>{taskStatusLabel(String(task.status))}</span>
-          </div>
-          <div className="mt-1 text-xs text-ink-muted etched">
-            {task.task_type === "automatic" ? "Automatic" : "Manual"}
-            {task.assignee_name ? ` · ${task.assignee_name as string}` : ""}
+    <div className="space-y-5">
+      <div className="space-y-2">
+        {openTasks.length === 0 ? (
+          <p className="text-sm text-ink-muted etched">No open tasks.</p>
+        ) : (
+          openTasks.map((task) => <EventTaskRow key={task.id as string} task={task} />)
+        )}
+      </div>
+      {completedTasks.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">
+            Completed ({completedTasks.length})
+          </h3>
+          <div className="space-y-2">
+            {completedTasks.map((task) => <EventTaskRow key={task.id as string} task={task} />)}
           </div>
         </div>
-      ))}
+      )}
+    </div>
+  );
+}
+
+function EventTaskRow({ task }: { task: Record<string, unknown> }) {
+  return (
+    <div className="rounded-xl bg-marble-shadow/30 px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-ink-primary etched-deep">{task.title as string}</span>
+        <span className={statusClass(String(task.status))}>{taskStatusLabel(String(task.status))}</span>
+      </div>
+      <div className="mt-1 text-xs text-ink-muted etched">
+        {task.task_type === "automatic" ? "System-generated" : "Manual"}
+        {task.assignee_name ? ` · ${task.assignee_name as string}` : ""}
+      </div>
     </div>
   );
 }
