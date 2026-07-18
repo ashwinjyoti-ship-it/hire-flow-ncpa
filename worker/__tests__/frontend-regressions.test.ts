@@ -357,6 +357,15 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain('label="Owner contact"');
   });
 
+  it("shows stage and foyer setup in the show calendar detail drawer only when present", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("hasRequirementText(reqs.stage_setup)");
+    expect(calendar).toContain('label="Stage Setup"');
+    expect(calendar).toContain("hasRequirementText(reqs.foyer_setup)");
+    expect(calendar).toContain('label="Foyer Setup"');
+  });
+
   it("warns about possible duplicate events before save", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
