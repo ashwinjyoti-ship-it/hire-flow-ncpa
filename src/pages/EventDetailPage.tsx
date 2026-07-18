@@ -453,7 +453,6 @@ export function EventDetailPage() {
           <EventReadinessPanel
             eventId={e.id}
             readiness={e.event_readiness}
-            beforeConfirmationBlockers={checklistData?.lifecycle.blockers.length ?? 0}
           />
         </div>
       )}
@@ -1753,19 +1752,21 @@ function LifecycleTrack({
           const blocker = action ? selectNextLifecycleBlocker(action.blockers) : null;
           const blockerTarget = blocker ? BLOCKER_TARGETS[blocker] : undefined;
           const canUseMilestone = Boolean(canChangeStatus && action && (action.allowed || blockerTarget));
+          // Colour language: current = terracotta, ready = sage, blocked =
+          // amber (same family as "Next step blocked"), past = soft sage,
+          // future/unavailable = muted. Never paint a blocked Confirmed/Approval
+          // milestone in confirmed-green — that reads as done.
           const milestoneClass =
             "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
             (isCurrent
               ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
-              : s === "confirmed" && action
+              : action
                 ? action.allowed
                   ? "carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover"
-                  : "carved-btn-sage bg-status-confirmed/15 text-sage-text ring-1 ring-status-confirmed/25 hover:bg-status-confirmed/20"
-                : s === "approved" && action
-                  ? "carved-btn-sage bg-status-approved/15 text-sage-text ring-1 ring-status-approved/25 hover:bg-status-approved/20"
-                  : isPast
-                    ? "bg-sage/10 text-sage-text"
-                    : "bg-marble-shadow/30 text-ink-muted");
+                  : "bg-status-awaitingApproval/15 text-status-awaitingApproval ring-1 ring-status-awaitingApproval/25 hover:bg-status-awaitingApproval/20"
+                : isPast
+                  ? "bg-sage/10 text-sage-text"
+                  : "bg-marble-shadow/30 text-ink-muted");
           const milestoneContent = <>{milestoneLabel(s)}{isApprovedGate && " ★"}</>;
           return (
             <li key={s} className="flex items-center">

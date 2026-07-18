@@ -1,3 +1,8 @@
+import {
+  COSTING_EMAIL_BLOCKER,
+  PAYMENT_COMPLETED_BLOCKER,
+} from "../../worker/lib/financial-sequence";
+
 /**
  * Maps lifecycle blocker copy → Operations checklist field to open/scroll to.
  * Keys must match `blockersForTransition()` in worker/lib/operations.ts exactly.
@@ -9,12 +14,12 @@ export const BLOCKER_TARGETS: Record<
   string,
   { tab: "operations" | "accounts"; fieldKey: string; label: string }
 > = {
-  "Costing email must be sent.": {
+  [COSTING_EMAIL_BLOCKER]: {
     tab: "operations",
     fieldKey: "costing_email",
     label: "Costing Email",
   },
-  "Payment must be completed.": {
+  [PAYMENT_COMPLETED_BLOCKER]: {
     tab: "operations",
     fieldKey: "payment_status",
     label: "Payment Status",
@@ -53,8 +58,8 @@ export const BLOCKER_TARGETS: Record<
 
 /** Every actionable blocker string emitted by `blockersForTransition`. */
 export const ACTIONABLE_LIFECYCLE_BLOCKERS = [
-  "Costing email must be sent.",
-  "Payment must be completed.",
+  COSTING_EMAIL_BLOCKER,
+  PAYMENT_COMPLETED_BLOCKER,
   "Confirmation letter must be made.",
   "Confirmation letter must be couriered.",
   "Signed confirmation must be received.",
