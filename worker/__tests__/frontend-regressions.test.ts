@@ -677,6 +677,10 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("buildMomDocument");
     expect(detail).toContain("Customised information");
     expect(detail).toContain("Copy Text");
+    // MoM opens as a focused dialog so Continue / Generate is obvious.
+    expect(detail).toContain('aria-labelledby="mom-panel-title"');
+    expect(detail).toContain("fixed inset-0 z-50");
+    expect(detail).toContain("Minutes of Meeting");
   });
 
   it("exposes Print and Export to PDF for the filled event form on the lifecycle panel", () => {

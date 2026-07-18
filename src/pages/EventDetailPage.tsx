@@ -205,6 +205,15 @@ export function EventDetailPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [focusedFieldKey, tab, checklistData]);
 
+  useEffect(() => {
+    if (!momMissingPrompt) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMomMissingPrompt(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [momMissingPrompt]);
+
   async function fetchFreshEventState(): Promise<EventPageFreshState> {
     const [detail, checklist, tasks] = await Promise.all([
       apiGet<DetailResponse>(`/events/${id}`),
@@ -490,6 +499,7 @@ export function EventDetailPage() {
           onExportWord={exportMomWord}
           onExportPdf={() => openMomPrintable(false)}
           onPrint={() => openMomPrintable(true)}
+          escapeEnabled={!momMissingPrompt}
           onClose={() => {
             setMomOpen(false);
             setExportMenuOpen(false);
@@ -499,7 +509,12 @@ export function EventDetailPage() {
       )}
 
       {momMissingPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/30 p-4" role="dialog" aria-modal="true" aria-labelledby="mom-missing-title">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-primary/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mom-missing-title"
+        >
           <div className="w-full max-w-md rounded-2xl bg-marble-highlight p-6 shadow-xl">
             <h2 id="mom-missing-title" className="text-sm font-semibold uppercase tracking-wider text-sage etched">Generate MoM</h2>
             <p className="mt-3 text-sm text-ink-secondary etched">{momMissingPrompt}</p>
@@ -720,6 +735,7 @@ function MomPanel({
   onExportWord,
   onExportPdf,
   onPrint,
+  escapeEnabled = true,
   onClose,
   onRegenerate,
 }: {
@@ -733,73 +749,108 @@ function MomPanel({
   onExportWord: () => void;
   onExportPdf: () => void;
   onPrint: () => void;
+  escapeEnabled?: boolean;
   onClose: () => void;
   onRegenerate: () => void;
 }) {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const onCloseRef = useRef(onClose);
+  const escapeEnabledRef = useRef(escapeEnabled);
+  onCloseRef.current = onClose;
+  escapeEnabledRef.current = escapeEnabled;
+
+  useEffect(() => {
+    titleRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && escapeEnabledRef.current) onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
-    <section className="carved-card mb-5 rounded-2xl bg-marble-highlight/50 p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Minutes of Meeting</h2>
-          <p className="mt-1 text-xs text-ink-muted etched">
-            Auto-filled through Program Officer. Add Technical Officer and any other undecided items below.
-          </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/30 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mom-panel-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[min(92vh,52rem)] w-full max-w-3xl flex-col rounded-2xl bg-marble-highlight shadow-xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-marble-shadow/35 px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="mom-panel-title"
+              ref={titleRef}
+              tabIndex={-1}
+              className="text-sm font-semibold uppercase tracking-wider text-sage etched outline-none"
+            >
+              Minutes of Meeting
+            </h2>
+            <p className="mt-1 text-xs text-ink-muted etched">
+              Auto-filled through Program Officer. Add Technical Officer and any other undecided items below.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onRegenerate} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
+              Refresh from event
+            </button>
+            <button type="button" onClick={onClose} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
+              Close
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onRegenerate} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
-            Refresh from event
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <label className="mb-4 block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Generated MoM</span>
+            <textarea
+              readOnly
+              value={autoText}
+              rows={16}
+              className="carved input font-serif text-sm leading-relaxed"
+            />
+          </label>
+
+          <label className="mb-4 block">
+            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Customised information</span>
+            <textarea
+              value={customNotes}
+              onChange={(e) => onCustomNotesChange(e.target.value)}
+              rows={4}
+              placeholder={"Technical Officer: Name – phone\nInterval duration, unloading notes, foyer specifics, or any other MoM wording…"}
+              className="carved input text-sm"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-marble-shadow/35 px-5 py-4">
+          <button type="button" onClick={onCopy} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched">
+            {copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy Text"}
           </button>
-          <button type="button" onClick={onClose} className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched">
-            Close
+          <div className="relative">
+            <button type="button" onClick={onToggleExport} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
+              Export
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute bottom-full left-0 z-10 mb-2 min-w-36 rounded-xl bg-marble-highlight p-2 shadow-lg">
+                <button type="button" onClick={onExportPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
+                  PDF
+                </button>
+                <button type="button" onClick={onExportWord} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
+                  Word
+                </button>
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={onPrint} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
+            Print
           </button>
         </div>
       </div>
-
-      <label className="mb-4 block">
-        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Generated MoM</span>
-        <textarea
-          readOnly
-          value={autoText}
-          rows={18}
-          className="carved input font-serif text-sm leading-relaxed"
-        />
-      </label>
-
-      <label className="mb-4 block">
-        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Customised information</span>
-        <textarea
-          value={customNotes}
-          onChange={(e) => onCustomNotesChange(e.target.value)}
-          rows={5}
-          placeholder={"Technical Officer: Name – phone\nInterval duration, unloading notes, foyer specifics, or any other MoM wording…"}
-          className="carved input text-sm"
-        />
-      </label>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onCopy} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched">
-          {copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy Text"}
-        </button>
-        <div className="relative">
-          <button type="button" onClick={onToggleExport} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-            Export
-          </button>
-          {exportMenuOpen && (
-            <div className="absolute left-0 z-10 mt-2 min-w-36 rounded-xl bg-marble-highlight p-2 shadow-lg">
-              <button type="button" onClick={onExportPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
-                PDF
-              </button>
-              <button type="button" onClick={onExportWord} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
-                Word
-              </button>
-            </div>
-          )}
-        </div>
-        <button type="button" onClick={onPrint} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-          Print
-        </button>
-      </div>
-    </section>
+    </div>
   );
 }
 
