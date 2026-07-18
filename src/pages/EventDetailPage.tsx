@@ -18,15 +18,15 @@ import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
 import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
 import {
-  buildMomAutoText,
   buildMomDocument,
+  buildMomDocumentHtml,
   buildMomHtml,
   getMomMissingFields,
   momMissingFieldsMessage,
   type MomEventInput,
 } from "../lib/mom";
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
-import { downloadWordDoc, escapeHtml } from "../lib/export";
+import { downloadWordDoc } from "../lib/export";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
@@ -310,7 +310,8 @@ export function EventDetailPage() {
     })),
   };
   const momDocument = buildMomDocument(momInput, momCustomNotes);
-  const momAutoText = buildMomAutoText(momInput);
+  const momAutoHtml = buildMomDocumentHtml(momInput);
+  const momRichHtml = buildMomDocumentHtml(momInput, momCustomNotes);
   const momFileBase = `MoM-${(e.title || "event").replace(/[^\w.-]+/g, "-").slice(0, 60)}`;
   const momTitle = `Minutes of Meeting — ${e.title}`;
 
@@ -325,23 +326,37 @@ export function EventDetailPage() {
 
   async function copyMomText() {
     try {
-      await navigator.clipboard.writeText(momDocument);
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([momRichHtml], { type: "text/html" }),
+            "text/plain": new Blob([momDocument], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(momDocument);
+      }
       setCopyStatus("copied");
       window.setTimeout(() => setCopyStatus("idle"), 2000);
     } catch {
-      setCopyStatus("failed");
-      window.setTimeout(() => setCopyStatus("idle"), 2500);
+      try {
+        await navigator.clipboard.writeText(momDocument);
+        setCopyStatus("copied");
+        window.setTimeout(() => setCopyStatus("idle"), 2000);
+      } catch {
+        setCopyStatus("failed");
+        window.setTimeout(() => setCopyStatus("idle"), 2500);
+      }
     }
   }
 
   function exportMomWord() {
-    const body = `<pre style="font-family:Georgia,'Times New Roman',serif;white-space:pre-wrap;font-size:11pt">${escapeHtml(momDocument)}</pre>`;
-    downloadWordDoc(`${momFileBase}.doc`, momTitle, body);
+    downloadWordDoc(`${momFileBase}.doc`, momTitle, momRichHtml);
     setExportMenuOpen(false);
   }
 
   function openMomPrintable(autoPrint: boolean) {
-    const html = buildMomHtml(momDocument, momTitle);
+    const html = buildMomHtml(momInput, momTitle, momCustomNotes);
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
@@ -489,7 +504,7 @@ export function EventDetailPage() {
 
       {momOpen && (
         <MomPanel
-          autoText={momAutoText}
+          autoHtml={momAutoHtml}
           customNotes={momCustomNotes}
           onCustomNotesChange={setMomCustomNotes}
           copyStatus={copyStatus}
@@ -725,7 +740,7 @@ export function EventDetailPage() {
 }
 
 function MomPanel({
-  autoText,
+  autoHtml,
   customNotes,
   onCustomNotesChange,
   copyStatus,
@@ -739,7 +754,7 @@ function MomPanel({
   onClose,
   onRegenerate,
 }: {
-  autoText: string;
+  autoHtml: string;
   customNotes: string;
   onCustomNotesChange: (value: string) => void;
   copyStatus: "idle" | "copied" | "failed";
@@ -804,15 +819,13 @@ function MomPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <label className="mb-4 block">
+          <div className="mb-4">
             <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Generated MoM</span>
-            <textarea
-              readOnly
-              value={autoText}
-              rows={16}
-              className="carved input font-serif text-sm leading-relaxed"
+            <div
+              className="carved rounded-xl border border-marble-shadow/40 bg-marble-highlight/80 px-4 py-3 font-serif text-[15px] leading-relaxed text-ink-primary"
+              dangerouslySetInnerHTML={{ __html: autoHtml }}
             />
-          </label>
+          </div>
 
           <label className="mb-4 block">
             <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Customised information</span>

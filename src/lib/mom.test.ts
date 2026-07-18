@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMomDocument,
+  buildMomDocumentHtml,
   buildMomAutoText,
+  buildMomHtml,
   formatMomLongDate,
   formatMomTime,
   getMomMissingFields,
@@ -134,5 +136,42 @@ describe("buildMomDocument", () => {
     expect(auto).toContain("Setup on Stage: -");
     expect(auto).toContain("TBC");
     expect(auto).toContain("Program Officer: -");
+  });
+});
+
+describe("buildMomDocumentHtml", () => {
+  it("applies bold/underline hierarchy for client-facing mail", () => {
+    const html = buildMomDocumentHtml(sample, "Technical Officer: TBC");
+    expect(html).toContain("font-weight:700");
+    expect(html).toContain("text-decoration:underline");
+    expect(html).toContain("Nature of the event:");
+    expect(html).toContain("Kaveesha Entertainments");
+    expect(html).toContain("Additional / undecided items:");
+    expect(html).toContain("Technical Officer: TBC");
+    // Escapes raw user content rather than injecting markup.
+    expect(html).not.toContain("<script");
+  });
+
+  it("escapes HTML special characters in event fields", () => {
+    const html = buildMomDocumentHtml({
+      title: "A <Play> & Show",
+      organisation_name: "Org \"One\"",
+      event_start_date: "2026-07-30",
+      venue_bookings: [{ venue: "Tata Theatre", schedule_entries: [] }],
+      requirements: {},
+    });
+    expect(html).toContain("A &lt;Play&gt; &amp; Show");
+    expect(html).toContain("Org &quot;One&quot;");
+    expect(html).not.toContain("A <Play>");
+  });
+});
+
+describe("buildMomHtml", () => {
+  it("wraps rich MoM body in a printable document", () => {
+    const page = buildMomHtml(sample, "Minutes of Meeting — Test");
+    expect(page).toContain("<!DOCTYPE html>");
+    expect(page).toContain("font-weight:700");
+    expect(page).toContain("Print / Save as PDF");
+    expect(page).toContain("Godrej Dance Theatre");
   });
 });
