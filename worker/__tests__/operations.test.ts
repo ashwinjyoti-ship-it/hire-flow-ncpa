@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -66,9 +66,12 @@ describe("operational lifecycle readiness", () => {
   });
 
   it("requires costing email = Yes and payment = Completed before confirming", () => {
-    // Costing = No → costing blocker.
-    expect(blockersForTransition(event({ costing_email: "No", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
-      .toContain("Costing email must be sent.");
+    // Costing = No → costing blocker (and payment remains unsatisfied until costing clears).
+    expect(blockersForTransition(event({ costing_email: "No", payment_status: "Incomplete", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
+      .toEqual([
+        "Costing email must be sent.",
+        "Payment must be completed.",
+      ]);
     // Payment incomplete → payment blocker.
     expect(blockersForTransition(event({ payment_status: "Incomplete", confirmation_status: "signed_received", approval_status: "not_required" }), "confirmed"))
       .toContain("Payment must be completed.");
@@ -77,6 +80,91 @@ describe("operational lifecycle readiness", () => {
     expect(blockers).not.toContain("Costing email must be sent.");
     expect(blockers).not.toContain("Payment must be completed.");
     expect(blockers).not.toContain("Amount received must be entered.");
+  });
+
+  it("does not treat payment Completed as satisfied while costing email is still No", () => {
+    // Invalid stored sequence: Payment Completed + Costing No must keep both
+    // financial blockers so fixing costing alone cannot skip payment.
+    expect(blockersForTransition(event({
+      costing_email: "No",
+      payment_status: "Completed",
+      confirmation_status: "signed_received",
+      approval_status: "not_required",
+    }), "confirmed")).toEqual([
+      "Costing email must be sent.",
+      "Payment must be completed.",
+    ]);
+  });
+
+  it("resets Completed payment when costing email is still No", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("field_key IN ('costing_email', 'payment_status')")) {
+              return {
+                results: [
+                  { id: "cli_costing", field_key: "costing_email", value: "No" },
+                  { id: "cli_payment", field_key: "payment_status", value: "Completed" },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci") && sql.includes("module")) {
+              return { results: [] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const healed = await reconcileFinancialSequenceForEvent(db, "ev_fin");
+    expect(healed).toBe(true);
+    const paymentReset = updates.find((u) => u.sql.includes("UPDATE checklist_items") && u.binds.includes("cli_payment"));
+    expect(paymentReset?.binds[0]).toBe("Incomplete");
+    expect(paymentReset?.binds[1]).toBe("not_started");
+  });
+
+  it("leaves payment alone when costing email is Yes", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return {
+              results: [
+                { id: "cli_costing", field_key: "costing_email", value: "Yes" },
+                { id: "cli_payment", field_key: "payment_status", value: "Completed" },
+              ],
+            };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    expect(await reconcileFinancialSequenceForEvent(db, "ev_fin")).toBe(false);
+    expect(updates).toHaveLength(0);
   });
 
   it("blocks confirmation when Point of Contact is incomplete", () => {

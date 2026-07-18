@@ -15,6 +15,8 @@
  * Venue Manager override + a mandatory reason.
  */
 
+import { isCostingEmailSent, isPaymentGateSatisfied } from "./financial-sequence";
+
 export type EventStatus =
   | "enquiry"
   | "tentative"
@@ -57,7 +59,8 @@ export function requiresApproval(eventType: string | null): boolean {
 /**
  * Whether "Save as Confirmed" is enabled. Requires:
  *  - Costing email = Yes (first post-inquiry financial step).
- *  - Payment Status = Completed (the only payment-side gate).
+ *  - Payment Status = Completed after costing (invalid Completed-without-costing
+ *    does not satisfy the gate).
  *  - Signed confirmation.
  *  - VFH approval received/approved — UNLESS approval is marked Not Required,
  *    in which case the approval checklist must not impede confirmation.
@@ -69,11 +72,11 @@ export function canConfirm(args: {
   costingEmail?: string | null;
   paymentStatus?: string | null;
 }): boolean {
-  // Financials gate — costing email = Yes and payment = Completed.
-  if (!args.costingEmail || args.costingEmail.toLowerCase() !== "yes") {
+  // Financials gate — costing → payment sequence.
+  if (!isCostingEmailSent(args.costingEmail)) {
     return false;
   }
-  if (!args.paymentStatus || args.paymentStatus.toLowerCase() !== "completed") {
+  if (!isPaymentGateSatisfied(args.costingEmail, args.paymentStatus)) {
     return false;
   }
   const signed = args.confirmationStatus === "signed_received";

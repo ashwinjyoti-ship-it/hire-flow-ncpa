@@ -59,12 +59,16 @@ describe("frontend regression guards", () => {
     expect(source).toContain("canShowStatusActions={tab === \"operations\"}");
     expect(source).toContain("Open Operations to change lifecycle status");
     expect(source).toContain("forwardMilestoneButtonClass");
-    expect(source).toContain('s === "confirmed" && action');
-    expect(source).toContain("bg-status-confirmed/15");
+    // Blocked forward milestones use awaiting-approval amber, not confirmed-green.
+    expect(source).toContain("bg-status-awaitingApproval/15");
+    expect(source).toContain("action.allowed");
+    expect(source).not.toContain("bg-status-confirmed/15 text-sage-text ring-1 ring-status-confirmed/25");
     // Continue/Advance stays disabled until blockers clear; blocker name link is the deep-link.
     expect(source).toContain("disabled={!nextAction}");
     expect(source).toContain("bg-marble-shadow/45 text-ink-muted");
     expect(source).not.toContain("disabled={!nextAction && !visibleBlockerTarget}");
+    // One blocker at a time — do not dump the full blocker list in the panel.
+    expect(source).toContain("selectNextLifecycleBlocker");
   });
 
   it("uses the established status palette for event-form readiness", () => {
@@ -81,6 +85,9 @@ describe("frontend regression guards", () => {
     expect(source).toContain("section.missingKeys[index]");
     expect(source).toContain("&field=");
     expect(source).toContain("Open {section.label} section");
+    // Confirmation gates belong in Lifecycle — not mixed into form readiness.
+    expect(source).not.toContain("Before confirmation");
+    expect(source).not.toContain("beforeConfirmationBlockers");
   });
 
   it("gives every readiness item an exact event-form field target", () => {

@@ -9,6 +9,15 @@ import {
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
+import {
+  COSTING_EMAIL_BLOCKER,
+  hasInvalidPaymentBeforeCosting,
+  isCostingEmailSent,
+  isPaymentGateSatisfied,
+  isPaymentMarkedCompleted,
+  PAYMENT_COMPLETED_BLOCKER,
+  PAYMENT_REQUIRES_COSTING_MESSAGE,
+} from "./financial-sequence";
 import { makeId } from "./id";
 import { POC_FIELD_KEYS } from "./poc-fields";
 import {
@@ -207,6 +216,9 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
 
 export async function getChecklistItems(db: D1Database, eventId: string): Promise<ChecklistItemRow[]> {
   await ensureChecklistForEvent(db, eventId);
+  // Heal Completed payment stored while Costing Email is still No so the
+  // Financials UI does not show a green COMPLETED badge for an invalid sequence.
+  await reconcileFinancialSequenceForEvent(db, eventId);
   const { results } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
@@ -278,6 +290,17 @@ export async function updateChecklistItem(args: {
   if (dateChanged && !args.correctionReason?.trim()) {
     throw new Error("A correction reason is required to change an existing date");
   }
+
+  // Financial sequence: Payment Status = Completed requires Costing Email = Yes.
+  if (current.field_key === "payment_status" && isPaymentMarkedCompleted(value)) {
+    const costing = await db.prepare(
+      "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'costing_email' LIMIT 1"
+    ).bind(current.event_id).first<{ value: string | null }>();
+    if (!isCostingEmailSent(costing?.value)) {
+      throw new Error(PAYMENT_REQUIRES_COSTING_MESSAGE);
+    }
+  }
+
   const completedAt = status === "completed" && !current.completed_at ? now : status === "completed" ? current.completed_at : null;
   const completedBy = status === "completed" ? current.completed_by ?? user.id : null;
   const dueDate = current.field_type === "date" ? value : current.due_date;
@@ -297,6 +320,12 @@ export async function updateChecklistItem(args: {
          last_updated_at = ?, last_updated_by = ?
      WHERE id = ?`
   ).bind(value ?? null, status, dueDate ?? null, completedAt, completedBy, now, user.id, itemId).run();
+
+  // If Costing Email moves off Yes, reset any Completed payment so the UI and
+  // confirmation gate stay aligned with the financial sequence.
+  if (current.field_key === "costing_email") {
+    await reconcileFinancialSequenceForEvent(db, current.event_id);
+  }
 
   if (dateChanged) {
     await db.prepare(
@@ -1410,6 +1439,41 @@ async function createFileToAccountsReminders(db: D1Database, today: string): Pro
   return changed;
 }
 
+/**
+ * Reset Payment Status to Incomplete when it is Completed while Costing Email
+ * is still No. Keeps Financials UI, lifecycle blockers, and confirmation gate
+ * aligned with the required costing → payment sequence.
+ */
+export async function reconcileFinancialSequenceForEvent(db: D1Database, eventId: string): Promise<boolean> {
+  const { results } = await db.prepare(
+    `SELECT id, field_key, value
+     FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('costing_email', 'payment_status')`
+  ).bind(eventId).all<{ id: string; field_key: string; value: string | null }>();
+
+  let costingValue: string | null = null;
+  let paymentRow: { id: string; value: string | null } | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "costing_email") costingValue = row.value;
+    if (row.field_key === "payment_status") paymentRow = { id: row.id, value: row.value };
+  }
+  if (!paymentRow || !hasInvalidPaymentBeforeCosting(costingValue, paymentRow.value)) {
+    return false;
+  }
+
+  const now = new Date().toISOString();
+  const resetValue = "Incomplete";
+  const status = itemStatusForValue({ field_type: "dropdown", value: resetValue });
+  await db.prepare(
+    `UPDATE checklist_items
+     SET value = ?, status = ?, completed_at = NULL, completed_by = NULL, last_updated_at = ?
+     WHERE id = ?`
+  ).bind(resetValue, status, now, paymentRow.id).run();
+  await reopenAutomaticallyCompletedTasks(db, eventId, ["instalment"]);
+  await recalculateEventCompletion(db, eventId);
+  return true;
+}
+
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness; poc: import("./poc-completion").PocCompletionStatus }> {
   const event = await db.prepare(
     `SELECT id, title, status, event_type, approval_status, confirmation_status,
@@ -1417,6 +1481,8 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
      FROM events WHERE id = ?`
   ).bind(eventId).first<EventLifecycleRow>();
   if (!event) throw new Error("Event not found");
+  // Heal invalid Completed-without-costing before reading gate values.
+  await reconcileFinancialSequenceForEvent(db, eventId);
   // The financials gate fields (costing_email, payment_status) live in the
   // checklist, not on the events row. Pull them through so the confirmation
   // gate can require them.
@@ -1478,13 +1544,14 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     }
   }
   if (to === "confirmed") {
-    // Financials gate — costing email = Yes and payment = Completed. These are
-    // the first post-inquiry financial steps; instalment tracking does NOT gate.
-    if (!event.costing_email || event.costing_email.toLowerCase() !== "yes") {
-      blockers.push("Costing email must be sent.");
+    // Financials gate — costing email = Yes, then payment = Completed.
+    // Payment Completed while costing is still No does not satisfy the gate
+    // (invalid sequence). Proforma / instalment tracking do NOT gate.
+    if (!isCostingEmailSent(event.costing_email)) {
+      blockers.push(COSTING_EMAIL_BLOCKER);
     }
-    if (!event.payment_status || event.payment_status.toLowerCase() !== "completed") {
-      blockers.push("Payment must be completed.");
+    if (!isPaymentGateSatisfied(event.costing_email, event.payment_status)) {
+      blockers.push(PAYMENT_COMPLETED_BLOCKER);
     }
     if (!event.confirmation_status || event.confirmation_status === "none") {
       blockers.push("Confirmation letter must be made.");

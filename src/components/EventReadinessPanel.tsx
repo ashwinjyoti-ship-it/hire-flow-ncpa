@@ -4,7 +4,6 @@ import type { EventFormReadiness, ReadinessSection, ReadinessState } from "../..
 type EventReadinessPanelProps = {
   eventId: string;
   readiness: EventFormReadiness;
-  beforeConfirmationBlockers?: number;
   detailed?: boolean;
 };
 
@@ -40,7 +39,7 @@ function AutomatedCheckbox({ section }: { section: ReadinessSection }) {
   );
 }
 
-export function EventReadinessPanel({ eventId, readiness, beforeConfirmationBlockers = 0, detailed = false }: EventReadinessPanelProps) {
+export function EventReadinessPanel({ eventId, readiness, detailed = false }: EventReadinessPanelProps) {
   const incomplete = readiness.sections.filter((section) => section.state !== "complete" && section.state !== "not_applicable");
   return (
     <section className="carved-card rounded-2xl border border-marble-shadow/45 bg-marble-highlight/65 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
@@ -50,11 +49,6 @@ export function EventReadinessPanel({ eventId, readiness, beforeConfirmationBloc
           <p className="mt-1 text-sm text-ink-secondary etched">
             {readiness.percentage}% ready · {readiness.missingCount} {readiness.missingCount === 1 ? "detail" : "details"} missing before event
           </p>
-          {beforeConfirmationBlockers > 0 && (
-            <p className="mt-1 text-xs font-medium text-status-awaitingApproval etched">
-              Before confirmation: {beforeConfirmationBlockers} {beforeConfirmationBlockers === 1 ? "blocker" : "blockers"}
-            </p>
-          )}
         </div>
         <div className="min-w-36 text-right">
           <div className="text-3xl font-semibold tabular-nums text-ink-primary etched-deep">{readiness.percentage}%</div>

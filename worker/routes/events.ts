@@ -27,6 +27,7 @@ import {
   getChecklistItems,
   getEventLifecycle,
   reconcileFileToAccountsReminderForEvent,
+  reconcileFinancialSequenceForEvent,
   reconcileTasksForLifecycleTransition,
   syncAdditionalRequirementsChecklist,
   syncAutomaticTaskOwnerForEvent,
@@ -590,6 +591,8 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   }>();
   if (!event) return c.json({ error: "Not found" }, 404);
 
+  // Heal Completed-without-costing before evaluating the confirmation gate.
+  await reconcileFinancialSequenceForEvent(db, id);
   // The financials gate fields (costing_email, payment_status) live in the
   // checklist; pull them for the confirmation gate.
   const { results: finRows } = await db.prepare(
@@ -773,7 +776,11 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
     return c.json({ item });
   } catch (err) {
     const message = (err as Error).message;
-    const status = message.includes("reason") ? 422 : message.includes("not found") ? 404 : 400;
+    const status = message.includes("not found")
+      ? 404
+      : message.includes("reason") || message.includes("cannot be marked")
+        ? 422
+        : 400;
     return c.json({ error: message }, status);
   }
 });
