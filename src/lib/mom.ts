@@ -12,6 +12,7 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
+import { escapeHtml } from "./export";
 import { omitEventLevelRequirements } from "./event-edit-form";
 
 export type MomScheduleEntry = {
@@ -538,40 +539,42 @@ function headline(input: MomEventInput): string {
   return `Venue for Hire Event - ${org} - ${title} at ${venueLabel} on ${dateLabel}.`;
 }
 
-/** Auto MoM body through Program Officer (no custom block). */
-export function buildMomAutoText(input: MomEventInput): string {
+type MomSectionBlock = { title: string; lines: string[] };
+
+function buildMomSectionBlocks(input: MomEventInput): { headline: string; sections: MomSectionBlock[] } {
   const eventReqs = parseRequirements(input.requirements);
   const reqs = aggregateMomRequirements(input);
   const bookings = input.venue_bookings ?? [];
+  return {
+    headline: headline(input),
+    sections: [
+      { title: "Nature of the event: -", lines: buildNatureLines(input, reqs) },
+      { title: "Timings: -", lines: buildTimingLines(bookings) },
+      { title: "Guest Arrival & Event: -", lines: buildGuestLines(bookings, eventReqs) },
+      { title: "Vendors: -", lines: buildVendorLines(bookings, eventReqs) },
+      { title: "Setup on Stage: -", lines: buildStageLines(bookings, eventReqs) },
+      { title: "Foyer: -", lines: buildFoyerLines(bookings, eventReqs) },
+      { title: "Security: -", lines: buildSecurityLines(bookings, eventReqs) },
+      { title: "Housekeeping: -", lines: buildHousekeepingLines(bookings, eventReqs) },
+      { title: "Program Officer: -", lines: buildProgramOfficerLines(input, eventReqs) },
+    ],
+  };
+}
 
+/** Auto MoM body through Program Officer (no custom block). Plain-text fallback. */
+export function buildMomAutoText(input: MomEventInput): string {
+  const { headline: head, sections } = buildMomSectionBlocks(input);
   const parts = [
-    headline(input),
+    head,
     "",
     "Details of the event:",
     "",
-    section("Nature of the event: -", buildNatureLines(input, reqs)),
-    "",
-    section("Timings: -", buildTimingLines(bookings)),
-    "",
-    section("Guest Arrival & Event: -", buildGuestLines(bookings, eventReqs)),
-    "",
-    section("Vendors: -", buildVendorLines(bookings, eventReqs)),
-    "",
-    section("Setup on Stage: -", buildStageLines(bookings, eventReqs)),
-    "",
-    section("Foyer: -", buildFoyerLines(bookings, eventReqs)),
-    "",
-    section("Security: -", buildSecurityLines(bookings, eventReqs)),
-    "",
-    section("Housekeeping: -", buildHousekeepingLines(bookings, eventReqs)),
-    "",
-    section("Program Officer: -", buildProgramOfficerLines(input, eventReqs)),
+    ...sections.flatMap((block) => [section(block.title, block.lines), ""]),
   ];
-
   return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
-/** Full MoM including customised block (everything after Program Officer). */
+/** Full MoM including customised block (everything after Program Officer). Plain-text fallback. */
 export function buildMomDocument(input: MomEventInput, customNotes?: string | null): string {
   const auto = buildMomAutoText(input).trimEnd();
   const custom = text(customNotes);
@@ -594,21 +597,69 @@ export function momMissingFieldsMessage(missing: MomMissingField[]): string {
   return `${head}, and ${last.label} are not filled. Do you want to continue?`;
 }
 
-export function buildMomHtml(documentText: string, title: string): string {
-  const escaped = documentText
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function renderMomLinesHtml(lines: string[]): string {
+  const body = lines.length > 0 ? lines : [TBC];
+  return body
+    .map((line) => {
+      if (line === "") {
+        return `<div style="height:8px;line-height:8px;font-size:8px;">&nbsp;</div>`;
+      }
+      return `<div style="margin:0 0 2pt 0;">${escapeHtml(line)}</div>`;
+    })
+    .join("");
+}
+
+/**
+ * Rich HTML fragment for client email / Word / on-screen preview.
+ * Uses inline styles so paste into Outlook/Gmail keeps hierarchy.
+ */
+export function buildMomDocumentHtml(input: MomEventInput, customNotes?: string | null): string {
+  const { headline: head, sections } = buildMomSectionBlocks(input);
+  const sectionsHtml = sections
+    .map(
+      (block) =>
+        `<div style="margin:0 0 14pt 0;">` +
+        `<div style="font-weight:700;text-decoration:underline;margin:0 0 6pt 0;">${escapeHtml(block.title)}</div>` +
+        renderMomLinesHtml(block.lines) +
+        `</div>`,
+    )
+    .join("");
+
+  const custom = text(customNotes);
+  const customHtml = custom
+    ? `<div style="margin:18pt 0 0 0;padding-top:12pt;border-top:1px solid #c9c2b8;">` +
+      `<div style="font-weight:700;text-decoration:underline;margin:0 0 6pt 0;">Additional / undecided items:</div>` +
+      renderMomLinesHtml(custom.split("\n")) +
+      `</div>`
+    : "";
+
+  return (
+    `<div style="font-family:Georgia,'Times New Roman',serif;color:#2f2c27;font-size:11pt;line-height:1.45;">` +
+    `<div style="font-weight:700;font-size:12.5pt;margin:0 0 14pt 0;">${escapeHtml(head)}</div>` +
+    `<div style="font-weight:700;text-decoration:underline;margin:0 0 12pt 0;">Details of the event:</div>` +
+    sectionsHtml +
+    customHtml +
+    `</div>`
+  );
+}
+
+/** Full printable / PDF HTML page with professional MoM formatting. */
+export function buildMomHtml(
+  input: MomEventInput,
+  title: string,
+  customNotes?: string | null,
+): string {
+  const body = buildMomDocumentHtml(input, customNotes);
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${title.replace(/</g, "")}</title>
+<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 32px; white-space: pre-wrap; line-height: 1.45; font-size: 12pt; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 32px; line-height: 1.45; font-size: 12pt; }
   .toolbar { margin-bottom: 16px; }
   .toolbar button { font: inherit; padding: 6px 16px; }
   @media print { .toolbar { display: none; } body { margin: 12px; } }
 </style></head>
 <body>
 <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-<pre style="font: inherit; white-space: pre-wrap; margin: 0;">${escaped}</pre>
+${body}
 </body></html>`;
 }

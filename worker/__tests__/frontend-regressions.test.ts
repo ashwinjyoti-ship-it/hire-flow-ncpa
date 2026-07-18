@@ -671,16 +671,23 @@ describe("frontend regression guards", () => {
 
   it("exposes Generate MoM on the event lifecycle panel", () => {
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const mom = readFileSync(resolve(root, "src/lib/mom.ts"), "utf8");
 
     expect(detail).toContain("Generate MoM");
     expect(detail).toContain("onGenerateMom");
     expect(detail).toContain("buildMomDocument");
+    expect(detail).toContain("buildMomDocumentHtml");
     expect(detail).toContain("Customised information");
     expect(detail).toContain("Copy Text");
     // MoM opens as a focused dialog so Continue / Generate is obvious.
     expect(detail).toContain('aria-labelledby="mom-panel-title"');
     expect(detail).toContain("fixed inset-0 z-50");
     expect(detail).toContain("Minutes of Meeting");
+    // Rich preview + clipboard HTML for client email paste.
+    expect(detail).toContain("dangerouslySetInnerHTML");
+    expect(detail).toContain("text/html");
+    expect(mom).toContain("text-decoration:underline");
+    expect(mom).toContain("font-weight:700");
   });
 
   it("exposes Print and Export to PDF for the filled event form on the lifecycle panel", () => {
