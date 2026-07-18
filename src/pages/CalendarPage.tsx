@@ -486,6 +486,12 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
             <DetailLine label="House Seats" value={formatHouseSeatDecisions(reqs)} />
             <DetailLine label="Parking" value={formatRequirement(reqs.parking)} />
             <DetailLine label="Housekeeping" value={formatRequirement(reqs.housekeeping)} />
+            {hasRequirementText(reqs.stage_setup) && (
+              <DetailLine label="Stage Setup" value={formatRequirement(reqs.stage_setup)} />
+            )}
+            {hasRequirementText(reqs.foyer_setup) && (
+              <DetailLine label="Foyer Setup" value={formatRequirement(reqs.foyer_setup)} />
+            )}
           </DetailGroup>
 
           <DetailGroup title="Additional Detail">
@@ -546,6 +552,10 @@ function formatRequirement(value: unknown): string {
   if (Array.isArray(value)) return value.filter(Boolean).join(", ") || "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function hasRequirementText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function formatTimeRequirement(value: unknown): string {
