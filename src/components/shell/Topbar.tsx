@@ -57,6 +57,11 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
     refetchInterval: 60_000,
   });
 
+  const markOne = useMutation({
+    mutationFn: async (id: string) => apiPost(`/notifications/${id}/read`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
   const markAll = useMutation({
     mutationFn: async () => apiPost("/notifications/read-all"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
@@ -152,7 +157,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                         onClick={() => markAll.mutate()}
                         className="text-xs text-sage-text underline"
                       >
-                        Mark read
+                        Mark all read
                       </button>
                     )}
                   </div>
@@ -161,16 +166,30 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
                       <p className="text-xs text-ink-muted etched">Nothing new.</p>
                     ) : (
                       data?.notifications.map((n) => (
-                        <Link
+                        <div
                           key={n.id}
-                          to={n.related_event_id ? `/events/${n.related_event_id}` : "/tasks"}
-                          onClick={() => setNotificationsOpen(false)}
-                          className="block rounded-xl bg-marble-shadow/30 px-3 py-2 text-xs hover:bg-marble-shadow/50"
+                          className="rounded-xl bg-marble-shadow/30 px-3 py-2 text-xs"
                         >
-                          <div className="font-semibold text-ink-primary etched-deep">{n.title}</div>
-                          {n.body && <div className="mt-0.5 text-ink-secondary etched">{n.body}</div>}
-                          {n.event_title && <div className="mt-1 text-ink-muted etched">{n.event_title}</div>}
-                        </Link>
+                          <Link
+                            to={n.related_event_id ? `/events/${n.related_event_id}` : "/tasks"}
+                            onClick={() => {
+                              markOne.mutate(n.id);
+                              setNotificationsOpen(false);
+                            }}
+                            className="block hover:opacity-80"
+                          >
+                            <div className="font-semibold text-ink-primary etched-deep">{n.title}</div>
+                            {n.body && <div className="mt-0.5 text-ink-secondary etched">{n.body}</div>}
+                            {n.event_title && <div className="mt-1 text-ink-muted etched">{n.event_title}</div>}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => markOne.mutate(n.id)}
+                            className="mt-2 text-[11px] font-medium text-sage-text underline"
+                          >
+                            Mark as Read
+                          </button>
+                        </div>
                       ))
                     )}
                   </div>
