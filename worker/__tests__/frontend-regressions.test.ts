@@ -321,11 +321,26 @@ describe("frontend regression guards", () => {
     expect(calendar).not.toContain("Open full record →");
   });
 
-  it("hides confirmed events from the lifecycle calendar status filter and legend", () => {
+  it("routes status filters to the calendar that can show them", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
-    expect(calendar).toContain('if (view === "lifecycle") return k !== "confirmed" && k !== "regret"');
+    expect(calendar).toContain("function calendarViewForStatus");
+    expect(calendar).toContain('SHOW_CALENDAR_STATUSES.has(status) ? "show" : "lifecycle"');
+    expect(calendar).toContain('if (key === "status")');
+    expect(calendar).toContain("calendarViewForStatus(value.trim())");
+    // Status menu lists pipeline + confirmed so choosing one can switch views.
+    expect(calendar).toContain('.filter(([k]) => k !== "regret")');
+    // Legend on Lifecycle still omits confirmed (those cards live on Show).
     expect(calendar).toContain('.filter(([key]) => key !== "confirmed" && key !== "regret")');
+  });
+
+  it("builds owner filter options from event-owner accounts", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain('queryKey: ["users"]');
+    expect(calendar).toContain("u.is_event_owner");
+    expect(calendar).toContain("ownerNames");
+    expect(calendar).toContain("fromUsers.length > 0 ? [...fromUsers] : [...fromLookups]");
   });
 
   it("lets lifecycle calendar open overflowed day entries in a dedicated panel", () => {

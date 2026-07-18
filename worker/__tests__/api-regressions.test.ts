@@ -433,6 +433,26 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
   });
 
+  it("matches Free Event type filters against legacy FE values too", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se") || sql.includes("FROM events e")) {
+        expect(sql).toContain("e.event_type IN ('Free Event', 'FE')");
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-07-01&to=2026-07-31&type=Free%20Event",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+  });
+
   it("gates the show calendar to confirmed events by default", async () => {
     // Regression: an enquiry entered today with a September show date used to
     // appear on the September show calendar. The show calendar now defaults to

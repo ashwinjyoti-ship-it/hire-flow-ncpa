@@ -40,6 +40,17 @@ function normalisedDateSql(raw: string): string {
   END`;
 }
 
+/** Apply event-type filter, treating legacy "FE" as "Free Event". */
+function pushEventTypeFilter(where: string[], binds: unknown[], column: string, type: string | undefined) {
+  if (!type) return;
+  if (type === "Free Event" || type === "FE") {
+    where.push(`${column} IN ('Free Event', 'FE')`);
+    return;
+  }
+  where.push(`${column} = ?`);
+  binds.push(type);
+}
+
 calendarRoutes.get("/lifecycle", requireUser, async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
@@ -60,7 +71,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
 
   if (status) { where.push("status = ?"); binds.push(status); }
   if (venue) { where.push("venues LIKE ?"); binds.push(`%${venue}%`); }
-  if (type) { where.push("event_type = ?"); binds.push(type); }
+  pushEventTypeFilter(where, binds, "event_type", type);
   if (owner) { where.push("event_owner = ?"); binds.push(owner); }
   // Phase 8b: "My events" — restrict to events owned by the signed-in user.
   if (mine === "1" && user) { where.push("event_owner_id = ?"); binds.push(user.id); }
@@ -292,7 +303,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
   // Common filters that apply to both sets.
   const commonWhere = ["e.is_archived = 0", "e.status = ?"];
   const commonBinds: unknown[] = [statusFilter];
-  if (type) { commonWhere.push("e.event_type = ?"); commonBinds.push(type); }
+  pushEventTypeFilter(commonWhere, commonBinds, "e.event_type", type);
   if (owner) { commonWhere.push("e.event_owner = ?"); commonBinds.push(owner); }
   // Phase 8b: "My events" — restrict to events owned by the signed-in user.
   if (mine === "1" && user) { commonWhere.push("e.event_owner_id = ?"); commonBinds.push(user.id); }
