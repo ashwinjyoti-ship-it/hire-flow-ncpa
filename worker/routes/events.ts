@@ -26,6 +26,7 @@ import {
   ensureChecklistForEvent,
   getChecklistItems,
   getEventLifecycle,
+  reconcileConfirmationLetterAgainstFinancials,
   reconcileFileToAccountsReminderForEvent,
   reconcileFinancialSequenceForEvent,
   reconcileTasksForLifecycleTransition,
@@ -591,8 +592,12 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   }>();
   if (!event) return c.json({ error: "Not found" }, 404);
 
-  // Heal Completed-without-costing before evaluating the confirmation gate.
+  // Heal Completed-without-costing and letter-ahead-of-financials before the gate.
   await reconcileFinancialSequenceForEvent(db, id);
+  await reconcileConfirmationLetterAgainstFinancials(db, id);
+  const confirmationStatus = (await db.prepare(
+    "SELECT confirmation_status FROM events WHERE id = ?"
+  ).bind(id).first<{ confirmation_status: string | null }>())?.confirmation_status ?? event.confirmation_status;
   // The financials gate fields (costing_email, payment_status) live in the
   // checklist; pull them for the confirmation gate.
   const { results: finRows } = await db.prepare(
@@ -615,7 +620,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   // confirmation, and VFH approval — unless approval is marked Not Required.
   if (to === "confirmed" && !canConfirm({
     eventType: event.event_type,
-    confirmationStatus: event.confirmation_status,
+    confirmationStatus,
     approvalStatus: event.approval_status,
     costingEmail,
     paymentStatus,
@@ -626,6 +631,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
     id,
     title: "",
     ...event,
+    confirmation_status: confirmationStatus,
     costing_email: costingEmail,
     payment_status: paymentStatus,
     poc_complete: poc.complete,
@@ -778,7 +784,7 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
     const message = (err as Error).message;
     const status = message.includes("not found")
       ? 404
-      : message.includes("reason") || message.includes("cannot be marked")
+      : message.includes("reason") || message.includes("cannot be marked") || message.includes("cannot be set")
         ? 422
         : 400;
     return c.json({ error: message }, status);
