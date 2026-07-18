@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileConfirmationLetterAgainstFinancials, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -164,6 +164,90 @@ describe("operational lifecycle readiness", () => {
     } as unknown as D1Database;
 
     expect(await reconcileFinancialSequenceForEvent(db, "ev_fin")).toBe(false);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("rolls back Couriered and Signed when financials are incomplete", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            if (sql.includes("'costing_email', 'proforma_invoice', 'payment_status'")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "No" },
+                  { field_key: "proforma_invoice", value: "Not Sent" },
+                  { field_key: "payment_status", value: "Incomplete" },
+                ],
+              };
+            }
+            if (sql.includes("confirmation_made")) {
+              return {
+                results: [
+                  { id: "cli_made", field_key: "confirmation_made", value: "Yes" },
+                  { id: "cli_couriered", field_key: "confirmation_couriered", value: "2026-07-10" },
+                  { id: "cli_signed", field_key: "confirmation_signed_received", value: "Yes" },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci") && sql.includes("module")) {
+              return { results: [] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    expect(await reconcileConfirmationLetterAgainstFinancials(db, "ev_letter")).toBe(true);
+    const signedReset = updates.find((u) => u.binds.includes("cli_signed"));
+    expect(signedReset?.binds[0]).toBe("No");
+    const courieredReset = updates.find((u) => u.binds.includes("cli_couriered"));
+    expect(courieredReset?.sql).toContain("value = NULL");
+    const statusUpdate = updates.find((u) => u.sql.includes("UPDATE events SET confirmation_status"));
+    expect(statusUpdate?.binds[0]).toBe("made");
+  });
+
+  it("leaves Couriered and Signed alone when financials are ready", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return {
+              results: [
+                { field_key: "costing_email", value: "Yes" },
+                { field_key: "proforma_invoice", value: "Not Applicable" },
+                { field_key: "payment_status", value: "Completed" },
+              ],
+            };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    expect(await reconcileConfirmationLetterAgainstFinancials(db, "ev_letter")).toBe(false);
     expect(updates).toHaveLength(0);
   });
 

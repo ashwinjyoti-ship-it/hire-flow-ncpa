@@ -57,8 +57,11 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   // Sent / Completed) marks progress. Payment Status = Completed is the only
   // other finance blocker to confirmation. Instalment is NOT a blocker — it
   // only drives reminder tasks; the team decides by updating Payment Status.
+  // Confirmation Letter Couriered / Signed also require these financials first
+  // (Proforma Sent or Not Applicable). Made may still be set earlier.
   { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
-  // "Not Applicable" — a client may not need a proforma invoice.
+  // "Not Applicable" — a client may not need a proforma invoice; that still
+  // satisfies the Confirmation Letter delivery gate.
   { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Not Sent", "Sent", "Not Applicable"], default_value: "Not Sent" },
   { module: "operations", section: "Financials", field_key: "instalment", label: "Instalment", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   { module: "operations", section: "Financials", field_key: "installment_1_expected_date", label: "Installment 1 — Expected Date", field_type: "date", visibility_rule: "onlyWhen(instalment == Yes)", triggers_task: { rule: "instalment", title: "Follow up: Installment 1", due_after_days: 0, complete_when: "payment is received" } },

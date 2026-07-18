@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  areFinancialsReadyForConfirmationLetterDelivery,
+  CONFIRMATION_LETTER_REQUIRES_FINANCIALS_MESSAGE,
   COSTING_EMAIL_BLOCKER,
   hasInvalidPaymentBeforeCosting,
+  isAdvancingConfirmationLetterDelivery,
+  isConfirmationLetterDeliveryField,
   isCostingEmailSent,
   isPaymentGateSatisfied,
   isPaymentMarkedCompleted,
+  isProformaSatisfiedForConfirmationLetter,
   PAYMENT_COMPLETED_BLOCKER,
   PAYMENT_REQUIRES_COSTING_MESSAGE,
 } from "../lib/financial-sequence";
@@ -42,5 +47,51 @@ describe("financial sequence helpers", () => {
     expect(COSTING_EMAIL_BLOCKER).toBe("Costing email must be sent.");
     expect(PAYMENT_COMPLETED_BLOCKER).toBe("Payment must be completed.");
     expect(PAYMENT_REQUIRES_COSTING_MESSAGE).toContain("Costing Email is Yes");
+    expect(CONFIRMATION_LETTER_REQUIRES_FINANCIALS_MESSAGE).toContain("Couriered");
+  });
+
+  it("treats proforma Sent or Not Applicable as satisfied for letter delivery", () => {
+    expect(isProformaSatisfiedForConfirmationLetter("Sent")).toBe(true);
+    expect(isProformaSatisfiedForConfirmationLetter("Not Applicable")).toBe(true);
+    expect(isProformaSatisfiedForConfirmationLetter("Not Sent")).toBe(false);
+    expect(isProformaSatisfiedForConfirmationLetter(null)).toBe(false);
+  });
+
+  it("requires costing, proforma, and payment before Couriered / Signed", () => {
+    expect(areFinancialsReadyForConfirmationLetterDelivery({
+      costingEmail: "Yes",
+      proformaInvoice: "Sent",
+      paymentStatus: "Completed",
+    })).toBe(true);
+    expect(areFinancialsReadyForConfirmationLetterDelivery({
+      costingEmail: "Yes",
+      proformaInvoice: "Not Applicable",
+      paymentStatus: "Completed",
+    })).toBe(true);
+    expect(areFinancialsReadyForConfirmationLetterDelivery({
+      costingEmail: "No",
+      proformaInvoice: "Sent",
+      paymentStatus: "Completed",
+    })).toBe(false);
+    expect(areFinancialsReadyForConfirmationLetterDelivery({
+      costingEmail: "Yes",
+      proformaInvoice: "Not Sent",
+      paymentStatus: "Completed",
+    })).toBe(false);
+    expect(areFinancialsReadyForConfirmationLetterDelivery({
+      costingEmail: "Yes",
+      proformaInvoice: "Sent",
+      paymentStatus: "Incomplete",
+    })).toBe(false);
+  });
+
+  it("only treats Couriered date and Signed Yes as delivery advances", () => {
+    expect(isConfirmationLetterDeliveryField("confirmation_made")).toBe(false);
+    expect(isConfirmationLetterDeliveryField("confirmation_couriered")).toBe(true);
+    expect(isAdvancingConfirmationLetterDelivery("confirmation_couriered", "2026-07-18")).toBe(true);
+    expect(isAdvancingConfirmationLetterDelivery("confirmation_couriered", null)).toBe(false);
+    expect(isAdvancingConfirmationLetterDelivery("confirmation_signed_received", "Yes")).toBe(true);
+    expect(isAdvancingConfirmationLetterDelivery("confirmation_signed_received", "No")).toBe(false);
+    expect(isAdvancingConfirmationLetterDelivery("confirmation_made", "Yes")).toBe(false);
   });
 });
