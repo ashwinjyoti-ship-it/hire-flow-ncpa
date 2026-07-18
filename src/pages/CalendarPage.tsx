@@ -84,6 +84,14 @@ type LifecycleType =
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CALENDAR_VISIBLE_EVENTS_PER_DAY = 3;
+/** Statuses that belong on Show Calendar. Everything else with a status filter belongs on Lifecycle. */
+const SHOW_CALENDAR_STATUSES = new Set<string>(["confirmed"]);
+
+/** Pick the calendar that can actually show the chosen status. Empty status keeps the current view. */
+function calendarViewForStatus(status: string): View | null {
+  if (!status) return null;
+  return SHOW_CALENDAR_STATUSES.has(status) ? "show" : "lifecycle";
+}
 
 function startOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
 /** Last calendar day of the month (local). day 0 of next month = last day of this month. */
@@ -138,6 +146,14 @@ export function CalendarPage() {
   }), [searchParams]);
   const mine = searchParams.get("mine") === "1";
 
+  // Event owners are login accounts (is_event_owner), same source as the event form.
+  // Avoid the old handled_by dropdown list, which can drift from real owners.
+  const { data: usersData } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => apiGet<{ users: Array<{ id: string; name: string; is_active: number; is_event_owner?: boolean }> }>("/users"),
+    enabled: Boolean(user),
+  });
+
   function updateParams(mutator: (params: URLSearchParams) => void) {
     const next = new URLSearchParams(searchParams);
     if (!next.get("view")) next.set("view", view);
@@ -151,6 +167,15 @@ export function CalendarPage() {
   function setView(nextView: View) {
     updateParams((params) => {
       params.set("view", nextView);
+      const status = params.get("status") ?? "";
+      if (nextView === "show") {
+        // Show Calendar is confirmed work — drop lifecycle-only status/POC filters.
+        if (status && status !== "confirmed") params.delete("status");
+        params.delete("poc_incomplete");
+      } else if (status === "confirmed") {
+        // Confirmed events live on Show Calendar, not the lifecycle grid.
+        params.delete("status");
+      }
     });
     setLifecycleOverflow(null);
     setShowOverflow(null);
@@ -170,7 +195,20 @@ export function CalendarPage() {
     updateParams((params) => {
       if (value.trim()) params.set(key, value.trim());
       else params.delete(key);
+
+      if (key === "status") {
+        const nextView = calendarViewForStatus(value.trim());
+        if (nextView) {
+          params.set("view", nextView);
+          if (nextView === "show") params.delete("poc_incomplete");
+        }
+      }
     });
+    if (key === "status") {
+      setLifecycleOverflow(null);
+      setShowOverflow(null);
+      setSideEvent(null);
+    }
   }
 
   function setMine(next: boolean) {
@@ -186,6 +224,19 @@ export function CalendarPage() {
       else params.delete("poc_incomplete");
     });
   }
+
+  // Deep links / stale URLs: if status implies a different calendar, move there.
+  useEffect(() => {
+    const expected = calendarViewForStatus(filters.status);
+    if (!expected || expected === view) return;
+    updateParams((params) => {
+      params.set("view", expected);
+      if (expected === "show") params.delete("poc_incomplete");
+    });
+    setLifecycleOverflow(null);
+    setShowOverflow(null);
+    setSideEvent(null);
+  }, [filters.status, view]);
 
   // Visible range = the exact calendar month being viewed (1st → last day).
   // Narrowing to the month (vs the old 42-day Sunday-start window) prevents
@@ -274,21 +325,30 @@ export function CalendarPage() {
   const lifecycleByDate = lifecycleData?.byDate ?? {};
   const today = isoDate(new Date());
   const venues = lookups?.lookups.venue ?? [];
-  const owners = lookups?.lookups.handled_by ?? [];
+  const ownerNames = useMemo(() => {
+    const fromUsers = (usersData?.users ?? [])
+      .filter((u) => u.is_active === 1 && u.is_event_owner)
+      .map((u) => u.name.trim())
+      .filter(Boolean);
+    // Fall back to synced handled_by values when the viewer cannot list users.
+    const fromLookups = (lookups?.lookups.handled_by ?? [])
+      .map((o) => o.value.trim())
+      .filter(Boolean);
+    const names = fromUsers.length > 0 ? [...fromUsers] : [...fromLookups];
+    // Keep a selected legacy owner visible even if they are no longer designated.
+    if (filters.owner && !names.includes(filters.owner)) names.push(filters.owner);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+  }, [usersData?.users, lookups?.lookups.handled_by, filters.owner]);
 
   const title = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const filterOptions = {
     status: [
-      // Show Calendar: confirmed by default (see worker /calendar). Lifecycle
-      // Calendar is the pre-confirm pipeline (+ regret/cancelled); confirmed
-      // events have moved to Show Calendar.
+      // Status choice also routes to the calendar that can show it:
+      // confirmed → Show Calendar; enquiry/tentative/approved/cancelled → Lifecycle.
+      // Regrets stay on the dedicated Regrets page, not these calendars.
       { value: "", label: view === "show" ? "Confirmed (default)" : "All statuses" },
       ...Object.entries(STATUS_LABELS)
-        .filter(([k]) => {
-          if (view === "lifecycle") return k !== "confirmed" && k !== "regret";
-          if (view === "show") return k !== "cancelled" && k !== "regret";
-          return true;
-        })
+        .filter(([k]) => k !== "regret")
         .map(([k, v]) => ({ value: k, label: v })),
     ],
     venue: [{ value: "", label: "All venues" }, ...venues.map((o) => ({ value: o.value, label: o.value }))],
@@ -299,7 +359,7 @@ export function CalendarPage() {
       { value: "VFH", label: "VFH" },
       { value: "Free Event", label: "Free Event" },
     ],
-    owner: [{ value: "", label: "All owners" }, ...owners.map((o) => ({ value: o.value, label: o.value }))],
+    owner: [{ value: "", label: "All owners" }, ...ownerNames.map((name) => ({ value: name, label: name }))],
   };
   const activeFilterCount = [filters.status, filters.venue, filters.type, filters.owner, filters.pocIncomplete].filter(Boolean).length;
   // "This month" only when the viewed cursor is the actual current month/year.
