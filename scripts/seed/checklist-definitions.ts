@@ -59,6 +59,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   // only drives reminder tasks; the team decides by updating Payment Status.
   // Confirmation Letter Couriered / Signed also require these financials first
   // (Proforma Sent or Not Applicable). Made may still be set earlier.
+  // Couriered requires Made; Signed requires Couriered.
   { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
   // "Not Applicable" — a client may not need a proforma invoice; that still
   // satisfies the Confirmation Letter delivery gate.

@@ -15,8 +15,20 @@
 export const COSTING_EMAIL_BLOCKER = "Costing email must be sent.";
 export const PAYMENT_COMPLETED_BLOCKER = "Payment must be completed.";
 
+export const PROFORMA_SENT_REQUIRES_COSTING_MESSAGE =
+  "Proforma Invoice cannot be marked Sent until Costing Email is Yes.";
+
 export const PAYMENT_REQUIRES_COSTING_MESSAGE =
   "Payment cannot be marked Completed until Costing Email is Yes.";
+
+export const PAYMENT_REQUIRES_PROFORMA_MESSAGE =
+  "Payment cannot be marked Completed until Proforma Invoice is Sent or Not Applicable.";
+
+export const CONFIRMATION_COURIERED_REQUIRES_MADE_MESSAGE =
+  "Confirmation letter cannot be marked Couriered until Made is Yes.";
+
+export const CONFIRMATION_SIGNED_REQUIRES_COURIERED_MESSAGE =
+  "Signed Copy Received cannot be set to Yes until the confirmation letter has been Couriered.";
 
 export const CONFIRMATION_LETTER_REQUIRES_FINANCIALS_MESSAGE =
   "Confirmation letter Couriered and Signed Copy Received cannot be set until Costing Email is Yes, Proforma Invoice is Sent or Not Applicable, and Payment Status is Completed.";
@@ -33,6 +45,18 @@ export function isPaymentMarkedCompleted(value: string | null | undefined): bool
 export function isProformaSatisfiedForConfirmationLetter(value: string | null | undefined): boolean {
   const normalised = (value ?? "").trim().toLowerCase();
   return normalised === "sent" || normalised === "not applicable";
+}
+
+export function isProformaMarkedSent(value: string | null | undefined): boolean {
+  return (value ?? "").trim().toLowerCase() === "sent";
+}
+
+export function isConfirmationLetterMade(value: string | null | undefined): boolean {
+  return (value ?? "").trim().toLowerCase() === "yes";
+}
+
+export function isConfirmationLetterCouriered(value: string | null | undefined): boolean {
+  return Boolean((value ?? "").trim());
 }
 
 /**
@@ -52,6 +76,23 @@ export function hasInvalidPaymentBeforeCosting(
   paymentStatus: string | null | undefined,
 ): boolean {
   return isPaymentMarkedCompleted(paymentStatus) && !isCostingEmailSent(costingEmail);
+}
+
+/** Stored payment Completed while proforma is still Not Sent — needs heal. */
+export function hasInvalidPaymentBeforeProforma(
+  proformaInvoice: string | null | undefined,
+  paymentStatus: string | null | undefined,
+): boolean {
+  return isPaymentMarkedCompleted(paymentStatus)
+    && !isProformaSatisfiedForConfirmationLetter(proformaInvoice);
+}
+
+/** Stored proforma Sent while costing email is not Yes — needs heal. */
+export function hasInvalidProformaBeforeCosting(
+  costingEmail: string | null | undefined,
+  proformaInvoice: string | null | undefined,
+): boolean {
+  return isProformaMarkedSent(proformaInvoice) && !isCostingEmailSent(costingEmail);
 }
 
 export type ConfirmationLetterFinancials = {

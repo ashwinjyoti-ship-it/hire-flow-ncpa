@@ -11,16 +11,26 @@ import { getPostShowDateWarning } from "./checklist-date-policy";
 import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
 import {
   areFinancialsReadyForConfirmationLetterDelivery,
+  CONFIRMATION_COURIERED_REQUIRES_MADE_MESSAGE,
   CONFIRMATION_LETTER_REQUIRES_FINANCIALS_MESSAGE,
+  CONFIRMATION_SIGNED_REQUIRES_COURIERED_MESSAGE,
   COSTING_EMAIL_BLOCKER,
   hasInvalidPaymentBeforeCosting,
+  hasInvalidPaymentBeforeProforma,
+  hasInvalidProformaBeforeCosting,
   isAdvancingConfirmationLetterDelivery,
+  isConfirmationLetterCouriered,
   isConfirmationLetterDeliveryField,
+  isConfirmationLetterMade,
   isCostingEmailSent,
   isPaymentGateSatisfied,
   isPaymentMarkedCompleted,
+  isProformaMarkedSent,
+  isProformaSatisfiedForConfirmationLetter,
   PAYMENT_COMPLETED_BLOCKER,
   PAYMENT_REQUIRES_COSTING_MESSAGE,
+  PAYMENT_REQUIRES_PROFORMA_MESSAGE,
+  PROFORMA_SENT_REQUIRES_COSTING_MESSAGE,
 } from "./financial-sequence";
 import { makeId } from "./id";
 import { POC_FIELD_KEYS } from "./poc-fields";
@@ -225,6 +235,7 @@ export async function getChecklistItems(db: D1Database, eventId: string): Promis
   await reconcileFinancialSequenceForEvent(db, eventId);
   // Heal Couriered / Signed set while financials are still incomplete.
   await reconcileConfirmationLetterAgainstFinancials(db, eventId);
+  await reconcileConfirmationLetterDeliveryChain(db, eventId);
   const { results } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
@@ -297,22 +308,45 @@ export async function updateChecklistItem(args: {
     throw new Error("A correction reason is required to change an existing date");
   }
 
-  // Financial sequence: Payment Status = Completed requires Costing Email = Yes.
-  if (current.field_key === "payment_status" && isPaymentMarkedCompleted(value)) {
+  // Financial sequence: Proforma Sent requires Costing Email = Yes.
+  if (current.field_key === "proforma_invoice" && isProformaMarkedSent(value)) {
     const costing = await db.prepare(
       "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'costing_email' LIMIT 1"
     ).bind(current.event_id).first<{ value: string | null }>();
     if (!isCostingEmailSent(costing?.value)) {
-      throw new Error(PAYMENT_REQUIRES_COSTING_MESSAGE);
+      throw new Error(PROFORMA_SENT_REQUIRES_COSTING_MESSAGE);
     }
   }
 
-  // Confirmation Letter delivery (Couriered / Signed) requires financials first.
-  // Made may still be set before financials are complete.
+  // Financial sequence: Payment Status = Completed requires Costing Email = Yes,
+  // then Proforma Invoice = Sent or Not Applicable.
+  if (current.field_key === "payment_status" && isPaymentMarkedCompleted(value)) {
+    const financials = await getConfirmationLetterFinancials(db, current.event_id);
+    if (!isCostingEmailSent(financials.costingEmail)) {
+      throw new Error(PAYMENT_REQUIRES_COSTING_MESSAGE);
+    }
+    if (!isProformaSatisfiedForConfirmationLetter(financials.proformaInvoice)) {
+      throw new Error(PAYMENT_REQUIRES_PROFORMA_MESSAGE);
+    }
+  }
+
+  // Confirmation Letter delivery (Couriered / Signed) requires Made → Couriered →
+  // Signed order, plus financials before Couriered / Signed.
   if (
     isConfirmationLetterDeliveryField(current.field_key)
     && isAdvancingConfirmationLetterDelivery(current.field_key, value)
   ) {
+    const letter = await getConfirmationLetterDeliveryState(db, current.event_id);
+    if (current.field_key === "confirmation_couriered") {
+      if (!isConfirmationLetterMade(letter.made)) {
+        throw new Error(CONFIRMATION_COURIERED_REQUIRES_MADE_MESSAGE);
+      }
+    }
+    if (current.field_key === "confirmation_signed_received") {
+      if (!isConfirmationLetterCouriered(letter.couriered)) {
+        throw new Error(CONFIRMATION_SIGNED_REQUIRES_COURIERED_MESSAGE);
+      }
+    }
     const financials = await getConfirmationLetterFinancials(db, current.event_id);
     if (!areFinancialsReadyForConfirmationLetterDelivery(financials)) {
       throw new Error(CONFIRMATION_LETTER_REQUIRES_FINANCIALS_MESSAGE);
@@ -339,19 +373,30 @@ export async function updateChecklistItem(args: {
      WHERE id = ?`
   ).bind(value ?? null, status, dueDate ?? null, completedAt, completedBy, now, user.id, itemId).run();
 
-  // If Costing Email moves off Yes, reset any Completed payment so the UI and
-  // confirmation gate stay aligned with the financial sequence.
+  // If Costing Email moves off Yes, reset proforma Sent and any Completed payment
+  // so the UI and confirmation gate stay aligned with the financial sequence.
   if (current.field_key === "costing_email") {
     await reconcileFinancialSequenceForEvent(db, current.event_id);
+  }
+  // If proforma regresses, reset Completed payment and roll back letter delivery.
+  if (current.field_key === "proforma_invoice") {
+    await reconcileFinancialSequenceForEvent(db, current.event_id);
+    await reconcileConfirmationLetterAgainstFinancials(db, current.event_id);
   }
   // If financials regress, roll Couriered / Signed back so the letter cannot
   // stay ahead of Costing / Proforma / Payment.
   if (
     current.field_key === "costing_email"
-    || current.field_key === "proforma_invoice"
     || current.field_key === "payment_status"
   ) {
     await reconcileConfirmationLetterAgainstFinancials(db, current.event_id);
+  }
+  // If Made or Couriered regresses, roll back later confirmation-letter steps.
+  if (
+    current.field_key === "confirmation_made"
+    || current.field_key === "confirmation_couriered"
+  ) {
+    await reconcileConfirmationLetterDeliveryChain(db, current.event_id);
   }
 
   if (dateChanged) {
@@ -1467,38 +1512,61 @@ async function createFileToAccountsReminders(db: D1Database, today: string): Pro
 }
 
 /**
- * Reset Payment Status to Incomplete when it is Completed while Costing Email
- * is still No. Keeps Financials UI, lifecycle blockers, and confirmation gate
- * aligned with the required costing → payment sequence.
+ * Reset financial fields that are ahead of their prerequisites:
+ * - Proforma Sent while Costing Email is still No → Not Sent
+ * - Payment Completed while costing or proforma is not satisfied → Incomplete
  */
 export async function reconcileFinancialSequenceForEvent(db: D1Database, eventId: string): Promise<boolean> {
   const { results } = await db.prepare(
     `SELECT id, field_key, value
      FROM checklist_items
-     WHERE event_id = ? AND field_key IN ('costing_email', 'payment_status')`
+     WHERE event_id = ? AND field_key IN ('costing_email', 'proforma_invoice', 'payment_status')`
   ).bind(eventId).all<{ id: string; field_key: string; value: string | null }>();
 
   let costingValue: string | null = null;
+  let proformaRow: { id: string; value: string | null } | null = null;
   let paymentRow: { id: string; value: string | null } | null = null;
   for (const row of results ?? []) {
     if (row.field_key === "costing_email") costingValue = row.value;
+    if (row.field_key === "proforma_invoice") proformaRow = { id: row.id, value: row.value };
     if (row.field_key === "payment_status") paymentRow = { id: row.id, value: row.value };
-  }
-  if (!paymentRow || !hasInvalidPaymentBeforeCosting(costingValue, paymentRow.value)) {
-    return false;
   }
 
   const now = new Date().toISOString();
-  const resetValue = "Incomplete";
-  const status = itemStatusForValue({ field_type: "dropdown", value: resetValue });
-  await db.prepare(
-    `UPDATE checklist_items
-     SET value = ?, status = ?, completed_at = NULL, completed_by = NULL, last_updated_at = ?
-     WHERE id = ?`
-  ).bind(resetValue, status, now, paymentRow.id).run();
-  await reopenAutomaticallyCompletedTasks(db, eventId, ["instalment"]);
-  await recalculateEventCompletion(db, eventId);
-  return true;
+  let changed = false;
+
+  if (proformaRow && hasInvalidProformaBeforeCosting(costingValue, proformaRow.value)) {
+    const resetValue = "Not Sent";
+    const status = itemStatusForValue({ field_type: "dropdown", value: resetValue });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, completed_at = NULL, completed_by = NULL, last_updated_at = ?
+       WHERE id = ?`
+    ).bind(resetValue, status, now, proformaRow.id).run();
+    proformaRow.value = resetValue;
+    changed = true;
+  }
+
+  if (
+    paymentRow
+    && (
+      hasInvalidPaymentBeforeCosting(costingValue, paymentRow.value)
+      || hasInvalidPaymentBeforeProforma(proformaRow?.value, paymentRow.value)
+    )
+  ) {
+    const resetValue = "Incomplete";
+    const status = itemStatusForValue({ field_type: "dropdown", value: resetValue });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, completed_at = NULL, completed_by = NULL, last_updated_at = ?
+       WHERE id = ?`
+    ).bind(resetValue, status, now, paymentRow.id).run();
+    await reopenAutomaticallyCompletedTasks(db, eventId, ["instalment"]);
+    changed = true;
+  }
+
+  if (changed) await recalculateEventCompletion(db, eventId);
+  return changed;
 }
 
 async function getConfirmationLetterFinancials(
@@ -1519,6 +1587,26 @@ async function getConfirmationLetterFinancials(
     if (row.field_key === "payment_status") paymentStatus = row.value;
   }
   return { costingEmail, proformaInvoice, paymentStatus };
+}
+
+async function getConfirmationLetterDeliveryState(
+  db: D1Database,
+  eventId: string,
+): Promise<{ made: string | null; couriered: string | null; signed: string | null }> {
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('confirmation_made', 'confirmation_couriered', 'confirmation_signed_received')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+
+  let made: string | null = null;
+  let couriered: string | null = null;
+  let signed: string | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "confirmation_made") made = row.value;
+    if (row.field_key === "confirmation_couriered") couriered = row.value;
+    if (row.field_key === "confirmation_signed_received") signed = row.value;
+  }
+  return { made, couriered, signed };
 }
 
 /**
@@ -1578,6 +1666,64 @@ export async function reconcileConfirmationLetterAgainstFinancials(
   return true;
 }
 
+/**
+ * Roll back Couriered / Signed when Made is No or Signed is set without Couriered.
+ * Made may still be set before financials; only delivery steps are chained here.
+ */
+export async function reconcileConfirmationLetterDeliveryChain(
+  db: D1Database,
+  eventId: string,
+): Promise<boolean> {
+  const { results } = await db.prepare(
+    `SELECT id, field_key, value
+     FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('confirmation_made', 'confirmation_couriered', 'confirmation_signed_received')`
+  ).bind(eventId).all<{ id: string; field_key: string; value: string | null }>();
+
+  let madeValue: string | null = null;
+  let courieredRow: { id: string; value: string | null } | null = null;
+  let signedRow: { id: string; value: string | null } | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "confirmation_made") madeValue = row.value;
+    if (row.field_key === "confirmation_couriered") courieredRow = { id: row.id, value: row.value };
+    if (row.field_key === "confirmation_signed_received") signedRow = { id: row.id, value: row.value };
+  }
+
+  const madeYes = isConfirmationLetterMade(madeValue);
+  const courieredSet = isConfirmationLetterCouriered(courieredRow?.value);
+  const signedYes = (signedRow?.value ?? "").trim().toLowerCase() === "yes";
+
+  const needsSignedReset = signedYes && (!madeYes || !courieredSet);
+  const needsCourieredReset = courieredSet && !madeYes;
+  if (!needsSignedReset && !needsCourieredReset) return false;
+
+  const now = new Date().toISOString();
+  if (signedRow && needsSignedReset) {
+    const status = itemStatusForValue({ field_type: "dropdown", value: "No" });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = ?, status = ?, completed_at = NULL, completed_by = NULL, last_updated_at = ?
+       WHERE id = ?`
+    ).bind("No", status, now, signedRow.id).run();
+  }
+  if (courieredRow && needsCourieredReset) {
+    const status = itemStatusForValue({ field_type: "date", value: null });
+    await db.prepare(
+      `UPDATE checklist_items
+       SET value = NULL, status = ?, due_date = NULL, completed_at = NULL, completed_by = NULL, last_updated_at = ?
+       WHERE id = ?`
+    ).bind(status, now, courieredRow.id).run();
+  }
+
+  const confirmationStatus = madeYes ? "made" : "none";
+  await db.prepare("UPDATE events SET confirmation_status = ?, updated_at = ? WHERE id = ?")
+    .bind(confirmationStatus, now, eventId).run();
+
+  await reopenAutomaticallyCompletedTasks(db, eventId, ["confirmation_letter"]);
+  await recalculateEventCompletion(db, eventId);
+  return true;
+}
+
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness; poc: import("./poc-completion").PocCompletionStatus }> {
   const event = await db.prepare(
     `SELECT id, title, status, event_type, approval_status, confirmation_status,
@@ -1587,8 +1733,9 @@ export async function getEventLifecycle(db: D1Database, eventId: string): Promis
   if (!event) throw new Error("Event not found");
   // Heal invalid Completed-without-costing before reading gate values.
   await reconcileFinancialSequenceForEvent(db, eventId);
-  // Heal Couriered / Signed set ahead of financials, then re-read status.
+  // Heal Couriered / Signed set ahead of financials or delivery chain, then re-read status.
   await reconcileConfirmationLetterAgainstFinancials(db, eventId);
+  await reconcileConfirmationLetterDeliveryChain(db, eventId);
   const refreshed = await db.prepare(
     "SELECT confirmation_status FROM events WHERE id = ?"
   ).bind(eventId).first<{ confirmation_status: string | null }>();
