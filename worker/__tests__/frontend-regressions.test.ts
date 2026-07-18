@@ -159,6 +159,17 @@ describe("frontend regression guards", () => {
     expect(shell).toContain("h-dvh");
   });
 
+  it("marks a single notification read by id without using read-all", () => {
+    const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(topbar).toContain("markOne");
+    expect(topbar).toContain("`/notifications/${id}/read`");
+    expect(topbar).toContain("markOne.mutate(n.id)");
+    expect(topbar).toContain("Mark as Read");
+    expect(topbar).toContain("Mark all read");
+    expect(topbar).toContain('/notifications/read-all');
+  });
+
   it("scrolls Go to top inside #app-main and does not re-yank on checklist refetch", () => {
     const goToTop = readFileSync(resolve(root, "src/components/GoToTopButton.tsx"), "utf8");
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
