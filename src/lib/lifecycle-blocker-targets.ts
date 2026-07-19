@@ -2,6 +2,7 @@ import {
   COSTING_EMAIL_BLOCKER,
   PAYMENT_COMPLETED_BLOCKER,
 } from "../../worker/lib/financial-sequence";
+import { getEventPocEditLink } from "./event-edit-form";
 
 /**
  * Maps lifecycle blocker copy → Operations checklist field to open/scroll to.
@@ -67,3 +68,12 @@ export const ACTIONABLE_LIFECYCLE_BLOCKERS = [
   "VFH approval must be received before marking the event approved.",
   "POC not filled, cannot confirm.",
 ] as const;
+
+/** Resolve a lifecycle blocker target to the page the user should open. */
+export function resolveBlockerWorkHref(
+  eventId: string,
+  target: { tab: "operations" | "accounts"; fieldKey: string },
+): string {
+  if (target.fieldKey === "poc_name") return getEventPocEditLink(eventId);
+  return `/events/${eventId}?tab=${target.tab}&field=${encodeURIComponent(target.fieldKey)}`;
+}

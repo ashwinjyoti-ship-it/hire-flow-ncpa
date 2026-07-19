@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
+import { getEventPocEditLink } from "../lib/event-edit-form";
 
 export function PocIncompleteBanner({
   poc,
@@ -32,7 +33,7 @@ export function PocIncompleteBanner({
           </p>
         </div>
         <Link
-          to={`/events/${eventId}/edit?step=0&section=poc`}
+          to={getEventPocEditLink(eventId)}
           className="carved-btn shrink-0 rounded-full bg-status-awaitingApproval/15 px-3 py-1.5 text-xs font-semibold text-status-awaitingApproval etched"
         >
           Open event form

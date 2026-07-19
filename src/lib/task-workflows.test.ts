@@ -162,5 +162,13 @@ describe("task workflow helpers", () => {
       source_module: null,
       source_field_key: null,
     }))).toBe("/events/ev_123?tab=accounts&field=final_file_received");
+    expect(getTaskWorkLink(task({
+      id: "poc",
+      title: "Complete Point of Contact",
+      event_id: "ev_123",
+      source_rule: "poc_incomplete",
+      source_module: "operations",
+      source_field_key: "poc_name",
+    }))).toBe("/events/ev_123/edit?step=0&section=poc&field=poc_name");
   });
 });
