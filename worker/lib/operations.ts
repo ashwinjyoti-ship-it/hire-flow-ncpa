@@ -263,8 +263,12 @@ export async function recalculateEventCompletion(db: D1Database, eventId: string
   for (const item of results) {
     if (item.is_computed) continue;
     if (item.due_date && item.due_date > today && item.status !== "completed") continue;
+    // not_applicable means the field does not apply to this event (hidden gates,
+    // N/A defaults, etc.) — exclude it from the rollup so untouched work does
+    // not show fake progress.
+    if (item.status === "not_applicable") continue;
     counters[item.module].total++;
-    if (item.status === "completed" || item.status === "not_applicable") counters[item.module].done++;
+    if (item.status === "completed") counters[item.module].done++;
   }
 
   const operations = counters.operations.total ? counters.operations.done / counters.operations.total : 0;
