@@ -16,8 +16,7 @@ export type WorkflowSnapshot = {
   fileClosed: boolean;
 };
 
-const ACCORDION_PHASES = ["confirm", "accounts"] as const;
-type AccordionPhase = (typeof ACCORDION_PHASES)[number];
+type AccordionPhase = "confirm" | "accounts";
 
 type LifecycleWorkflowStackProps = {
   workflow: WorkflowSnapshot;
@@ -27,6 +26,10 @@ type LifecycleWorkflowStackProps = {
   postConfirmOpsContent: ReactNode;
   eventReadinessContent: ReactNode;
   accountsContent: ReactNode;
+  postConfirmOpsComplete?: boolean;
+  postConfirmOpsSummary?: string;
+  eventReadinessComplete?: boolean;
+  eventReadinessSummary?: string;
   /** Force-expand an accordion phase (e.g. deep link to a confirm/accounts field). */
   forceExpandPhase?: AccordionPhase | "event" | null;
   confirmSummary?: string;
@@ -40,6 +43,10 @@ export function LifecycleWorkflowStack({
   postConfirmOpsContent,
   eventReadinessContent,
   accountsContent,
+  postConfirmOpsComplete = false,
+  postConfirmOpsSummary = "Ops actions complete",
+  eventReadinessComplete = false,
+  eventReadinessSummary = "Event form ready",
   forceExpandPhase = null,
   confirmSummary = "Confirmation blockers cleared",
   accountsSummary = "Accounts & post-event closed",
@@ -52,6 +59,9 @@ export function LifecycleWorkflowStack({
   }, [active, forceExpandPhase]);
 
   const postConfirmActive = confirmed && (active === "event" || active === "duringEvent");
+  const accountsOpensLabel = workflow.accountsStartDate
+    ? `the morning after the final show (${formatDate(workflow.accountsStartDate)})`
+    : "the morning after the final show";
 
   return (
     <section id="event-lifecycle-workflow" className="mb-5 space-y-3">
@@ -61,7 +71,7 @@ export function LifecycleWorkflowStack({
           <p className="mt-1 text-xs text-ink-muted etched">
             Focus: <span className="font-medium text-ink-secondary">{workflow.label}</span>
             {workflow.accountsStartDate && active !== "accounts" && active !== "complete" && active !== "terminal" ? (
-              <> · Accounts opens {formatDate(workflow.accountsStartDate)}</>
+              <> · Accounts opens {accountsOpensLabel}</>
             ) : null}
           </p>
         </div>
@@ -71,8 +81,7 @@ export function LifecycleWorkflowStack({
         <div className="rounded-2xl bg-marble-shadow/30 px-4 py-3 text-sm text-ink-secondary etched">
           Event in progress
           {workflow.finalShowDate ? ` through ${formatDate(workflow.finalShowDate)}` : ""}.
-          {" "}Accounts and Feedback open
-          {workflow.accountsStartDate ? ` on ${formatDate(workflow.accountsStartDate)}` : " the day after the final show"}.
+          {" "}Accounts opens {accountsOpensLabel}.
         </div>
       )}
 
@@ -102,24 +111,26 @@ export function LifecycleWorkflowStack({
 
       {confirmed && (
         <>
-          <article
+          <PostConfirmPanel
             id="lifecycle-post-confirm-ops"
-            className={
-              "carved-card overflow-hidden rounded-2xl px-5 py-4 " +
-              (postConfirmActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
-            }
+            title="Ops actions"
+            complete={postConfirmOpsComplete}
+            collapsedSummary={postConfirmOpsSummary}
+            activeHighlight={postConfirmActive}
+            forceOpen={forceExpandPhase === "event"}
           >
             {postConfirmOpsContent}
-          </article>
-          <article
+          </PostConfirmPanel>
+          <PostConfirmPanel
             id="lifecycle-event-readiness"
-            className={
-              "carved-card overflow-hidden rounded-2xl px-5 py-4 " +
-              (postConfirmActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
-            }
+            title="Event form readiness"
+            complete={eventReadinessComplete}
+            collapsedSummary={eventReadinessSummary}
+            activeHighlight={postConfirmActive}
+            forceOpen={false}
           >
             {eventReadinessContent}
-          </article>
+          </PostConfirmPanel>
         </>
       )}
 
@@ -135,6 +146,76 @@ export function LifecycleWorkflowStack({
         </WorkflowAccordion>
       )}
     </section>
+  );
+}
+
+function PostConfirmPanel({
+  id,
+  title,
+  complete,
+  collapsedSummary,
+  activeHighlight,
+  forceOpen,
+  children,
+}: {
+  id: string;
+  title: string;
+  complete: boolean;
+  collapsedSummary: string;
+  activeHighlight: boolean;
+  forceOpen: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(() => !complete);
+
+  useEffect(() => {
+    if (forceOpen) {
+      setOpen(true);
+      return;
+    }
+    if (complete) setOpen(false);
+    else setOpen(true);
+  }, [complete, forceOpen]);
+
+  return (
+    <article
+      id={id}
+      className={
+        "carved-card overflow-hidden rounded-2xl " +
+        (activeHighlight && !complete ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
+      }
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+        aria-expanded={open}
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink-primary etched-deep">{title}</h3>
+            {complete ? (
+              <span className="rounded-full bg-marble-shadow/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">
+                Done
+              </span>
+            ) : (
+              <span className="rounded-full bg-sage/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text etched">
+                Active
+              </span>
+            )}
+          </div>
+          {!open && (
+            <p className="mt-1 text-xs text-ink-muted etched">{collapsedSummary}</p>
+          )}
+        </div>
+        <span className="shrink-0 text-ink-muted" aria-hidden="true">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-ink-muted/10 px-5 py-4">
+          {children}
+        </div>
+      )}
+    </article>
   );
 }
 
