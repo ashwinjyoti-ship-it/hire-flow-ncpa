@@ -40,6 +40,7 @@ import {
   shouldUseCompactSchedule,
   shouldUseTwoColumnSchedule,
 } from "../lib/venue-schedule-view";
+import { VENUES_SCHEDULE_ANCHOR_ID, VENUES_SCHEDULE_READINESS_KEY } from "../../worker/lib/venue-schedule-readiness";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -204,13 +205,21 @@ export function EventDetailPage() {
     if (!focusedFieldKey) return;
     if (scrolledToFieldRef.current === focusedFieldKey) return;
     const frame = window.requestAnimationFrame(() => {
+      if (focusedFieldKey === VENUES_SCHEDULE_READINESS_KEY) {
+        if (tab !== "venues") return;
+        const el = document.getElementById(VENUES_SCHEDULE_ANCHOR_ID);
+        if (!el) return;
+        scrolledToFieldRef.current = focusedFieldKey;
+        scrollAppMainToElement(el, "start", "smooth");
+        return;
+      }
       const el = document.getElementById(`checklist-${focusedFieldKey}`);
       if (!el) return;
       scrolledToFieldRef.current = focusedFieldKey;
       scrollAppMainToElement(el, "center", "smooth");
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusedFieldKey, tab, checklistData]);
+  }, [focusedFieldKey, tab, checklistData, data?.venue_bookings]);
 
   useEffect(() => {
     if (!momMissingPrompt) return;
@@ -641,11 +650,13 @@ export function EventDetailPage() {
       )}
 
       {tab === "venues" && (
-        <VenuesView
-          bookings={data?.venue_bookings ?? []}
-          canEdit={can(user?.permissions, "event.edit")}
-          eventId={id}
-        />
+        <div id={VENUES_SCHEDULE_ANCHOR_ID} className="scroll-mt-3">
+          <VenuesView
+            bookings={data?.venue_bookings ?? []}
+            canEdit={can(user?.permissions, "event.edit")}
+            eventId={id}
+          />
+        </div>
       )}
       {tab === "documents" && (
         <DocumentsView

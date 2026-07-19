@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { EventFormReadiness, ReadinessSection, ReadinessState } from "../../worker/lib/event-readiness";
-import { venueScheduleIssueLabel } from "../../worker/lib/venue-schedule-readiness";
+import { venueScheduleIssueLabel, VENUES_SCHEDULE_READINESS_KEY } from "../../worker/lib/venue-schedule-readiness";
 
 type EventReadinessPanelProps = {
   eventId: string;
@@ -92,7 +92,7 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
           )}
         </div>
         <Link
-          to={`/events/${eventId}?tab=venues`}
+          to={`/events/${eventId}?tab=venues&field=${VENUES_SCHEDULE_READINESS_KEY}`}
           className="carved-btn shrink-0 rounded-full bg-neutral-btn px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-secondary etched"
         >
           {complete ? "View schedule" : "Fix schedule"}

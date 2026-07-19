@@ -92,6 +92,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Still needed");
     expect(source).toContain("Venues &amp; schedule");
     expect(source).toContain("Fix schedule");
+    expect(source).toContain("VENUES_SCHEDULE_READINESS_KEY");
+    expect(source).toContain("VENUES_SCHEDULE_ANCHOR_ID");
     expect(source).toContain("section.missingLabels.map");
     expect(source).not.toContain("section.missingLabels.slice(0, 2)");
     expect(source).toContain("section.missingKeys[index]");
