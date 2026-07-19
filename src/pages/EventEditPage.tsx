@@ -240,8 +240,15 @@ export function EventEditPage() {
     const field = searchParams.get("field");
     const requestedVenue = Math.max(0, Number.parseInt(searchParams.get("venue") ?? "0", 10) || 0);
     const focusKey = `${requestedVenue}:${field ?? section ?? ""}`;
-    if (step !== 2 || !section || focusedRequirementRef.current === focusKey) return;
-    if (requestedVenue < form.venue_bookings.length && requirementsVenueTab !== requestedVenue) {
+    if (!hydrated || (!section && !field) || focusedRequirementRef.current === focusKey) return;
+
+    const isPocDeepLink = section === "poc" || Boolean(field?.startsWith("poc_"));
+    const requiredStep = isPocDeepLink ? 0 : 2;
+    if (step !== requiredStep) {
+      if (isPocDeepLink) setStep(0);
+      return;
+    }
+    if (!isPocDeepLink && requestedVenue < form.venue_bookings.length && requirementsVenueTab !== requestedVenue) {
       setRequirementsVenueTab(requestedVenue);
       return;
     }

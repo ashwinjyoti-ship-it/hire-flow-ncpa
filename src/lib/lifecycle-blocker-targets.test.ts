@@ -3,6 +3,7 @@ import { blockersForTransition, type EventLifecycleRow } from "../../worker/lib/
 import {
   ACTIONABLE_LIFECYCLE_BLOCKERS,
   BLOCKER_TARGETS,
+  resolveBlockerWorkHref,
 } from "./lifecycle-blocker-targets";
 
 function event(overrides: Partial<EventLifecycleRow> = {}): EventLifecycleRow {
@@ -70,5 +71,10 @@ describe("BLOCKER_TARGETS", () => {
   it("links payment completion to payment_status (not a stale 'received' key)", () => {
     expect(BLOCKER_TARGETS["Payment must be completed."]?.fieldKey).toBe("payment_status");
     expect(BLOCKER_TARGETS["Payment must be received."]).toBeUndefined();
+  });
+
+  it("routes the POC confirmation blocker to the event form POC section", () => {
+    expect(resolveBlockerWorkHref("ev_1", BLOCKER_TARGETS["POC not filled, cannot confirm."]!))
+      .toBe("/events/ev_1/edit?step=0&section=poc");
   });
 });

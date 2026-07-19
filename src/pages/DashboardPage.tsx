@@ -9,7 +9,7 @@ import { dashboardOperationalCounts, operationalLifecycleEntries } from "../lib/
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { eventDisplayName } from "../lib/event-display";
 import { getDaysOverdue, getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
-import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
+import { BLOCKER_TARGETS, resolveBlockerWorkHref } from "../lib/lifecycle-blocker-targets";
 import { formatDate } from "../lib/use-lookups";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
@@ -283,8 +283,7 @@ function pipelineMilestoneLabel(status: "approved" | "confirmed"): string {
 function pipelineDecisionHref(entry: LifecycleEntry): string {
   const target = entry.decision_blocker ? BLOCKER_TARGETS[entry.decision_blocker] : undefined;
   if (!target) return getEventOperationsLink(entry.event_id);
-  if (target.fieldKey === "poc_name") return `/events/${entry.event_id}/edit?step=0&section=poc`;
-  return `/events/${entry.event_id}?tab=${target.tab}&field=${encodeURIComponent(target.fieldKey)}`;
+  return resolveBlockerWorkHref(entry.event_id, target);
 }
 
 function PipelineDecisionBadge({ entry }: { entry: LifecycleEntry }) {

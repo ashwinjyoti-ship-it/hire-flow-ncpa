@@ -176,6 +176,19 @@ describe("frontend regression guards", () => {
     expect(routes).toContain("payment_status: paymentStatusRow?.value ?? null");
   });
 
+  it("deep-links POC blockers to the event form POC section", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const edit = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const pocFields = readFileSync(resolve(root, "src/components/event-form/PocFields.tsx"), "utf8");
+    const blockerTargets = readFileSync(resolve(root, "src/lib/lifecycle-blocker-targets.ts"), "utf8");
+
+    expect(detail).toContain("resolveBlockerWorkHref");
+    expect(blockerTargets).toContain("getEventPocEditLink(eventId)");
+    expect(pocFields).toContain('id="requirement-poc"');
+    expect(edit).toContain('section === "poc"');
+    expect(edit).toContain("const requiredStep = isPocDeepLink ? 0 : 2");
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
     const shell = readFileSync(resolve(root, "src/components/shell/AppShell.tsx"), "utf8");

@@ -1,3 +1,5 @@
+import { getEventPocEditLink } from "./event-edit-form";
+
 export type TaskLike = {
   id: string;
   title: string;
@@ -109,6 +111,9 @@ export function getTaskWorkLink(task: Pick<TaskLike, "event_id" | "source_module
   if (task.source_rule?.startsWith("event_form_readiness:")) {
     const section = task.source_rule.slice("event_form_readiness:".length);
     return `/events/${task.event_id}/edit?step=2&section=${encodeURIComponent(section)}`;
+  }
+  if (task.source_rule === "poc_incomplete" || task.source_field_key === "poc_name") {
+    return getEventPocEditLink(task.event_id, task.source_field_key ?? "poc_name");
   }
   const inferred = inferTaskWorkTarget(task);
   const tab = inferred.module;

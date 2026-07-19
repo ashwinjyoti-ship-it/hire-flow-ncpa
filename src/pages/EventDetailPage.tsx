@@ -14,7 +14,7 @@ import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
-import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
+import { BLOCKER_TARGETS, resolveBlockerWorkHref } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
@@ -413,11 +413,7 @@ export function EventDetailPage() {
   }
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
-    if (target.fieldKey === "poc_name") {
-      navigate(`/events/${id}/edit?step=0&section=poc`);
-      return;
-    }
-    selectTab(target.tab, target.fieldKey);
+    navigate(resolveBlockerWorkHref(id, target));
   }
 
   function selectTab(next: EventDetailTab, fieldKey: string | null = null) {

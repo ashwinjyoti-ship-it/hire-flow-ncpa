@@ -229,3 +229,10 @@ export function organisationValueFromName(name: string): string {
   const trimmed = name.trim();
   return trimmed ? `new:${trimmed}` : "";
 }
+
+/** Deep link into the Point of Contact section on the event edit form (Step 1). */
+export function getEventPocEditLink(eventId: string, fieldKey?: string | null): string {
+  const params = new URLSearchParams({ step: "0", section: "poc" });
+  if (fieldKey) params.set("field", fieldKey);
+  return `/events/${eventId}/edit?${params.toString()}`;
+}
