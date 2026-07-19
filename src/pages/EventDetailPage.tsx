@@ -8,7 +8,7 @@ import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncomplete
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
 import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
-import { formatDate, formatDateTime, formatDuration, formatTime, formatTimeRange } from "../lib/use-lookups";
+import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
@@ -32,9 +32,7 @@ import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
-import { omitEventLevelRequirements, parseRequirements } from "../lib/event-edit-form";
 import { formatActivityType } from "../../worker/lib/types";
-import { isOptionalAffirmative } from "../../worker/lib/optional-requirements";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -638,7 +636,6 @@ export function EventDetailPage() {
       {tab === "venues" && (
         <VenuesView
           bookings={data?.venue_bookings ?? []}
-          eventRequirements={e.requirements}
           canEdit={can(user?.permissions, "event.edit")}
           eventId={id}
         />
@@ -1525,26 +1522,6 @@ function DocumentsView({
   );
 }
 
-function requirementText(value: unknown): string | null {
-  if (value == null) return null;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  if (typeof value === "number" && !Number.isNaN(value)) return String(value);
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  return String(value);
-}
-
-function resolveVenueRequirements(
-  booking: DetailResponse["venue_bookings"][number],
-  eventRequirements: DetailResponse["event"]["requirements"],
-): Record<string, unknown> {
-  const venueReqs = parseRequirements(booking.requirements) ?? {};
-  if (Object.keys(venueReqs).length > 0) return venueReqs;
-  return omitEventLevelRequirements(parseRequirements(eventRequirements) ?? {});
-}
-
 function formatAcTiming(
   start: string | null | undefined,
   end: string | null | undefined,
@@ -1555,33 +1532,53 @@ function formatAcTiming(
   return minutes != null ? `${range} (${formatDuration(minutes)})` : range;
 }
 
-function VenueTimingCell({ label, value }: { label: string; value: string | null }) {
+function ScheduleTimingCell({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
-    <div className="rounded-xl bg-marble-highlight/70 px-3 py-2.5">
+    <div className="rounded-lg bg-marble-highlight/80 px-3 py-2">
       <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
-      <div className="mt-0.5 text-sm font-semibold tabular-nums text-ink-primary etched-deep">{value}</div>
+      <div className="mt-0.5 text-sm font-medium tabular-nums text-ink-primary etched-deep">{value}</div>
     </div>
   );
 }
 
-function VenueDetailRow({ label, value }: { label: string; value: string }) {
+function ScheduleEntryCard({ entry }: { entry: ScheduleEntryView }) {
+  const withAc = formatAcTiming(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes);
+  const withoutAc = formatAcTiming(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes);
+  const mainTime = entry.start_time || entry.end_time ? formatTimeRange(entry.start_time, entry.end_time) : null;
+
   return (
-    <div className="grid gap-1 border-b border-marble-shadow/25 py-2 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-4">
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</dt>
-      <dd className="whitespace-pre-wrap text-sm text-ink-primary etched-deep">{value}</dd>
-    </div>
+    <article
+      className="rounded-xl border border-marble-shadow/30 bg-marble-highlight/60 p-4"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h5 className="text-sm font-semibold text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</h5>
+        {entry.activity_date && (
+          <span className="rounded-full bg-marble-shadow/35 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-secondary etched">
+            {formatDate(entry.activity_date)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {mainTime && <ScheduleTimingCell label="Time" value={mainTime} />}
+        {withAc && <ScheduleTimingCell label="With AC" value={withAc} />}
+        {withoutAc && <ScheduleTimingCell label="Without AC" value={withoutAc} />}
+      </div>
+
+      {entry.notes && (
+        <p className="mt-3 rounded-lg bg-marble-shadow/20 px-3 py-2 text-xs text-ink-muted etched">{entry.notes}</p>
+      )}
+    </article>
   );
 }
 
 function VenuesView({
   bookings,
-  eventRequirements,
   canEdit,
   eventId,
 }: {
   bookings: DetailResponse["venue_bookings"];
-  eventRequirements: DetailResponse["event"]["requirements"];
   canEdit: boolean;
   eventId: string;
 }) {
@@ -1590,7 +1587,7 @@ function VenuesView({
       <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
         <h3 className="text-sm font-semibold text-ink-primary etched-deep">No venues booked</h3>
         <p className="mt-2 text-sm text-ink-secondary etched">
-          Venue bookings, activity timings, AC windows, and call times will appear here once they are added on the event form.
+          Venue bookings and activity timings will appear here once they are added on the event form.
         </p>
         {canEdit && (
           <Link
@@ -1607,47 +1604,11 @@ function VenuesView({
   return (
     <div className="space-y-5">
       {bookings.map((vb, idx) => {
-        const reqs = resolveVenueRequirements(vb, eventRequirements);
         const entries = (vb.schedule_entries as ScheduleEntryView[]) ?? [];
-        const soundCall = requirementText(reqs.sound_call_time);
-        const lightCall = requirementText(reqs.light_call_time);
-        const ushersCall = requirementText(reqs.ushers_call_time);
-        const loadersCall = requirementText(reqs.loaders_call_time);
-        const pianoTuning = requirementText(reqs.piano_tuning_time);
-        const callTimes = [
-          { label: "Sound call", value: soundCall ? formatTime(soundCall) : null },
-          { label: "Light call", value: lightCall ? formatTime(lightCall) : null },
-          { label: "Ushers call", value: ushersCall ? formatTime(ushersCall) : null },
-          { label: "Loaders call", value: loadersCall ? formatTime(loadersCall) : null },
-          { label: "Piano tuning", value: pianoTuning ? formatTime(pianoTuning) : null },
-        ].filter((item): item is { label: string; value: string } => Boolean(item.value));
-
-        const staffingRows: Array<{ label: string; value: string }> = [];
-        if (isOptionalAffirmative(reqs.ushers_required)) {
-          staffingRows.push({ label: "Ushers", value: "Required" });
-        }
-        if (isOptionalAffirmative(reqs.loaders_required)) {
-          staffingRows.push({ label: "Loaders", value: "Required" });
-        }
-        if (isOptionalAffirmative(reqs.green_rooms_required) || requirementText(reqs.green_room_amenities)) {
-          const parts = [
-            isOptionalAffirmative(reqs.green_rooms_required) ? "Required" : null,
-            requirementText(reqs.green_room_amenities),
-          ].filter(Boolean) as string[];
-          if (parts.length) staffingRows.push({ label: "Green rooms", value: parts.join(" · ") });
-        }
-        if (isOptionalAffirmative(reqs.piano_required)) {
-          staffingRows.push({ label: "Piano", value: "Required" });
-        }
-
-        const sound = requirementText(reqs.sound);
-        const light = requirementText(reqs.light);
-        const venueNotes = requirementText(vb.notes);
-        const hasOpsDetails = callTimes.length > 0 || Boolean(sound || light || staffingRows.length || venueNotes);
 
         return (
           <section key={(vb.id as string) ?? `venue-${idx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-marble-shadow/30 pb-4">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-marble-shadow/30 bg-marble-highlight/70 px-4 py-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Venue {idx + 1}</p>
                 <h3 className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{(vb.venue as string) || "Untitled venue"}</h3>
@@ -1662,80 +1623,20 @@ function VenuesView({
               </div>
             </div>
 
-            <div className="mb-5">
-              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Activity timings</h4>
+            <div>
+              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</h4>
               {entries.length === 0 ? (
-                <p className="text-sm text-ink-muted etched">No schedule entries for this venue.</p>
+                <div className="rounded-xl border border-dashed border-marble-shadow/40 bg-marble-shadow/15 px-4 py-6 text-center">
+                  <p className="text-sm text-ink-muted etched">No schedule entries for this venue yet.</p>
+                </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl bg-marble-shadow/25">
-                  <table className="min-w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-marble-shadow/30 text-[10px] uppercase tracking-wider text-ink-muted">
-                        <th className="px-3 py-2.5 font-semibold etched">Activity</th>
-                        <th className="px-3 py-2.5 font-semibold etched">Date</th>
-                        <th className="px-3 py-2.5 font-semibold etched">Time</th>
-                        <th className="px-3 py-2.5 font-semibold etched">With AC</th>
-                        <th className="px-3 py-2.5 font-semibold etched">Without AC</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.map((entry, entryIdx) => {
-                        const withAc = formatAcTiming(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes);
-                        const withoutAc = formatAcTiming(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes);
-                        return (
-                          <tr
-                            key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`}
-                            className="border-b border-marble-shadow/20 last:border-b-0 align-top"
-                          >
-                            <td className="px-3 py-3">
-                              <div className="font-medium text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</div>
-                              {entry.notes && <div className="mt-1 text-xs text-ink-muted etched">{entry.notes}</div>}
-                            </td>
-                            <td className="px-3 py-3 text-ink-secondary etched">{entry.activity_date ? formatDate(entry.activity_date) : "—"}</td>
-                            <td className="px-3 py-3 tabular-nums text-ink-primary etched-deep">
-                              {entry.start_time || entry.end_time ? formatTimeRange(entry.start_time, entry.end_time) : "—"}
-                            </td>
-                            <td className="px-3 py-3 tabular-nums text-ink-secondary etched">{withAc ?? "—"}</td>
-                            <td className="px-3 py-3 tabular-nums text-ink-secondary etched">{withoutAc ?? "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {entries.map((entry, entryIdx) => (
+                    <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`} entry={entry} />
+                  ))}
                 </div>
               )}
             </div>
-
-            {hasOpsDetails ? (
-              <div className="space-y-4">
-                {callTimes.length > 0 && (
-                  <div>
-                    <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Call times</h4>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                      {callTimes.map((item) => (
-                        <VenueTimingCell key={item.label} label={item.label} value={item.value} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(sound || light || staffingRows.length > 0 || venueNotes) && (
-                  <div>
-                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Sound, light &amp; staffing</h4>
-                    <dl className="rounded-xl bg-marble-shadow/20 px-3 py-1">
-                      {sound && <VenueDetailRow label="Sound" value={sound} />}
-                      {light && <VenueDetailRow label="Light" value={light} />}
-                      {staffingRows.map((row) => (
-                        <VenueDetailRow key={row.label} label={row.label} value={row.value} />
-                      ))}
-                      {venueNotes && <VenueDetailRow label="Venue notes" value={venueNotes} />}
-                    </dl>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-ink-muted etched">No call times or staffing details recorded for this venue.</p>
-            )}
           </section>
         );
       })}
