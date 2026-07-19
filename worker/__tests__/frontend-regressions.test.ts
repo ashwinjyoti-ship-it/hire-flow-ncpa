@@ -170,14 +170,21 @@ describe("frontend regression guards", () => {
     expect(source).toContain("filterTasksForActiveWorkflow");
   });
 
-  it("shows Event prep as parallel ops actions and form readiness tracks", () => {
-    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
-    expect(source).toContain("eventPrepOpsSections");
-    expect(source).toContain("confirmSections");
-    expect(source).toContain("Ops actions");
-    expect(source).toContain("neither blocks the other");
-    expect(source).toContain('label="Ops actions"');
-    expect(source).toContain('label="Event form"');
+  it("shows post-confirm ops and event readiness outside the Event prep accordion", () => {
+    const stack = readFileSync(resolve(root, "src/components/LifecycleWorkflowStack.tsx"), "utf8");
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(stack).toContain("postConfirmOpsContent");
+    expect(stack).toContain("eventReadinessContent");
+    expect(stack).toContain("lifecycle-post-confirm-ops");
+    expect(stack).toContain("lifecycle-event-readiness");
+    expect(stack).not.toContain('STACK_PHASES');
+    expect(detail).toContain("postConfirmOpsContent={");
+    expect(detail).toContain("eventReadinessContent={");
+    expect(detail).toContain("eventPrepOpsSections");
+    expect(detail).toContain("confirmSections");
+    expect(detail).toContain("Ops actions");
+    expect(detail).toContain('label="Ops actions"');
+    expect(detail).toContain('label="Event form"');
   });
 
   it("warns on post-show operational dates without generic reopen controls", () => {
