@@ -175,8 +175,9 @@ describe("frontend regression guards", () => {
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
     expect(stack).toContain("postConfirmOpsContent");
     expect(stack).toContain("eventReadinessContent");
-    expect(stack).toContain("lifecycle-post-confirm-ops");
-    expect(stack).toContain("lifecycle-event-readiness");
+    expect(stack).toContain("PostConfirmPanel");
+    expect(stack).toContain("postConfirmOpsComplete");
+    expect(stack).toContain("morning after the final show");
     expect(stack).not.toContain('STACK_PHASES');
     expect(detail).toContain("postConfirmOpsContent={");
     expect(detail).toContain("eventReadinessContent={");
