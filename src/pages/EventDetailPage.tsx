@@ -394,11 +394,6 @@ export function EventDetailPage() {
   ).length;
   const eventPrepOpsTotal = eventPrepOpsVisible.length;
   const eventPrepOpsRatio = eventPrepOpsTotal ? eventPrepOpsDone / eventPrepOpsTotal : 1;
-  const eventPrepSummary = [
-    eventPrepOpsTotal ? `Ops ${eventPrepOpsDone}/${eventPrepOpsTotal}` : "Ops",
-    readiness ? `Form ${readiness.percentage}%` : "Form",
-  ].join(" · ");
-
   const momInput: MomEventInput = {
     title: e.title,
     description: e.description,
@@ -569,9 +564,9 @@ export function EventDetailPage() {
 
       <LifecycleWorkflowStack
         workflow={workflow}
+        confirmed={e.status === "confirmed"}
         forceExpandPhase={forceExpandPhase}
         confirmSummary="Confirmation blockers cleared"
-        eventSummary={eventPrepSummary}
         accountsSummary={fileClosed ? "File closed" : "Post-event & accounts"}
         confirmContent={(
           <div className="space-y-6">
@@ -615,59 +610,53 @@ export function EventDetailPage() {
             </div>
           </div>
         )}
-        eventContent={(
-          <div className="space-y-6">
-            <div>
-              <p className="text-xs text-ink-muted etched">
-                After confirmation, finish ops actions and the event form in parallel — neither blocks the other.
-                Window runs through the first show date.
-              </p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-marble-shadow/20 px-3.5 py-3">
-                  <ProgressBar label="Ops actions" value={eventPrepOpsRatio} compact />
-                </div>
-                <div className="rounded-xl bg-marble-shadow/20 px-3.5 py-3">
-                  <ProgressBar
-                    label="Event form"
-                    value={readiness ? readiness.percentage / 100 : null}
-                    compact
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div id="lifecycle-event-prep-ops">
-              <div className="mb-3">
+        postConfirmOpsContent={(
+          <div id="lifecycle-event-prep-ops">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
                 <h2 className="text-base font-semibold text-ink-primary etched-deep">Ops actions</h2>
                 <p className="text-xs text-ink-muted etched">
                   NOC, OnStage/Emailer, Monthly Chart, and Technical Meeting — post-confirm prep.
                 </p>
               </div>
-              <ChecklistModuleView
-                sections={eventPrepOpsSections}
-                canEdit={canUpdateChecklist}
-                savingItemId={savingChecklistItemId}
-                focusedFieldKey={focusedFieldKey}
-                finalShowDate={e.event_end_date ?? e.event_start_date}
-                showGoToTop
-                onGoToTop={clearFocusedField}
-                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
-              />
+              <div className="min-w-[8rem] rounded-xl bg-marble-shadow/20 px-3.5 py-2">
+                <ProgressBar label="Ops actions" value={eventPrepOpsRatio} compact />
+              </div>
             </div>
-
-            <div id="lifecycle-event-prep-form">
-              <div className="mb-3">
+            <ChecklistModuleView
+              sections={eventPrepOpsSections}
+              canEdit={canUpdateChecklist}
+              savingItemId={savingChecklistItemId}
+              focusedFieldKey={focusedFieldKey}
+              finalShowDate={e.event_end_date ?? e.event_start_date}
+              showGoToTop
+              onGoToTop={clearFocusedField}
+              onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+            />
+          </div>
+        )}
+        eventReadinessContent={(
+          <div id="lifecycle-event-prep-form">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
                 <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form readiness</h2>
                 <p className="text-xs text-ink-muted etched">
                   Required event-form fields. Automated — these rows cannot be manually ticked.
                 </p>
               </div>
-              {readiness ? (
-                <EventReadinessPanel eventId={e.id} readiness={readiness} detailed />
-              ) : (
-                <p className="text-sm text-ink-muted etched">Readiness data is not available yet.</p>
-              )}
+              <div className="min-w-[8rem] rounded-xl bg-marble-shadow/20 px-3.5 py-2">
+                <ProgressBar
+                  label="Event form"
+                  value={readiness ? readiness.percentage / 100 : null}
+                  compact
+                />
+              </div>
             </div>
+            {readiness ? (
+              <EventReadinessPanel eventId={e.id} readiness={readiness} detailed />
+            ) : (
+              <p className="text-sm text-ink-muted etched">Readiness data is not available yet.</p>
+            )}
           </div>
         )}
         accountsContent={(

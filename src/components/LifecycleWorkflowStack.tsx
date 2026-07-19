@@ -16,47 +16,42 @@ export type WorkflowSnapshot = {
   fileClosed: boolean;
 };
 
-const STACK_PHASES: Array<"confirm" | "event" | "accounts"> = ["confirm", "event", "accounts"];
+const ACCORDION_PHASES = ["confirm", "accounts"] as const;
+type AccordionPhase = (typeof ACCORDION_PHASES)[number];
 
 type LifecycleWorkflowStackProps = {
   workflow: WorkflowSnapshot;
+  /** Post-confirm ops + form readiness render when the event is confirmed. */
+  confirmed: boolean;
   confirmContent: ReactNode;
-  eventContent: ReactNode;
+  postConfirmOpsContent: ReactNode;
+  eventReadinessContent: ReactNode;
   accountsContent: ReactNode;
-  /** Force-expand a phase (e.g. deep link to a checklist field). */
-  forceExpandPhase?: "confirm" | "event" | "accounts" | null;
+  /** Force-expand an accordion phase (e.g. deep link to a confirm/accounts field). */
+  forceExpandPhase?: AccordionPhase | "event" | null;
   confirmSummary?: string;
-  eventSummary?: string;
   accountsSummary?: string;
 };
 
 export function LifecycleWorkflowStack({
   workflow,
+  confirmed,
   confirmContent,
-  eventContent,
+  postConfirmOpsContent,
+  eventReadinessContent,
   accountsContent,
   forceExpandPhase = null,
   confirmSummary = "Confirmation blockers cleared",
-  eventSummary = "Ops actions & event form ready",
   accountsSummary = "Accounts & post-event closed",
 }: LifecycleWorkflowStackProps) {
   const active = workflow.activePhase;
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => initialExpanded(active, forceExpandPhase));
+  const [expanded, setExpanded] = useState<Record<AccordionPhase, boolean>>(() => initialExpanded(active, forceExpandPhase));
 
   useEffect(() => {
     setExpanded(initialExpanded(active, forceExpandPhase));
   }, [active, forceExpandPhase]);
 
-  const contentByPhase = {
-    confirm: confirmContent,
-    event: eventContent,
-    accounts: accountsContent,
-  } as const;
-  const summaryByPhase = {
-    confirm: confirmSummary,
-    event: eventSummary,
-    accounts: accountsSummary,
-  } as const;
+  const postConfirmActive = confirmed && (active === "event" || active === "duringEvent");
 
   return (
     <section id="event-lifecycle-workflow" className="mb-5 space-y-3">
@@ -93,74 +88,130 @@ export function LifecycleWorkflowStack({
         </div>
       )}
 
-      {active !== "terminal" && STACK_PHASES.map((phase) => {
-        if (!isWorkflowPhaseVisible(phase, active)) return null;
+      {active !== "terminal" && isWorkflowPhaseVisible("confirm", active) && (
+        <WorkflowAccordion
+          phase="confirm"
+          active={active}
+          expanded={expanded.confirm}
+          onToggle={() => setExpanded((prev) => ({ ...prev, confirm: !prev.confirm }))}
+          summary={confirmSummary}
+        >
+          {confirmContent}
+        </WorkflowAccordion>
+      )}
 
-        const isActive = phase === active;
-        const isOpen = Boolean(expanded[phase]);
-        return (
+      {confirmed && (
+        <>
           <article
-            key={phase}
-            id={`lifecycle-phase-${phase}`}
+            id="lifecycle-post-confirm-ops"
             className={
-              "carved-card overflow-hidden rounded-2xl " +
-              (isActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
+              "carved-card overflow-hidden rounded-2xl px-5 py-4 " +
+              (postConfirmActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
             }
           >
-            <button
-              type="button"
-              onClick={() => setExpanded((prev) => ({ ...prev, [phase]: !prev[phase] }))}
-              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
-              aria-expanded={isOpen}
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-ink-primary etched-deep">
-                    {WORKFLOW_PHASE_LABELS[phase]}
-                  </h3>
-                  {isActive ? (
-                    <span className="rounded-full bg-sage/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text etched">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-marble-shadow/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">
-                      Done
-                    </span>
-                  )}
-                </div>
-                {!isOpen && !isActive && (
-                  <p className="mt-1 text-xs text-ink-muted etched">{summaryByPhase[phase]}</p>
-                )}
-                {!isOpen && isActive && (
-                  <p className="mt-1 text-xs text-ink-muted etched">Expand to continue this workflow</p>
-                )}
-              </div>
-              <span className="shrink-0 text-ink-muted" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
-            </button>
-            {isOpen && (
-              <div className="border-t border-ink-muted/10 px-5 py-4">
-                {contentByPhase[phase]}
-              </div>
-            )}
+            {postConfirmOpsContent}
           </article>
-        );
-      })}
+          <article
+            id="lifecycle-event-readiness"
+            className={
+              "carved-card overflow-hidden rounded-2xl px-5 py-4 " +
+              (postConfirmActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
+            }
+          >
+            {eventReadinessContent}
+          </article>
+        </>
+      )}
+
+      {active !== "terminal" && isWorkflowPhaseVisible("accounts", active) && (
+        <WorkflowAccordion
+          phase="accounts"
+          active={active}
+          expanded={expanded.accounts}
+          onToggle={() => setExpanded((prev) => ({ ...prev, accounts: !prev.accounts }))}
+          summary={accountsSummary}
+        >
+          {accountsContent}
+        </WorkflowAccordion>
+      )}
     </section>
+  );
+}
+
+function WorkflowAccordion({
+  phase,
+  active,
+  expanded,
+  onToggle,
+  summary,
+  children,
+}: {
+  phase: AccordionPhase;
+  active: LifecycleWorkflowPhase;
+  expanded: boolean;
+  onToggle: () => void;
+  summary: string;
+  children: ReactNode;
+}) {
+  const isActive = phase === active;
+  return (
+    <article
+      id={`lifecycle-phase-${phase}`}
+      className={
+        "carved-card overflow-hidden rounded-2xl " +
+        (isActive ? "bg-marble-highlight/60 ring-1 ring-sage/20" : "bg-marble-highlight/40")
+      }
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+        aria-expanded={expanded}
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink-primary etched-deep">
+              {WORKFLOW_PHASE_LABELS[phase]}
+            </h3>
+            {isActive ? (
+              <span className="rounded-full bg-sage/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sage-text etched">
+                Active
+              </span>
+            ) : (
+              <span className="rounded-full bg-marble-shadow/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">
+                Done
+              </span>
+            )}
+          </div>
+          {!expanded && !isActive && (
+            <p className="mt-1 text-xs text-ink-muted etched">{summary}</p>
+          )}
+          {!expanded && isActive && (
+            <p className="mt-1 text-xs text-ink-muted etched">Expand to continue this workflow</p>
+          )}
+        </div>
+        <span className="shrink-0 text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-ink-muted/10 px-5 py-4">
+          {children}
+        </div>
+      )}
+    </article>
   );
 }
 
 function initialExpanded(
   active: LifecycleWorkflowPhase,
-  force: "confirm" | "event" | "accounts" | null,
-): Record<string, boolean> {
-  const next: Record<string, boolean> = { confirm: false, event: false, accounts: false };
-  if (force) {
+  force: AccordionPhase | "event" | null,
+): Record<AccordionPhase, boolean> {
+  const next: Record<AccordionPhase, boolean> = { confirm: false, accounts: false };
+  if (force && force !== "event") {
     next[force] = true;
     return next;
   }
-  if (active === "confirm" || active === "event" || active === "accounts") {
-    next[active] = true;
-  }
+  if (active === "confirm") next.confirm = true;
+  if (active === "accounts") next.accounts = true;
   return next;
 }
 
