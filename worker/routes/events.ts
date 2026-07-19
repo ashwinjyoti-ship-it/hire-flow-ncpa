@@ -389,12 +389,17 @@ eventRoutes.get("/:id", requireUser, async (c) => {
   );
   const poc = await evaluatePocCompletionForEvent(c.env.DB, id);
 
+  const paymentStatusRow = await c.env.DB.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'payment_status' LIMIT 1"
+  ).bind(id).first<{ value: string | null }>();
+
   return c.json({
     event: {
       ...(event as Record<string, unknown>),
       requirements: Object.keys(mergedRequirements).length > 0 ? mergedRequirements : null,
       poc_completion: poc,
       event_readiness: calculateEventFormReadiness(mergedRequirements),
+      payment_status: paymentStatusRow?.value ?? null,
     },
     venue_bookings: bookings,
     activity,

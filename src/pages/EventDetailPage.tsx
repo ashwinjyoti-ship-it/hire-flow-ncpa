@@ -56,6 +56,7 @@ type DetailResponse = {
     requirements: Record<string, unknown> | string | null;
     approval_status: string | null;
     confirmation_status: string | null;
+    payment_status: string | null;
     overall_completion: number | null;
     ops_completion: number | null;
     accounts_completion: number | null;
@@ -470,7 +471,7 @@ export function EventDetailPage() {
         <SummaryItem label="Dates" value={e.event_start_date ? `${formatDate(e.event_start_date)}${e.event_end_date && e.event_end_date !== e.event_start_date ? " to " + formatDate(e.event_end_date) : ""}` : "-"} />
         <SummaryItem label="Owner" value={e.event_owner ?? "-"} />
         <SummaryItem label="Approval" value={prettyState(e.approval_status)} />
-        <SummaryItem label="Signed confirmation" value={prettyState(e.confirmation_status)} />
+        <SummaryItem label="Payment status" value={prettyState(e.payment_status)} />
       </div>
 
       {e.event_readiness && (
