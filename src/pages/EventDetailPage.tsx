@@ -423,8 +423,8 @@ export function EventDetailPage() {
     })),
   };
 
-  function openEventFormExport(autoPrint: boolean) {
-    openEventFormPrintable(eventFormPrintInput, autoPrint);
+  function openEventFormExport() {
+    openEventFormPrintable(eventFormPrintInput);
   }
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
@@ -502,8 +502,8 @@ export function EventDetailPage() {
         canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
         onGenerateMom={requestGenerateMom}
-        onPrintEventForm={() => openEventFormExport(true)}
-        onExportEventFormPdf={() => openEventFormExport(false)}
+        onPrintEventForm={openEventFormExport}
+        onExportEventFormPdf={openEventFormExport}
         onChoose={(status) => {
           setStatusModal(status);
           setReason("");
