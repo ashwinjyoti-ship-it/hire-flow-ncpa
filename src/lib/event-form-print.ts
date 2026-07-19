@@ -472,18 +472,22 @@ ${buildEventFormPrintBody(input)}
 /** Open the printable event form in a new window. autoPrint triggers the browser print dialog. */
 export function openEventFormPrintable(input: EventFormPrintInput, autoPrint: boolean): void {
   const html = buildEventFormHtml(input);
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
-  if (!win) {
-    URL.revokeObjectURL(url);
-    return;
-  }
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+
   if (autoPrint) {
-    win.addEventListener("load", () => {
+    const triggerPrint = () => {
       win.focus();
       win.print();
-    });
+    };
+    if (win.document.readyState === "complete") {
+      triggerPrint();
+    } else {
+      win.addEventListener("load", triggerPrint, { once: true });
+    }
   }
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
