@@ -15,6 +15,7 @@ describe("checklist intervals", () => {
       technical_meeting: 0,
       feedback: 5,
       accounts_file: 3,
+      accounts_file_send_back: 3,
       send_file_to_accounts: 1,
       tds_send_to_accounts: 0,
     });

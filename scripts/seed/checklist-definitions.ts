@@ -110,13 +110,16 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Post-Event Closure", field_key: "final_closure_notes", label: "Final Closure Notes", field_type: "textarea" },
 
   // ===== ACCOUNTS TRACKING CHECKLIST =====
-  // Note: 3-day follow-up is automatic via accounts_file task on file_sent_to_accounts.
+  // File ping-pong with Accounts: sent → edit received → sent back → … → final received.
+  // Automatic tasks use accounts_file (follow up) and accounts_file_send_back rules (+3 days by default).
 
   // A1. FILE TRACKING
-  { module: "accounts", section: "File Tracking", field_key: "file_sent_to_accounts", label: "File Sent to Accounts — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Final File is Received" } },
-  { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_1", label: "File Received Back — Edit 1", field_type: "dropdown", options: ["Pending", "Received"], default_value: "Pending" },
-  { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_2", label: "File Received Back — Edit 2", field_type: "dropdown", options: ["Pending", "Received"], default_value: "Pending" },
-  { module: "accounts", section: "File Tracking", field_key: "final_file_received", label: "Final File Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
+  { module: "accounts", section: "File Tracking", field_key: "file_sent_to_accounts", label: "File Sent to Accounts — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Edit 1 or final file received" } },
+  { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_1", label: "File Received Back — Edit 1 — Date", field_type: "date", triggers_task: { rule: "accounts_file_send_back", title: "Send file back to Accounts", due_after_days: 3, complete_when: "Sent back after Edit 1 or final file received" } },
+  { module: "accounts", section: "File Tracking", field_key: "file_sent_back_after_edit_1", label: "File Sent Back After Edit 1 — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Edit 2 or final file received" } },
+  { module: "accounts", section: "File Tracking", field_key: "file_received_back_edit_2", label: "File Received Back — Edit 2 — Date", field_type: "date", triggers_task: { rule: "accounts_file_send_back", title: "Send file back to Accounts", due_after_days: 3, complete_when: "Sent back after Edit 2 or final file received" } },
+  { module: "accounts", section: "File Tracking", field_key: "file_sent_back_after_edit_2", label: "File Sent Back After Edit 2 — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Final file received" } },
+  { module: "accounts", section: "File Tracking", field_key: "final_file_received", label: "Final File Received — Date", field_type: "date" },
 
   // A2. PAYMENT & REFUND TRACKING
   { module: "accounts", section: "Payment & Refund", field_key: "security_deposit_refund", label: "Security Deposit Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },

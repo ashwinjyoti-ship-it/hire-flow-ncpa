@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -554,6 +554,128 @@ describe("checklist task date synchronization", () => {
     const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
     expect(taskWrite?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
     expect(taskWrite?.binds).toContain("2026-06-09");
+  });
+});
+
+describe("accounts file ping-pong tasks", () => {
+  function accountsItem(overrides: Partial<ChecklistItemRow>): ChecklistItemRow {
+    return {
+      id: "cli_sent",
+      event_id: "ev_accounts",
+      definition_id: "def_sent",
+      module: "accounts",
+      section: "File Tracking",
+      field_key: "file_sent_to_accounts",
+      label: "File Sent to Accounts — Date",
+      status: "completed",
+      value: "2026-07-01",
+      due_date: "2026-07-01",
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "date",
+      options: null,
+      is_computed: 0,
+      triggers_task: JSON.stringify({ rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3 }),
+      visibility_rule: null,
+      sort_order: 0,
+      ...overrides,
+    };
+  }
+
+  function buildAccountsDb(tracking: Record<string, string | null>) {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("SELECT event_owner_id")) return { event_owner_id: null };
+            if (sql.includes("SELECT field_key, value FROM checklist_items")) {
+              return null;
+            }
+            if (sql.includes("SELECT id FROM checklist_items WHERE event_id = ? AND field_key = ?")) {
+              const fieldKey = statement.binds[1] as string;
+              const id = tracking[`${fieldKey}_id`] ?? `cli_${fieldKey}`;
+              return tracking[fieldKey] ? { id } : { id };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("SELECT field_key, value FROM checklist_items")) {
+              return {
+                results: Object.entries(tracking)
+                  .filter(([key, value]) => !key.endsWith("_id") && value)
+                  .map(([field_key, value]) => ({ field_key, value })),
+              };
+            }
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...statement.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    return { db, writes };
+  }
+
+  it("skips the initial follow-up when Edit 1 is received within 3 days", async () => {
+    const { db, writes } = buildAccountsDb({
+      file_received_back_edit_1: "2026-07-03",
+      file_received_back_edit_1_id: "cli_edit1",
+    });
+    await maybeCreateTaskForChecklistItem(db, accountsItem({ id: "cli_sent" }), "user_1");
+    expect(writes.some((write) => write.sql.includes("INSERT INTO tasks"))).toBe(false);
+    expect(writes.some((write) => write.sql.includes("SET status = 'cancelled'"))).toBe(true);
+  });
+
+  it("creates a follow-up due 3 days after the file is sent", async () => {
+    const { db, writes } = buildAccountsDb({});
+    await maybeCreateTaskForChecklistItem(db, accountsItem({ id: "cli_sent" }), "user_1");
+    const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
+    expect(taskWrite?.binds).toContain("Follow up with Accounts");
+    expect(taskWrite?.binds).toContain("2026-07-04");
+  });
+
+  it("creates a send-back task due 3 days after Edit 1 is received", async () => {
+    const { db, writes } = buildAccountsDb({});
+    await maybeCreateTaskForChecklistItem(db, accountsItem({
+      id: "cli_edit1",
+      field_key: "file_received_back_edit_1",
+      label: "File Received Back — Edit 1 — Date",
+      value: "2026-07-05",
+      due_date: "2026-07-05",
+      triggers_task: JSON.stringify({ rule: "accounts_file_send_back", title: "Send file back to Accounts", due_after_days: 3 }),
+    }), "user_1");
+    const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
+    expect(taskWrite?.binds).toContain("Send file back to Accounts");
+    expect(taskWrite?.binds).toContain("2026-07-08");
+  });
+
+  it("completes the initial follow-up when Edit 1 is recorded", async () => {
+    const { db, writes } = buildAccountsDb({
+      file_sent_to_accounts: "2026-07-01",
+      file_sent_to_accounts_id: "cli_sent",
+    });
+    await maybeCompleteAccountsFileTasks(db, "ev_accounts", "file_received_back_edit_1", "2026-07-05", "user_1");
+    const completeWrite = writes.find((write) => write.sql.includes("SET status = 'completed'"));
+    expect(completeWrite?.binds).toContain("cli_sent");
+    expect(completeWrite?.binds).toContain("accounts_file");
+  });
+
+  it("completes all accounts file tasks when the final file date is entered", async () => {
+    const { db, writes } = buildAccountsDb({});
+    await maybeCompleteAccountsFileTasks(db, "ev_accounts", "final_file_received", "2026-07-20", "user_1");
+    const completeWrites = writes.filter((write) => write.sql.includes("SET status = 'completed'"));
+    expect(completeWrites).toHaveLength(2);
+    expect(completeWrites[0]?.binds).toContain("accounts_file");
+    expect(completeWrites[1]?.binds).toContain("accounts_file_send_back");
   });
 });
 

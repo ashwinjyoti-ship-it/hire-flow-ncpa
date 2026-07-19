@@ -163,6 +163,22 @@ describe("task workflow helpers", () => {
       source_field_key: null,
     }))).toBe("/events/ev_123?tab=accounts&field=final_file_received");
     expect(getTaskWorkLink(task({
+      id: "send-back",
+      title: "Send file back to Accounts",
+      event_id: "ev_123",
+      source_module: "accounts",
+      source_field_key: "file_received_back_edit_1",
+      source_rule: "accounts_file_send_back",
+    }))).toBe("/events/ev_123?tab=accounts&field=file_sent_back_after_edit_1");
+    expect(getTaskWorkLink(task({
+      id: "follow-up",
+      title: "Follow up with Accounts",
+      event_id: "ev_123",
+      source_module: "accounts",
+      source_field_key: "file_sent_back_after_edit_1",
+      source_rule: "accounts_file",
+    }))).toBe("/events/ev_123?tab=accounts&field=file_received_back_edit_2");
+    expect(getTaskWorkLink(task({
       id: "poc",
       title: "Complete Point of Contact",
       event_id: "ev_123",

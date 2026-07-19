@@ -13,6 +13,7 @@ export const CHECKLIST_INTERVAL_KEYS = [
   "technical_meeting",
   "feedback",
   "accounts_file",
+  "accounts_file_send_back",
   "send_file_to_accounts",
   "tds_send_to_accounts",
 ] as const;
@@ -29,6 +30,7 @@ export const DEFAULT_CHECKLIST_INTERVALS: ChecklistIntervals = {
   technical_meeting: 0,
   feedback: 5,
   accounts_file: 3,
+  accounts_file_send_back: 3,
   send_file_to_accounts: 1,
   tds_send_to_accounts: 0,
 };
@@ -72,7 +74,12 @@ export const CHECKLIST_INTERVAL_META: Array<{
   {
     key: "accounts_file",
     label: "Accounts file follow-up",
-    description: "Days after File Sent to Accounts before follow-up is due.",
+    description: "Days after a file is with Accounts before a follow-up task is due.",
+  },
+  {
+    key: "accounts_file_send_back",
+    label: "Accounts file send-back",
+    description: "Days after an edit is received from Accounts before the send-back task is due.",
   },
   {
     key: "send_file_to_accounts",
