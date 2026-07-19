@@ -6,6 +6,7 @@ import {
   EXECUTION_SECTIONS,
   shouldPreserveExecutionSectionValue,
 } from "./requirement-sections";
+import { isChecklistFieldVisible, type ChecklistVisibilityItem } from "./checklist-visibility";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
@@ -190,6 +191,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     await syncTdsDependentChecklistFromEvent(db, eventId);
     await syncOnstageDependentChecklistFromEvent(db, eventId);
     await syncEmailerDependentChecklistFromEvent(db, eventId);
+    await syncInstalmentDependentChecklistFromEvent(db, eventId);
     await recalculateEventCompletion(db, eventId);
     return;
   }
@@ -224,6 +226,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   await syncTdsDependentChecklistFromEvent(db, eventId);
   await syncOnstageDependentChecklistFromEvent(db, eventId);
   await syncEmailerDependentChecklistFromEvent(db, eventId);
+  await syncInstalmentDependentChecklistFromEvent(db, eventId);
   await syncEventReferenceChecklist(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
@@ -248,11 +251,27 @@ export async function getChecklistItems(db: D1Database, eventId: string): Promis
 
 export async function recalculateEventCompletion(db: D1Database, eventId: string): Promise<{ operations: number; accounts: number; overall: number }> {
   const { results } = await db.prepare(
-    `SELECT ci.module, ci.status, ci.due_date, cd.is_computed
+    `SELECT ci.module, ci.status, ci.due_date, ci.field_key, ci.value, cd.is_computed, cd.visibility_rule
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.event_id = ? AND ci.field_key != 'event_status'`
-  ).bind(eventId).all<{ module: ChecklistModule; status: string; due_date: string | null; is_computed: number }>();
+  ).bind(eventId).all<{
+    module: ChecklistModule;
+    status: string;
+    due_date: string | null;
+    field_key: string;
+    value: string | null;
+    is_computed: number;
+    visibility_rule: string | null;
+  }>();
+
+  const visibilityByKey = new Map<string, ChecklistVisibilityItem>(
+    results.map((item) => [item.field_key, {
+      field_key: item.field_key,
+      value: item.value,
+      visibility_rule: item.visibility_rule,
+    }]),
+  );
 
   const today = todayIso();
   const counters: Record<ChecklistModule, { done: number; total: number }> = {
@@ -262,6 +281,7 @@ export async function recalculateEventCompletion(db: D1Database, eventId: string
 
   for (const item of results) {
     if (item.is_computed) continue;
+    if (!isChecklistFieldVisible(item, visibilityByKey)) continue;
     if (item.due_date && item.due_date > today && item.status !== "completed") continue;
     // not_applicable means the field does not apply to this event (hidden gates,
     // N/A defaults, etc.) — exclude it from the rollup so untouched work does
@@ -488,6 +508,9 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
   }
   if (fieldKey === "emailer") {
     await syncEmailerDependentChecklist(db, eventId, value);
+  }
+  if (fieldKey === "instalment") {
+    await syncInstalmentDependentChecklist(db, eventId, value);
   }
 }
 
@@ -732,6 +755,72 @@ async function syncEmailerDependentChecklistFromEvent(db: D1Database, eventId: s
   ).bind(eventId).first<{ value: string | null }>();
   if (!row) return;
   await syncEmailerDependentChecklist(db, eventId, row.value);
+}
+
+/** Installment date fields only apply when Instalment = Yes. */
+export const INSTALMENT_DEPENDENT_FIELD_KEYS = [
+  "installment_1_expected_date",
+  "installment_2_expected_date",
+  "installment_3_expected_date",
+  "installment_4_expected_date",
+  "installment_5_expected_date",
+] as const;
+
+export async function syncInstalmentDependentChecklist(
+  db: D1Database,
+  eventId: string,
+  instalmentValue: string | null | undefined,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (normalise(instalmentValue) !== "yes") {
+    await db.prepare(
+      `UPDATE checklist_items
+       SET status = 'not_applicable', last_updated_at = ?
+       WHERE event_id = ?
+         AND field_key IN (
+           'installment_1_expected_date',
+           'installment_2_expected_date',
+           'installment_3_expected_date',
+           'installment_4_expected_date',
+           'installment_5_expected_date'
+         )
+         AND status != 'not_applicable'`
+    ).bind(now, eventId).run();
+    return;
+  }
+
+  const { results } = await db.prepare(
+    `SELECT ci.id, ci.value, cd.field_type, cd.is_computed
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND ci.field_key IN (
+         'installment_1_expected_date',
+         'installment_2_expected_date',
+         'installment_3_expected_date',
+         'installment_4_expected_date',
+         'installment_5_expected_date'
+       )`
+  ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
+
+  for (const row of results ?? []) {
+    const status = itemStatusForValue({
+      field_type: row.field_type,
+      value: row.value,
+      is_computed: row.is_computed,
+    });
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
+    ).bind(status, now, row.id).run();
+  }
+}
+
+async function syncInstalmentDependentChecklistFromEvent(db: D1Database, eventId: string): Promise<void> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'instalment'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!row) return;
+  await syncInstalmentDependentChecklist(db, eventId, row.value);
 }
 
 /**

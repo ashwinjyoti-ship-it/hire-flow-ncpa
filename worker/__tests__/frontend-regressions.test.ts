@@ -181,12 +181,16 @@ describe("frontend regression guards", () => {
     const edit = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
     const pocFields = readFileSync(resolve(root, "src/components/event-form/PocFields.tsx"), "utf8");
     const blockerTargets = readFileSync(resolve(root, "src/lib/lifecycle-blocker-targets.ts"), "utf8");
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
 
     expect(detail).toContain("resolveBlockerWorkHref");
     expect(blockerTargets).toContain("getEventPocEditLink(eventId)");
     expect(pocFields).toContain('id="requirement-poc"');
     expect(edit).toContain('section === "poc"');
     expect(edit).toContain("const requiredStep = isPocDeepLink ? 0 : 2");
+    expect(operations).toContain("isChecklistFieldVisible");
+    expect(operations).toContain('if (item.status === "not_applicable") continue');
+    expect(operations).toContain("syncInstalmentDependentChecklist");
   });
 
   it("keeps notification flyout above routed page controls", () => {

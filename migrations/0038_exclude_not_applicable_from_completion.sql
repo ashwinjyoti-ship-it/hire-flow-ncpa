@@ -3,6 +3,28 @@
 -- Only applicable items belong in the denominator; only completed items count
 -- as done.
 
+-- Heal instalment date rows that were left active while Instalment = No.
+UPDATE checklist_items
+SET status = 'not_applicable',
+    due_date = NULL,
+    completed_at = NULL,
+    completed_by = NULL,
+    last_updated_at = datetime('now')
+WHERE field_key IN (
+      'installment_1_expected_date',
+      'installment_2_expected_date',
+      'installment_3_expected_date',
+      'installment_4_expected_date',
+      'installment_5_expected_date'
+    )
+  AND event_id IN (
+    SELECT event_id
+    FROM checklist_items
+    WHERE field_key = 'instalment'
+      AND lower(trim(COALESCE(value, ''))) != 'yes'
+  )
+  AND status != 'not_applicable';
+
 UPDATE events
 SET ops_completion = COALESCE((
       SELECT 1.0 * SUM(CASE WHEN ci.status = 'completed' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
