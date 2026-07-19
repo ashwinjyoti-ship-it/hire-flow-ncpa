@@ -71,6 +71,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain("selectNextLifecycleBlocker");
   });
 
+  it("labels event tasks as system-generated and separates completed history", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(source).toContain("System-generated");
+    expect(source).not.toContain('task_type === "automatic" ? "Automatic"');
+    expect(source).toContain("Completed ({completedTasks.length})");
+    expect(source).toContain("No open tasks.");
+  });
+
   it("uses the established status palette for event-form readiness", () => {
     const source = readFileSync(resolve(root, "src/components/EventReadinessPanel.tsx"), "utf8");
 
