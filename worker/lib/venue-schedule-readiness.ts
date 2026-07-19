@@ -1,5 +1,8 @@
 import type { ReadinessSection, ReadinessState } from "./event-readiness";
 
+export const VENUES_SCHEDULE_READINESS_KEY = "venues_schedule";
+export const VENUES_SCHEDULE_ANCHOR_ID = "event-venues-schedule";
+
 export type VenueBookingReadinessInput = {
   venue?: string | null;
   schedule_entries?: Array<{ activity_date?: string | null }> | null;
