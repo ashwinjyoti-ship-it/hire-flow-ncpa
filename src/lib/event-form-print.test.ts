@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildEventFormHtml,
   buildEventFormPrintBody,
@@ -6,6 +6,7 @@ import {
   eventFormPrintDocumentTitle,
   eventFormPrintFileBase,
   eventFormPrintTitle,
+  openEventFormPrintable,
 } from "./event-form-print";
 
 const sample = {
@@ -148,6 +149,34 @@ describe("event-form-print", () => {
 
     expect(body).toContain("No venue bookings recorded.");
     expect(body).toContain("No documents uploaded.");
+  });
+
+  it("opens print HTML via document.write instead of a blob URL", () => {
+    const writes: string[] = [];
+    const mockWin = {
+      document: {
+        readyState: "complete",
+        open: () => undefined,
+        write: (html: string) => {
+          writes.push(html);
+        },
+        close: () => undefined,
+      },
+      focus: () => undefined,
+      print: () => undefined,
+      addEventListener: () => undefined,
+    };
+    const openSpy = vi.fn().mockReturnValue(mockWin);
+    vi.stubGlobal("window", { open: openSpy });
+
+    openEventFormPrintable(sample, false);
+
+    expect(openSpy).toHaveBeenCalledWith("", "_blank");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain("<h1>Gujrati Play - Long Drive</h1>");
+    expect(writes[0]).not.toContain("blob:");
+
+    vi.unstubAllGlobals();
   });
 
   it("builds print-ready HTML with separate Print and Export to PDF toolbar actions", () => {
