@@ -5,7 +5,7 @@ export const VENUES_SCHEDULE_ANCHOR_ID = "event-venues-schedule";
 
 export type VenueBookingReadinessInput = {
   venue?: string | null;
-  schedule_entries?: Array<{ activity_date?: string | null }> | null;
+  schedule_entries?: Array<{ activity_type?: string | null; activity_date?: string | null }> | null;
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,6 +18,16 @@ function venueLabel(booking: VenueBookingReadinessInput, index: number): string 
 function hasDatedScheduleEntry(booking: VenueBookingReadinessInput): boolean {
   return (booking.schedule_entries ?? []).some(
     (entry) => typeof entry.activity_date === "string" && DATE_RE.test(entry.activity_date),
+  );
+}
+
+/** Show is the real schedule activity — setup/rehearsal alone is only partial. */
+function hasDatedShowEntry(booking: VenueBookingReadinessInput): boolean {
+  return (booking.schedule_entries ?? []).some(
+    (entry) =>
+      entry.activity_type === "show"
+      && typeof entry.activity_date === "string"
+      && DATE_RE.test(entry.activity_date),
   );
 }
 
@@ -40,6 +50,7 @@ export function calculateVenueScheduleReadinessSection(
 
   const issues: Array<{ key: string; label: string }> = [];
   let readyCount = 0;
+  let hasPartialSchedule = false;
 
   bookings.forEach((booking, index) => {
     const label = venueLabel(booking, index);
@@ -52,6 +63,11 @@ export function calculateVenueScheduleReadinessSection(
       issues.push({ key: `venue_${index}_schedule`, label: `${label}: add activity schedule` });
       return;
     }
+    if (!hasDatedShowEntry(booking)) {
+      hasPartialSchedule = true;
+      issues.push({ key: `venue_${index}_show`, label: `${label}: add show` });
+      return;
+    }
     readyCount += 1;
   });
 
@@ -59,7 +75,7 @@ export function calculateVenueScheduleReadinessSection(
   const percentage = total ? Math.round((readyCount / total) * 100) : 0;
   const state: ReadinessState = issues.length === 0
     ? "complete"
-    : readyCount === 0
+    : readyCount === 0 && !hasPartialSchedule
       ? "missing"
       : percentage >= 70
         ? "almost"
@@ -80,6 +96,7 @@ export function calculateVenueScheduleReadinessSection(
 
 export function venueScheduleIssueLabel(label: string): string {
   return label
+    .replace(/: add show$/i, "")
     .replace(/: add activity schedule$/i, "")
     .replace(/: select a venue$/i, "")
     .trim();
@@ -91,7 +108,7 @@ export function normalizeVenueBookingsForReadiness(
   return bookings.map((booking) => ({
     venue: typeof booking.venue === "string" ? booking.venue : null,
     schedule_entries: Array.isArray(booking.schedule_entries)
-      ? booking.schedule_entries as Array<{ activity_date?: string | null }>
+      ? booking.schedule_entries as Array<{ activity_type?: string | null; activity_date?: string | null }>
       : [],
   }));
 }
@@ -101,16 +118,20 @@ export function parseVenueBookingsForReadiness(
 ): VenueBookingReadinessInput[] {
   return rows.map((row) => ({
     venue: row.venue,
-    schedule_entries: parseScheduleDates(row.schedule_json),
+    schedule_entries: parseScheduleEntries(row.schedule_json),
   }));
 }
 
-function parseScheduleDates(raw: unknown): Array<{ activity_date?: string | null }> {
-  if (Array.isArray(raw)) return raw as Array<{ activity_date?: string | null }>;
+function parseScheduleEntries(raw: unknown): Array<{ activity_type?: string | null; activity_date?: string | null }> {
+  if (Array.isArray(raw)) {
+    return raw as Array<{ activity_type?: string | null; activity_date?: string | null }>;
+  }
   if (typeof raw === "string") {
     try {
       const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? parsed as Array<{ activity_date?: string | null }> : [];
+      return Array.isArray(parsed)
+        ? parsed as Array<{ activity_type?: string | null; activity_date?: string | null }>
+        : [];
     } catch {
       return [];
     }
@@ -120,7 +141,10 @@ function parseScheduleDates(raw: unknown): Array<{ activity_date?: string | null
 
 export const VENUE_BOOKINGS_FOR_READINESS_SQL = `
   SELECT vb.venue,
-    (SELECT json_group_array(json_object('activity_date', se.activity_date))
+    (SELECT json_group_array(json_object(
+      'activity_date', se.activity_date,
+      'activity_type', se.activity_type
+    ))
      FROM schedule_entries se WHERE se.venue_booking_id = vb.id) AS schedule_json
   FROM venue_bookings vb
   WHERE vb.event_id = ?

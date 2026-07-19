@@ -39,6 +39,7 @@ import {
   getVenueBookingKey,
   shouldUseCompactSchedule,
   shouldUseTwoColumnSchedule,
+  venuesAndScheduleTabLabel,
 } from "../lib/venue-schedule-view";
 import { VENUES_SCHEDULE_ANCHOR_ID, VENUES_SCHEDULE_READINESS_KEY } from "../../worker/lib/venue-schedule-readiness";
 
@@ -584,7 +585,10 @@ export function EventDetailPage() {
           ["operations", "Operations"],
           ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
-          ["venues", `Venues & Schedule${data?.venue_bookings.length ? ` (${data.venue_bookings.length})` : ""}`],
+          ["venues", venuesAndScheduleTabLabel(
+            data?.venue_bookings.length ?? 0,
+            e.event_readiness?.sections.find((section) => section.key === VENUES_SCHEDULE_READINESS_KEY)?.state,
+          )],
           ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
         ] as const).map(([key, label]) => (
           <button
@@ -1791,7 +1795,7 @@ function VenuesView({
                     "shrink-0 rounded-full px-3 py-1.5 text-left text-xs font-medium etched transition-colors " +
                     (isExpanded
                       ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
-                      : "bg-marble-shadow/35 text-ink-secondary hover:bg-marble-shadow/50")
+                      : "carved-btn border border-ink-muted/25 bg-neutral-btn text-ink-secondary hover:bg-neutral-btn-hover")
                   }
                 >
                   <span className="block max-w-[12rem] truncate">{(booking.venue as string) || `Venue ${idx + 1}`}</span>

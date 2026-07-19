@@ -42,6 +42,7 @@ function AutomatedCheckbox({ section }: { section: ReadinessSection }) {
 
 function VenueScheduleHighlight({ eventId, section }: { eventId: string; section: ReadinessSection }) {
   const complete = section.state === "complete";
+  const partiallyFilled = section.state === "partial" || section.state === "almost";
   const issueCount = section.missingLabels.length;
   const venueChips = section.missingLabels
     .slice(0, 4)
@@ -56,7 +57,9 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
         "mt-4 rounded-xl border p-4 " +
         (complete
           ? "border-status-confirmed/20 bg-status-confirmed/8"
-          : "border-status-cancelled/25 bg-status-cancelled/10")
+          : partiallyFilled
+            ? "border-status-awaitingApproval/25 bg-status-awaitingApproval/10"
+            : "border-status-cancelled/25 bg-status-cancelled/10")
       }
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -64,8 +67,10 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">Venues &amp; schedule</p>
           {complete ? (
             <p className="mt-1 text-sm font-semibold text-sage-text etched">
-              {section.total === 1 ? "Venue schedule is set" : `All ${section.total} venues have activity schedules`}
+              {section.total === 1 ? "Venue show schedule is set" : `All ${section.total} venues have show schedules`}
             </p>
+          ) : partiallyFilled ? (
+            <p className="mt-1 text-sm font-semibold text-ink-primary etched-deep">Partially filled</p>
           ) : issueCount === 1 ? (
             <p className="mt-1 text-sm font-semibold text-ink-primary etched-deep">{section.missingLabels[0]}</p>
           ) : (
