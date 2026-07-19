@@ -137,6 +137,8 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain('["activity", "Activity"]');
     expect(source).toContain("Schedule");
     expect(source).toContain("With AC");
+    expect(source).toContain("venues booked");
+    expect(source).toContain("getDefaultExpandedVenueKeys");
     expect(source).not.toContain("Sound, light &amp; staffing");
     expect(source).not.toContain("Call times");
   });

@@ -33,6 +33,13 @@ import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
 import { formatActivityType } from "../../worker/lib/types";
+import {
+  formatScheduleSummary,
+  getDefaultExpandedVenueKeys,
+  getVenueBookingKey,
+  shouldUseCompactSchedule,
+  shouldUseTwoColumnSchedule,
+} from "../lib/venue-schedule-view";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -1542,15 +1549,28 @@ function ScheduleTimingCell({ label, value }: { label: string; value: string | n
   );
 }
 
-function ScheduleEntryCard({ entry }: { entry: ScheduleEntryView }) {
+function ScheduleEntryCard({ entry, compact = false }: { entry: ScheduleEntryView; compact?: boolean }) {
   const withAc = formatAcTiming(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes);
   const withoutAc = formatAcTiming(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes);
   const mainTime = entry.start_time || entry.end_time ? formatTimeRange(entry.start_time, entry.end_time) : null;
 
+  if (compact) {
+    return (
+      <tr className="border-b border-marble-shadow/20 last:border-b-0 align-top">
+        <td className="px-3 py-2.5">
+          <div className="font-medium text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</div>
+          {entry.notes && <div className="mt-1 text-xs text-ink-muted etched">{entry.notes}</div>}
+        </td>
+        <td className="px-3 py-2.5 text-ink-secondary etched">{entry.activity_date ? formatDate(entry.activity_date) : "—"}</td>
+        <td className="px-3 py-2.5 tabular-nums text-ink-primary etched-deep">{mainTime ?? "—"}</td>
+        <td className="px-3 py-2.5 tabular-nums text-ink-secondary etched">{withAc ?? "—"}</td>
+        <td className="px-3 py-2.5 tabular-nums text-ink-secondary etched">{withoutAc ?? "—"}</td>
+      </tr>
+    );
+  }
+
   return (
-    <article
-      className="rounded-xl border border-marble-shadow/30 bg-marble-highlight/60 p-4"
-    >
+    <article className="rounded-xl border border-marble-shadow/30 bg-marble-highlight/60 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h5 className="text-sm font-semibold text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</h5>
         {entry.activity_date && (
@@ -1573,6 +1593,114 @@ function ScheduleEntryCard({ entry }: { entry: ScheduleEntryView }) {
   );
 }
 
+function VenueScheduleSection({
+  entries,
+  venueCount,
+}: {
+  entries: ScheduleEntryView[];
+  venueCount: number;
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-marble-shadow/40 bg-marble-shadow/15 px-4 py-5 text-center">
+        <p className="text-sm text-ink-muted etched">No schedule entries for this venue yet.</p>
+      </div>
+    );
+  }
+
+  if (shouldUseCompactSchedule(entries.length)) {
+    return (
+      <div className="overflow-x-auto rounded-xl border border-marble-shadow/30 bg-marble-highlight/50">
+        <table className="min-w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-marble-shadow/30 text-[10px] uppercase tracking-wider text-ink-muted">
+              <th className="px-3 py-2.5 font-semibold etched">Activity</th>
+              <th className="px-3 py-2.5 font-semibold etched">Date</th>
+              <th className="px-3 py-2.5 font-semibold etched">Time</th>
+              <th className="px-3 py-2.5 font-semibold etched">With AC</th>
+              <th className="px-3 py-2.5 font-semibold etched">Without AC</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry, entryIdx) => (
+              <ScheduleEntryCard
+                key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`}
+                entry={entry}
+                compact
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className={"grid gap-3 " + (shouldUseTwoColumnSchedule(entries.length, venueCount) ? "lg:grid-cols-2" : "grid-cols-1")}>
+      {entries.map((entry, entryIdx) => (
+        <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`} entry={entry} />
+      ))}
+    </div>
+  );
+}
+
+function VenueBookingPanel({
+  booking,
+  index,
+  venueCount,
+  expanded,
+  collapsible,
+  onToggle,
+}: {
+  booking: DetailResponse["venue_bookings"][number];
+  index: number;
+  venueCount: number;
+  expanded: boolean;
+  collapsible: boolean;
+  onToggle: () => void;
+}) {
+  const entries = (booking.schedule_entries as ScheduleEntryView[]) ?? [];
+  const venueName = (booking.venue as string) || "Untitled venue";
+  const scheduleSummary = formatScheduleSummary(entries);
+
+  return (
+    <section className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-marble-shadow/25 px-4 py-3 sm:px-5 sm:py-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Venue {index + 1}</p>
+          <h3 className="mt-1 truncate text-lg font-semibold text-ink-primary etched-deep">{venueName}</h3>
+          <p className="mt-1 text-xs text-ink-muted etched">{scheduleSummary}</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full bg-marble-shadow/40 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-ink-secondary etched">
+            {String(booking.booking_status ?? "—")}
+          </span>
+          <span className="rounded-full bg-marble-shadow/40 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-ink-secondary etched">
+            {Number(booking.number_of_shows ?? 1)} {Number(booking.number_of_shows ?? 1) === 1 ? "show" : "shows"}
+          </span>
+          {collapsible && (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={expanded}
+              className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-semibold text-ink-secondary etched"
+            >
+              {expanded ? "Collapse" : "Expand"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="px-4 py-4 sm:px-5">
+          <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</h4>
+          <VenueScheduleSection entries={entries} venueCount={venueCount} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function VenuesView({
   bookings,
   canEdit,
@@ -1582,6 +1710,25 @@ function VenuesView({
   canEdit: boolean;
   eventId: string;
 }) {
+  const [expandedVenues, setExpandedVenues] = useState<Set<string>>(() => getDefaultExpandedVenueKeys(bookings));
+  const collapsible = bookings.length >= 2;
+
+  useEffect(() => {
+    setExpandedVenues(getDefaultExpandedVenueKeys(bookings));
+  }, [bookings]);
+
+  function toggleVenue(key: string) {
+    setExpandedVenues((current) => {
+      if (bookings.length >= 3) {
+        return current.has(key) ? new Set<string>() : new Set([key]);
+      }
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   if (bookings.length === 0) {
     return (
       <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
@@ -1602,44 +1749,67 @@ function VenuesView({
   }
 
   return (
-    <div className="space-y-5">
-      {bookings.map((vb, idx) => {
-        const entries = (vb.schedule_entries as ScheduleEntryView[]) ?? [];
-
-        return (
-          <section key={(vb.id as string) ?? `venue-${idx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-marble-shadow/30 bg-marble-highlight/70 px-4 py-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Venue {idx + 1}</p>
-                <h3 className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{(vb.venue as string) || "Untitled venue"}</h3>
-              </div>
-              <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wider">
-                <span className="rounded-full bg-marble-shadow/40 px-3 py-1 font-medium text-ink-secondary etched">
-                  {String(vb.booking_status ?? "—")}
-                </span>
-                <span className="rounded-full bg-marble-shadow/40 px-3 py-1 font-medium text-ink-secondary etched">
-                  {Number(vb.number_of_shows ?? 1)} {Number(vb.number_of_shows ?? 1) === 1 ? "show" : "shows"}
-                </span>
-              </div>
-            </div>
-
+    <div className="space-y-4">
+      {bookings.length > 1 && (
+        <section className="carved-card rounded-2xl bg-marble-highlight/40 p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</h4>
-              {entries.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-marble-shadow/40 bg-marble-shadow/15 px-4 py-6 text-center">
-                  <p className="text-sm text-ink-muted etched">No schedule entries for this venue yet.</p>
-                </div>
-              ) : (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {entries.map((entry, entryIdx) => (
-                    <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`} entry={entry} />
-                  ))}
-                </div>
-              )}
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Overview</p>
+              <h3 className="mt-1 text-sm font-semibold text-ink-primary etched-deep">
+                {bookings.length} venues booked
+              </h3>
+              <p className="mt-1 text-xs text-ink-muted etched">
+                {bookings.length >= 3
+                  ? "Use the venue chips below to focus one schedule at a time."
+                  : "Tap a venue chip to show or hide its schedule."}
+              </p>
             </div>
-          </section>
-        );
-      })}
+          </div>
+          <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 pb-1">
+            {bookings.map((booking, idx) => {
+              const key = getVenueBookingKey(booking, idx);
+              const entries = booking.schedule_entries ?? [];
+              const isExpanded = expandedVenues.has(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleVenue(key)}
+                  aria-pressed={isExpanded}
+                  className={
+                    "shrink-0 rounded-full px-3 py-1.5 text-left text-xs font-medium etched transition-colors " +
+                    (isExpanded
+                      ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
+                      : "bg-marble-shadow/35 text-ink-secondary hover:bg-marble-shadow/50")
+                  }
+                >
+                  <span className="block max-w-[12rem] truncate">{(booking.venue as string) || `Venue ${idx + 1}`}</span>
+                  <span className="mt-0.5 block text-[10px] uppercase tracking-wider opacity-80">
+                    {formatScheduleSummary(entries)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <div className="space-y-4">
+        {bookings.map((booking, idx) => {
+          const key = getVenueBookingKey(booking, idx);
+          return (
+            <VenueBookingPanel
+              key={key}
+              booking={booking}
+              index={idx}
+              venueCount={bookings.length}
+              expanded={!collapsible || expandedVenues.has(key)}
+              collapsible={collapsible}
+              onToggle={() => toggleVenue(key)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
