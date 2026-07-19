@@ -10,6 +10,7 @@ import { isChecklistFieldVisible, type ChecklistVisibilityItem } from "./checkli
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
+import { parseVenueBookingsForReadiness, VENUE_BOOKINGS_FOR_READINESS_SQL } from "./venue-schedule-readiness";
 import {
   areFinancialsReadyForConfirmationLetterDelivery,
   CONFIRMATION_COURIERED_REQUIRES_MADE_MESSAGE,
@@ -1273,7 +1274,11 @@ export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: s
   }>();
   if (!event) return 0;
 
-  const readiness = calculateEventFormReadiness(event.requirements);
+  const { results: venueRows } = await db.prepare(VENUE_BOOKINGS_FOR_READINESS_SQL).bind(eventId).all<{
+    venue: string | null;
+    schedule_json: unknown;
+  }>();
+  const readiness = calculateEventFormReadiness(event.requirements, parseVenueBookingsForReadiness(venueRows));
   const now = new Date().toISOString();
   const terminal = event.status === "cancelled" || event.status === "regret";
   let changed = 0;

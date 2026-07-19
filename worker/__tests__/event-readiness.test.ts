@@ -10,6 +10,7 @@ describe("event form readiness", () => {
   it("starts red without treating silent defaults as progress", () => {
     const readiness = calculateEventFormReadiness({});
     expect(readiness.percentage).toBe(0);
+    expect(readiness.sections.find((section) => section.key === "venues_schedule")?.state).toBe("missing");
     expect(readiness.sections.find((section) => section.key === "technical_sound")?.state).toBe("missing");
     expect(readiness.sections.find((section) => section.key === "staffing_facilities")?.state).toBe("not_applicable");
     expect(readiness.sections.find((section) => section.key === "recording_special")?.state).toBe("not_applicable");
@@ -114,5 +115,17 @@ describe("event form readiness", () => {
     expect(rule).toBe("event_form_readiness:technical_sound");
     expect(readinessSectionKeyFromRule(rule)).toBe("technical_sound");
     expect(readinessSectionKeyFromRule("feedback")).toBeNull();
+  });
+
+  it("includes venue schedule readiness ahead of requirement sections", () => {
+    const readiness = calculateEventFormReadiness({}, [
+      { venue: "TET", schedule_entries: [{ activity_date: "2026-08-28" }] },
+      { venue: "JBT", schedule_entries: [] },
+    ]);
+    const venueSection = readiness.sections[0];
+    expect(venueSection?.key).toBe("venues_schedule");
+    expect(venueSection?.state).toBe("partial");
+    expect(venueSection?.missingLabels).toEqual(["JBT: add activity schedule"]);
+    expect(readiness.missingCount).toBeGreaterThan(0);
   });
 });

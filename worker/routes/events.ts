@@ -16,6 +16,7 @@ import { getEventDateIssues } from "../lib/event-date-policy";
 import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
 import { calculateEventFormReadiness } from "../lib/event-readiness";
+import { parseVenueBookingsForReadiness, VENUE_BOOKINGS_FOR_READINESS_SQL, normalizeVenueBookingsForReadiness } from "../lib/venue-schedule-readiness";
 import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
@@ -398,7 +399,7 @@ eventRoutes.get("/:id", requireUser, async (c) => {
       ...(event as Record<string, unknown>),
       requirements: Object.keys(mergedRequirements).length > 0 ? mergedRequirements : null,
       poc_completion: poc,
-      event_readiness: calculateEventFormReadiness(mergedRequirements),
+      event_readiness: calculateEventFormReadiness(mergedRequirements, normalizeVenueBookingsForReadiness(bookings)),
       payment_status: paymentStatusRow?.value ?? null,
     },
     venue_bookings: bookings,
@@ -690,10 +691,11 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
 // GET /:id/checklist — per-event checklist grouped by module and lifecycle readiness.
 eventRoutes.get("/:id/checklist", requireUser, async (c) => {
   const id = c.req.param("id");
-  const [items, lifecycle, event] = await Promise.all([
+  const [items, lifecycle, event, venueRows] = await Promise.all([
     getChecklistItems(c.env.DB, id),
     getEventLifecycle(c.env.DB, id),
     c.env.DB.prepare("SELECT requirements FROM events WHERE id = ?").bind(id).first<{ requirements: string | null }>(),
+    c.env.DB.prepare(VENUE_BOOKINGS_FOR_READINESS_SQL).bind(id).all<{ venue: string | null; schedule_json: unknown }>(),
   ]);
 
   const grouped: Record<string, Record<string, unknown[]>> = {};
@@ -709,7 +711,7 @@ eventRoutes.get("/:id/checklist", requireUser, async (c) => {
     checklist: grouped,
     lifecycle: lifecycle.readiness,
     poc: lifecycle.poc,
-    readiness: calculateEventFormReadiness(event?.requirements),
+    readiness: calculateEventFormReadiness(event?.requirements, parseVenueBookingsForReadiness(venueRows.results)),
   });
 });
 
