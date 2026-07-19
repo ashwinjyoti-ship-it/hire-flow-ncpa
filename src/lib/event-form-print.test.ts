@@ -169,7 +169,7 @@ describe("event-form-print", () => {
     const openSpy = vi.fn().mockReturnValue(mockWin);
     vi.stubGlobal("window", { open: openSpy });
 
-    openEventFormPrintable(sample, false);
+    openEventFormPrintable(sample);
 
     expect(openSpy).toHaveBeenCalledWith("", "_blank");
     expect(writes).toHaveLength(1);

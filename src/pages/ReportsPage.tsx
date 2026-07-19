@@ -16,7 +16,9 @@ import { apiDelete, apiGet, apiPost } from "../lib/api";
 import { formatDate, formatDateTime, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
-import { downloadWordDoc, htmlTableSection } from "../lib/export";
+import { downloadWordDoc, escapeHtml, htmlTableSection } from "../lib/export";
+import { openPrintableHtml, openPrintableUrl } from "../lib/open-printable";
+import { buildPrintablePageHtml } from "../../shared/printable-html";
 import type { DailyReportContent, ReportTask } from "../../worker/lib/daily-report";
 import { buildMorningAttention, conflictAttentionLabel, type BriefContent, type EveningBriefContent, type MorningAttentionItem, type MorningBriefContent } from "../../worker/lib/brief";
 
@@ -251,14 +253,15 @@ function DailyReportView({ canGenerate }: { canGenerate: boolean }) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 print-hidden">
-                <button type="button" onClick={() => window.print()} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-                  Print
+                <button
+                  type="button"
+                  onClick={() => openPrintableUrl(`/api/reports/daily/${report.id}/pdf`)}
+                  className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched"
+                >
+                  Print / PDF
                 </button>
                 <a href={`/api/reports/daily/${report.id}/xlsx`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                   Excel
-                </a>
-                <a href={`/api/reports/daily/${report.id}/pdf`} target="_blank" rel="noreferrer" className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-                  PDF
                 </a>
                 <button
                   type="button"
@@ -868,6 +871,25 @@ function AnalyticsView() {
     queryFn: () => apiGet<ClientProfile>(`/analytics/client-profile${range}`),
   });
 
+  function openAnalyticsPrintable() {
+    const title = `Venue Analytics — ${formatDate(from)} to ${formatDate(to)}`;
+    const html = buildPrintablePageHtml({
+      title,
+      bodyHtml: `<header>
+  <h1>${escapeHtml(title)}</h1>
+  <p class="meta">${escapeHtml(formatDate(from))} to ${escapeHtml(formatDate(to))}</p>
+</header>
+${analyticsWordBody({
+        utilisation: utilisation.data,
+        conversion: conversion.data,
+        payments: payments.data,
+        performance: performance.data,
+        profile: profile.data,
+      })}`,
+    });
+    openPrintableHtml(html);
+  }
+
   function exportWord() {
     const body = analyticsWordBody({
       utilisation: utilisation.data,
@@ -894,7 +916,7 @@ function AnalyticsView() {
           Venue analytics · {formatDate(from)} to {formatDate(to)} — all five sections follow this range.
         </p>
         <div className="ml-auto flex gap-2 pb-1 print-hidden">
-          <button type="button" onClick={() => window.print()} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
+          <button type="button" onClick={openAnalyticsPrintable} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
             Print / PDF
           </button>
           <button type="button" onClick={exportWord} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">

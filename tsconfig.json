@@ -25,6 +25,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "worker", "functions", "scheduler", "scripts", "vite.config.ts"],
+  "include": ["src", "worker", "functions", "scheduler", "scripts", "shared", "vite.config.ts"],
   "exclude": ["node_modules", "dist", ".wrangler"]
 }

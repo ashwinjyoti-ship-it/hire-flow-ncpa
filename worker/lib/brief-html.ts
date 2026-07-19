@@ -7,6 +7,7 @@
 import { STATUS_LABELS, type EventStatus } from "./state-machine";
 import type { ReportTask } from "./daily-report";
 import { buildMorningAttention, conflictAttentionLabel, type AssigneeTasks, type BriefContent, type EveningBriefContent, type MorningAttentionItem, type MorningBriefContent } from "./brief";
+import { buildPrintablePageHtml } from "../../shared/printable-html";
 
 function esc(value: string | null | undefined): string {
   return (value ?? "")
@@ -683,18 +684,10 @@ export function renderBriefEmail(content: BriefContent, baseUrl: string): string
 /** Print-ready standalone document (GET /reports/daily/:id/pdf for briefs). */
 export function renderBriefPrintable(content: BriefContent, baseUrl: string, generatedByName: string | null, notes: string | null): string {
   const title = briefTitle(content);
-  return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
-<style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 32px; }
-  .toolbar { margin-bottom: 16px; }
-  .toolbar button { font: inherit; padding: 6px 16px; }
-  @media print { .toolbar { display: none; } body { margin: 8px; } }
-</style></head>
-<body>
-<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-<h1 style="font-size:22px;margin-bottom:2px;">${esc(title)}</h1>
-<p style="font-size:11px;color:#6b675f;margin:0 0 16px;">Generated ${esc(content.generated_at)}${generatedByName ? ` by ${esc(generatedByName)}` : " automatically"}${notes ? ` · ${esc(notes)}` : ""}</p>
-${renderBriefBody(content, baseUrl)}
-</body></html>`;
+  const bodyHtml = `<header>
+  <h1>${esc(title)}</h1>
+  <p class="meta">Generated ${esc(content.generated_at)}${generatedByName ? ` by ${esc(generatedByName)}` : " automatically"}${notes ? ` · ${esc(notes)}` : ""}</p>
+</header>
+${renderBriefBody(content, baseUrl)}`;
+  return buildPrintablePageHtml({ title, bodyHtml });
 }

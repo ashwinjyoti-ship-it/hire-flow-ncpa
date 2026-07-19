@@ -28,6 +28,7 @@ import {
 } from "../lib/mom";
 import { openEventFormPrintable, type EventFormPrintInput } from "../lib/event-form-print";
 import { downloadWordDoc } from "../lib/export";
+import { openPrintableHtml } from "../lib/open-printable";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
@@ -372,22 +373,8 @@ export function EventDetailPage() {
     setExportMenuOpen(false);
   }
 
-  function openMomPrintable(autoPrint: boolean) {
-    const html = buildMomHtml(momInput, momTitle, momCustomNotes);
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, "_blank");
-    if (!win) {
-      URL.revokeObjectURL(url);
-      return;
-    }
-    if (autoPrint) {
-      win.addEventListener("load", () => {
-        win.focus();
-        win.print();
-      });
-    }
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  function openMomPrintable() {
+    openPrintableHtml(buildMomHtml(momInput, momTitle, momCustomNotes));
     setExportMenuOpen(false);
   }
 
@@ -423,8 +410,8 @@ export function EventDetailPage() {
     })),
   };
 
-  function openEventFormExport(autoPrint: boolean) {
-    openEventFormPrintable(eventFormPrintInput, autoPrint);
+  function openEventFormExport() {
+    openEventFormPrintable(eventFormPrintInput);
   }
 
   function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
@@ -502,8 +489,7 @@ export function EventDetailPage() {
         canShowStatusActions={tab === "operations"}
         onOpenBlocker={focusChecklistField}
         onGenerateMom={requestGenerateMom}
-        onPrintEventForm={() => openEventFormExport(true)}
-        onExportEventFormPdf={() => openEventFormExport(false)}
+        onOpenEventFormPrintable={openEventFormExport}
         onChoose={(status) => {
           setStatusModal(status);
           setReason("");
@@ -525,8 +511,8 @@ export function EventDetailPage() {
           onToggleExport={() => setExportMenuOpen((open) => !open)}
           onCopy={copyMomText}
           onExportWord={exportMomWord}
-          onExportPdf={() => openMomPrintable(false)}
-          onPrint={() => openMomPrintable(true)}
+          onExportPdf={openMomPrintable}
+          onPrint={openMomPrintable}
           escapeEnabled={!momMissingPrompt}
           onClose={() => {
             setMomOpen(false);
@@ -867,7 +853,7 @@ function MomPanel({
             {exportMenuOpen && (
               <div className="absolute bottom-full left-0 z-10 mb-2 min-w-36 rounded-xl bg-marble-highlight p-2 shadow-lg">
                 <button type="button" onClick={onExportPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
-                  PDF
+                  Print / PDF
                 </button>
                 <button type="button" onClick={onExportWord} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
                   Word
@@ -876,7 +862,7 @@ function MomPanel({
             )}
           </div>
           <button type="button" onClick={onPrint} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-            Print
+            Print / PDF
           </button>
         </div>
       </div>
@@ -892,8 +878,7 @@ function LifecyclePanel({
   canShowStatusActions,
   onOpenBlocker,
   onGenerateMom,
-  onPrintEventForm,
-  onExportEventFormPdf,
+  onOpenEventFormPrintable,
   onChoose,
   completion,
 }: {
@@ -904,8 +889,7 @@ function LifecyclePanel({
   canShowStatusActions: boolean;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onGenerateMom: () => void;
-  onPrintEventForm: () => void;
-  onExportEventFormPdf: () => void;
+  onOpenEventFormPrintable: () => void;
   onChoose: (status: EventStatus) => void;
   completion: {
     operations: number | null;
@@ -973,22 +957,13 @@ function LifecyclePanel({
           </button>
           <div className="w-full rounded-2xl bg-marble-shadow/25 px-3 py-2.5 sm:min-w-56">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Event form</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={onPrintEventForm}
-                className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
-              >
-                Print
-              </button>
-              <button
-                type="button"
-                onClick={onExportEventFormPdf}
-                className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
-              >
-                Export to PDF
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onOpenEventFormPrintable}
+              className="carved-btn w-full rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+            >
+              Print / PDF
+            </button>
           </div>
         </div>
       </div>
