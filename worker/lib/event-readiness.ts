@@ -5,6 +5,10 @@ import {
   isCateringMealRequired,
 } from "./catering-meals";
 import {
+  calculateVenueScheduleReadinessSection,
+  type VenueBookingReadinessInput,
+} from "./venue-schedule-readiness";
+import {
   optionalDetailFilled,
   optionalGroupDetailsFilled,
   optionalGroupNotApplicable,
@@ -231,9 +235,13 @@ export function parseRequirementValues(raw: unknown): RequirementValues {
   }
 }
 
-export function calculateEventFormReadiness(raw: unknown): EventFormReadiness {
+export function calculateEventFormReadiness(
+  raw: unknown,
+  venueBookings: VenueBookingReadinessInput[] = [],
+): EventFormReadiness {
   const values = parseRequirementValues(raw);
-  const sections = SECTIONS.map((definition): ReadinessSection => {
+  const venueSection = calculateVenueScheduleReadinessSection(venueBookings);
+  const requirementSections = SECTIONS.map((definition): ReadinessSection => {
     const baseFields = definition.fields(values);
     const gapFields = definition.gaps?.(values) ?? [];
     const baseMissing = baseFields.filter((field) => isFieldMissing(field, values));
@@ -268,14 +276,21 @@ export function calculateEventFormReadiness(raw: unknown): EventFormReadiness {
       formSection: definition.formSection,
     };
   });
+  const sections = [venueSection, ...requirementSections];
   const applicable = sections.filter((section) => section.state !== "not_applicable");
   const totalFields = applicable.reduce((sum, section) => sum + section.total, 0);
   const filledFields = applicable.reduce((sum, section) => sum + section.filled, 0);
+  const missingCount = applicable.reduce((sum, section) => {
+    if (section.key === "venues_schedule") {
+      return sum + (section.state === "complete" ? 0 : Math.max(section.missingLabels.length, 1));
+    }
+    return sum + section.missingKeys.length;
+  }, 0);
   return {
     percentage: totalFields ? Math.round((filledFields / totalFields) * 100) : 100,
     completedSections: sections.filter((section) => section.state === "complete" || section.state === "not_applicable").length,
     applicableSections: applicable.length,
-    missingCount: applicable.reduce((sum, section) => sum + section.missingKeys.length, 0),
+    missingCount,
     sections,
   };
 }

@@ -90,6 +90,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("bg-status-confirmed/10");
     expect(source).not.toMatch(/bg-(red|orange|amber|emerald)-/);
     expect(source).toContain("Still needed");
+    expect(source).toContain("Venues &amp; schedule");
+    expect(source).toContain("Fix schedule");
     expect(source).toContain("section.missingLabels.map");
     expect(source).not.toContain("section.missingLabels.slice(0, 2)");
     expect(source).toContain("section.missingKeys[index]");
