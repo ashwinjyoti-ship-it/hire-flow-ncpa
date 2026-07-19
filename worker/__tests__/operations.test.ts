@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -727,6 +727,48 @@ describe("checklist item status from value", () => {
   it("marks computed timing totals completed when a value is present", () => {
     expect(itemStatusForValue({ field_type: "computed", value: "—", is_computed: 1 })).toBe("not_started");
     expect(itemStatusForValue({ field_type: "computed", value: "2h", is_computed: 1 })).toBe("completed");
+  });
+});
+
+describe("event completion rollups", () => {
+  it("excludes not_applicable checklist items so untouched work does not show fake progress", async () => {
+    const completionUpdate: { binds: unknown[] } = { binds: [] };
+    const db = {
+      prepare(sql: string) {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async all() {
+            if (!sql.includes("FROM checklist_items ci")) return { results: [] };
+            return {
+              results: [
+                { module: "accounts", status: "not_started", due_date: null, is_computed: 0 },
+                { module: "accounts", status: "not_started", due_date: null, is_computed: 0 },
+                { module: "accounts", status: "not_applicable", due_date: null, is_computed: 0 },
+                { module: "accounts", status: "not_applicable", due_date: null, is_computed: 0 },
+                { module: "accounts", status: "completed", due_date: null, is_computed: 0 },
+                { module: "operations", status: "not_applicable", due_date: null, is_computed: 0 },
+                { module: "operations", status: "completed", due_date: null, is_computed: 0 },
+                { module: "operations", status: "not_started", due_date: null, is_computed: 0 },
+              ],
+            };
+          },
+          async run() {
+            if (sql.includes("UPDATE events SET ops_completion")) {
+              completionUpdate.binds = [...this.binds];
+            }
+            return { success: true };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const result = await recalculateEventCompletion(db, "ev_rollup");
+
+    expect(result).toEqual({ operations: 0.5, accounts: 1 / 3, overall: 2 / 5 });
+    expect(completionUpdate.binds[0]).toBeCloseTo(0.5);
+    expect(completionUpdate.binds[1]).toBeCloseTo(1 / 3);
+    expect(completionUpdate.binds[2]).toBeCloseTo(0.4);
   });
 });
 
