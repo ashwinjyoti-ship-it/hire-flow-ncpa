@@ -35,6 +35,16 @@ import {
   PROFORMA_SENT_REQUIRES_COSTING_MESSAGE,
 } from "./financial-sequence";
 import { makeId } from "./id";
+import {
+  accountsStartDate,
+  canGenerateTaskForPhase,
+  finalShowDate,
+  getActiveWorkflowPhase,
+  isFileClosedValue,
+  type LifecycleWorkflowPhase,
+  WORKFLOW_PHASE_LABELS,
+  workflowPhaseForTaskRule,
+} from "./lifecycle-workflow-phase";
 import { POC_FIELD_KEYS } from "./poc-fields";
 import {
   evaluatePocCompletionForEvent,
@@ -43,6 +53,15 @@ import {
   POC_TASK_TITLE,
 } from "./poc-completion";
 import { canConfirm, canTransition, STATUS_LABELS, type EventStatus } from "./state-machine";
+
+export {
+  accountsStartDate,
+  finalShowDate,
+  getActiveWorkflowPhase,
+  isFileClosedValue,
+  WORKFLOW_PHASE_LABELS,
+  type LifecycleWorkflowPhase,
+};
 
 export type ChecklistModule = "operations" | "accounts";
 
@@ -104,6 +123,96 @@ export type LifecycleReadiness = {
   nextAction: LifecycleAction | null;
   actions: LifecycleAction[];
 };
+
+export type LifecycleWorkflowSnapshot = {
+  activePhase: LifecycleWorkflowPhase;
+  label: string;
+  firstShowDate: string | null;
+  finalShowDate: string | null;
+  accountsStartDate: string | null;
+  fileClosed: boolean;
+};
+
+/** Resolve the single active lifecycle workflow phase for an event. */
+export async function resolveEventWorkflowPhase(
+  db: D1Database,
+  eventId: string,
+  today = todayIso(),
+): Promise<LifecycleWorkflowSnapshot | null> {
+  const event = await db.prepare(
+    `SELECT status, event_start_date, event_end_date FROM events WHERE id = ? AND is_archived = 0`
+  ).bind(eventId).first<{
+    status: string;
+    event_start_date: string | null;
+    event_end_date: string | null;
+  }>();
+  if (!event) return null;
+
+  const closedRow = await db.prepare(
+    `SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'file_closed' LIMIT 1`
+  ).bind(eventId).first<{ value: string | null }>();
+  const fileClosed = isFileClosedValue(closedRow?.value);
+  const activePhase = getActiveWorkflowPhase({
+    status: event.status,
+    eventStartDate: event.event_start_date,
+    eventEndDate: event.event_end_date,
+    fileClosed,
+  }, today);
+  const firstShow = event.event_start_date ?? null;
+  const finalShow = finalShowDate(event.event_start_date, event.event_end_date);
+  return {
+    activePhase,
+    label: WORKFLOW_PHASE_LABELS[activePhase],
+    firstShowDate: firstShow,
+    finalShowDate: finalShow,
+    accountsStartDate: accountsStartDate(event.event_start_date, event.event_end_date),
+    fileClosed,
+  };
+}
+
+async function cancelOpenTasksOutsidePhase(
+  db: D1Database,
+  eventId: string,
+  activePhase: LifecycleWorkflowPhase,
+): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT id, source_rule FROM tasks
+     WHERE event_id = ? AND task_type = 'automatic' AND status IN ('open','in_progress')
+       AND source_rule IS NOT NULL`
+  ).bind(eventId).all<{ id: string; source_rule: string }>();
+
+  const now = new Date().toISOString();
+  let changed = 0;
+  for (const task of results ?? []) {
+    if (canGenerateTaskForPhase(task.source_rule, activePhase)) continue;
+    // Only cancel rules we explicitly phase-map; leave unknown automatic tasks alone.
+    if (!workflowPhaseForTaskRule(task.source_rule)) continue;
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled',
+           completion_note = ?,
+           updated_at = ?
+       WHERE id = ? AND status IN ('open','in_progress')`
+    ).bind(
+      `Cancelled automatically because the ${WORKFLOW_PHASE_LABELS[activePhase]} workflow is active.`,
+      now,
+      task.id,
+    ).run();
+    changed += 1;
+  }
+  return changed;
+}
+
+/** Cancel open auto-tasks that do not belong to the event's active workflow phase. */
+export async function reconcileWorkflowPhaseTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  today = todayIso(),
+): Promise<number> {
+  const snapshot = await resolveEventWorkflowPhase(db, eventId, today);
+  if (!snapshot) return 0;
+  return cancelOpenTasksOutsidePhase(db, eventId, snapshot.activePhase);
+}
 
 const DONE_VALUES = new Set(["yes", "sent", "approved", "received", "completed", "ready", "applicable", "full received", "verified", "refunded", "payment processed"]);
 const NOT_APPLICABLE_VALUES = new Set(["not required", "n/a", "n.a.", "not applicable", "no applicable"]);
@@ -572,6 +681,17 @@ export async function updateChecklistItem(args: {
   await reconcilePocTaskForEvent(db, current.event_id);
   await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
+  if (current.field_key === "file_closed" || current.field_key === "feedback_sent" || current.module === "accounts") {
+    await reconcileWorkflowPhaseTasksForEvent(db, current.event_id);
+  }
+  if (current.field_key === "file_closed" && isFileClosedValue(value)) {
+    const closedNow = new Date().toISOString();
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled', completion_note = ?, updated_at = ?
+       WHERE event_id = ? AND task_type = 'automatic' AND status IN ('open','in_progress')`
+    ).bind("Cancelled automatically because the file was closed.", closedNow, current.event_id).run();
+  }
   await recalculateEventCompletion(db, current.event_id);
   await eventActivity(db, current.event_id, "checklist_updated", user.id, {
     field: current.field_key,
@@ -1393,18 +1513,22 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
 }
 
 /** Keep one smart task per incomplete event-form section, due before the event starts. */
-export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: string): Promise<number> {
+export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: string, today = todayIso()): Promise<number> {
   const event = await db.prepare(
-    `SELECT id, status, requirements, event_start_date, event_owner_id
+    `SELECT id, status, requirements, event_start_date, event_end_date, event_owner_id
      FROM events WHERE id = ? AND is_archived = 0`
   ).bind(eventId).first<{
     id: string;
     status: EventStatus;
     requirements: string | null;
     event_start_date: string | null;
+    event_end_date: string | null;
     event_owner_id: string | null;
   }>();
   if (!event) return 0;
+
+  const workflow = await resolveEventWorkflowPhase(db, eventId, today);
+  const readinessPhaseActive = workflow?.activePhase === "event";
 
   const { results: venueRows } = await db.prepare(VENUE_BOOKINGS_FOR_READINESS_SQL).bind(eventId).all<{
     venue: string | null;
@@ -1419,19 +1543,22 @@ export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: s
     const sourceRule = readinessTaskRule(section.key);
     const idempotency = `readiness:${eventId}:${section.key}`;
     const complete = section.state === "complete" || section.state === "not_applicable";
-    if (terminal || complete) {
+    if (terminal || complete || !readinessPhaseActive) {
+      const cancelInactive = !terminal && !complete && !readinessPhaseActive;
       const result = await db.prepare(
         `UPDATE tasks
          SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, ?) ELSE NULL END,
              completion_note = ?, updated_at = ?
          WHERE idempotency_key = ? AND status IN ('open','in_progress')`
       ).bind(
-        terminal ? "cancelled" : "completed",
-        terminal ? "cancelled" : "completed",
+        terminal || cancelInactive ? "cancelled" : "completed",
+        terminal || cancelInactive ? "cancelled" : "completed",
         now,
         terminal
           ? "Cancelled automatically because the event is no longer active."
-          : "Completed automatically because this event-form section is ready.",
+          : cancelInactive
+            ? "Cancelled automatically because event readiness is no longer the active workflow."
+            : "Completed automatically because this event-form section is ready.",
         now,
         idempotency,
       ).run();
@@ -1504,6 +1631,11 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
     return;
   }
   if (!rule?.rule) return;
+
+  const workflow = await resolveEventWorkflowPhase(db, item.event_id);
+  if (workflow && !canGenerateTaskForPhase(rule.rule, workflow.activePhase)) {
+    return;
+  }
 
   const intervals = await getChecklistIntervals(db);
   const dueAfterDays = dueAfterDaysForRule(intervals, rule.rule, Number(rule.due_after_days ?? 0));
@@ -1702,11 +1834,14 @@ export async function reconcileFileToAccountsReminderForEvent(db: D1Database, ev
     file_sent_value: string | null;
   }>();
   if (!event) return 0;
-  const finalShowDate = event.event_end_date ?? event.event_start_date;
-  const eligible = event.event_status === "confirmed" && finalShowDate && finalShowDate < today && !normalise(event.file_sent_value);
+  const workflow = await resolveEventWorkflowPhase(db, eventId, today);
+  const showDate = finalShowDate(event.event_start_date, event.event_end_date);
+  const eligible = workflow?.activePhase === "accounts"
+    && Boolean(showDate)
+    && !normalise(event.file_sent_value);
   const idempotency = `post-event:${event.event_id}:send-file-to-accounts`;
   const now = new Date().toISOString();
-  if (!eligible || !finalShowDate) {
+  if (!eligible || !showDate) {
     await db.prepare(
       `UPDATE tasks SET status = 'cancelled', completion_note = 'Cancelled automatically because the reminder is no longer due.', updated_at = ?
        WHERE idempotency_key = ? AND status IN ('open','in_progress')`
@@ -1714,7 +1849,7 @@ export async function reconcileFileToAccountsReminderForEvent(db: D1Database, ev
     return 0;
   }
 
-  const dueDate = addDays(finalShowDate, dueAfterDays);
+  const dueDate = addDays(showDate, dueAfterDays);
   const inserted = await db.prepare(
       `INSERT INTO tasks
        (id, title, description, event_id, source_checklist_item_id, task_type, source_rule,
@@ -2181,5 +2316,11 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
   changed += await createFileToAccountsReminders(db, today);
   changed += await reconcileAllPocTasks(db, today);
   changed += await reconcileAllReadinessTasks(db);
+  const { results: activeEvents } = await db.prepare(
+    `SELECT id FROM events WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')`
+  ).all<{ id: string }>();
+  for (const row of activeEvents ?? []) {
+    changed += await reconcileWorkflowPhaseTasksForEvent(db, row.id, today);
+  }
   return changed;
 }

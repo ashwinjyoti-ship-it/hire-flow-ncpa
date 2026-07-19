@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
 import { EventReadinessPanel } from "../components/EventReadinessPanel";
+import {
+  LifecycleWorkflowStack,
+  workflowPhaseForChecklistTarget,
+  type WorkflowSnapshot,
+} from "../components/LifecycleWorkflowStack";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
@@ -17,7 +22,15 @@ import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/docume
 import { BLOCKER_TARGETS, resolveBlockerWorkHref } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
 import { getEventStatusSurface } from "../lib/event-status-surface";
+import { filterTasksForActiveWorkflow } from "../lib/task-workflows";
 import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
+import {
+  accountsStartDate,
+  getActiveWorkflowPhase,
+  isFileClosedValue,
+  type LifecycleWorkflowPhase,
+  WORKFLOW_PHASE_LABELS,
+} from "../../worker/lib/lifecycle-workflow-phase";
 import {
   buildMomDocument,
   buildMomDocumentHtml,
@@ -114,6 +127,7 @@ type ChecklistResponse = {
     nextAction: LifecycleAction | null;
     actions: LifecycleAction[];
   };
+  workflow?: WorkflowSnapshot | null;
   poc: PocCompletionStatus;
   readiness: EventFormReadiness;
 };
@@ -125,6 +139,7 @@ type EventPageFreshState = {
 };
 
 type EventDetailTab = "operations" | "accounts" | "tasks" | "venues" | "documents";
+type VisibleEventDetailTab = "tasks" | "venues" | "documents";
 
 type ScheduleEntryView = {
   id: string;
@@ -158,7 +173,7 @@ export function EventDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "operations");
+  const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "tasks");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
@@ -170,6 +185,7 @@ export function EventDetailPage() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
+  const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
   // Only auto-scroll to a deep-linked field once; checklist refetches must not yank the viewport back.
   const scrolledToFieldRef = useRef<string | null>(null);
 
@@ -221,7 +237,7 @@ export function EventDetailPage() {
       scrollAppMainToElement(el, "center", "smooth");
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusedFieldKey, tab, checklistData, data?.venue_bookings]);
+  }, [focusedFieldKey, tab, checklistData, data?.venue_bookings, showAllWorkflowTasks]);
 
   useEffect(() => {
     if (!momMissingPrompt) return;
@@ -308,7 +324,65 @@ export function EventDetailPage() {
   const actions = checklistData?.lifecycle.actions ?? [];
   const pocCompletion = (e.poc_completion ?? checklistData?.poc) as PocCompletionStatus | undefined;
   const showPocAlert = pocCompletion && !pocCompletion.complete && e.status !== "cancelled" && e.status !== "regret";
-  const pendingTasks = (taskData?.tasks ?? []).filter((task) => task.status !== "completed" && task.status !== "cancelled");
+  const opsSections = checklistData?.checklist.operations ?? {};
+  const accountsSections = checklistData?.checklist.accounts ?? {};
+  const beforeEventSections = Object.fromEntries(
+    Object.entries(opsSections).filter(([section]) => section !== "Post-Event Closure"),
+  );
+  const postEventSections = Object.fromEntries(
+    Object.entries(opsSections).filter(([section]) => section === "Post-Event Closure"),
+  );
+  const fileClosedItem = Object.values(postEventSections).flat().find((item) => item.field_key === "file_closed");
+  const fileClosed = isFileClosedValue(fileClosedItem?.value);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const derivedPhase = getActiveWorkflowPhase({
+    status: e.status,
+    eventStartDate: e.event_start_date,
+    eventEndDate: e.event_end_date,
+    fileClosed,
+  }, todayIso);
+  const workflow: WorkflowSnapshot = checklistData?.workflow ?? {
+    activePhase: derivedPhase,
+    label: WORKFLOW_PHASE_LABELS[derivedPhase],
+    firstShowDate: e.event_start_date,
+    finalShowDate: e.event_end_date ?? e.event_start_date,
+    accountsStartDate: accountsStartDate(e.event_start_date, e.event_end_date),
+    fileClosed,
+  };
+  const activeWorkflowPhase: LifecycleWorkflowPhase = workflow.activePhase;
+  const forceExpandPhase = workflowPhaseForChecklistTarget(tab, focusedFieldKey);
+  const visibleTab: VisibleEventDetailTab =
+    tab === "venues" || tab === "documents" || tab === "tasks" ? tab : "tasks";
+  const allEventTasks = (taskData?.tasks ?? []) as Array<Record<string, unknown> & {
+    status?: string;
+    task_type?: string;
+    source_rule?: string | null;
+  }>;
+  const workflowScopedTasks = filterTasksForActiveWorkflow(
+    allEventTasks.map((task) => ({
+      id: String(task.id),
+      title: String(task.title ?? ""),
+      description: (task.description as string | null) ?? null,
+      event_id: id,
+      event_title: e.title,
+      event_status: e.status,
+      event_start_date: e.event_start_date,
+      event_end_date: e.event_end_date,
+      task_type: (task.task_type as "automatic" | "manual") ?? "manual",
+      source_rule: (task.source_rule as string | null) ?? null,
+      assignee_name: (task.assignee_name as string | null) ?? null,
+      due_date: (task.due_date as string | null) ?? null,
+      priority: (task.priority as "high" | "medium" | "low") ?? "medium",
+      status: (task.status as "open" | "in_progress" | "completed" | "cancelled") ?? "open",
+    })),
+    activeWorkflowPhase,
+    showAllWorkflowTasks,
+  );
+  const pendingTasks = workflowScopedTasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
+  const readiness = checklistData?.readiness ?? e.event_readiness;
+  const eventReadinessSummary = readiness
+    ? `${readiness.percentage}% form complete`
+    : "Event form readiness";
 
   const momInput: MomEventInput = {
     title: e.title,
@@ -423,11 +497,17 @@ export function EventDetailPage() {
     setFocusedFieldKey(fieldKey);
     scrolledToFieldRef.current = null;
     const params = new URLSearchParams(searchParams);
-    if (next === "operations" && !fieldKey) params.delete("tab");
+    if ((next === "tasks" || next === "operations") && !fieldKey) params.delete("tab");
     else params.set("tab", next);
     if (fieldKey) params.set("field", fieldKey);
     else params.delete("field");
     setSearchParams(params, { replace: true });
+  }
+
+  function closeFile() {
+    if (!fileClosedItem || !canUpdateChecklist) return;
+    const today = new Date().toISOString().slice(0, 10);
+    checklistUpdate.mutate({ item: fileClosedItem, value: today, status: "completed" });
   }
 
   return (
@@ -472,33 +552,124 @@ export function EventDetailPage() {
         <SummaryItem label="Payment status" value={prettyState(e.payment_status)} />
       </div>
 
-      {e.event_readiness && (
-        <div className="mb-5">
-          <EventReadinessPanel
-            eventId={e.id}
-            readiness={e.event_readiness}
-          />
-        </div>
-      )}
-
-      <LifecyclePanel
-        event={e}
-        actions={actions}
-        nextAction={checklistData?.lifecycle.nextAction ?? null}
-        canChangeStatus={canChangeStatus}
-        canShowStatusActions={tab === "operations"}
-        onOpenBlocker={focusChecklistField}
-        onGenerateMom={requestGenerateMom}
-        onOpenEventFormPrintable={openEventFormExport}
-        onChoose={(status) => {
-          setStatusModal(status);
-          setReason("");
-        }}
-        completion={{
-          operations: e.ops_completion,
-          accounts: e.accounts_completion,
-          overall: e.overall_completion,
-        }}
+      <LifecycleWorkflowStack
+        workflow={workflow}
+        forceExpandPhase={forceExpandPhase}
+        confirmSummary="Confirmation blockers cleared"
+        eventSummary={eventReadinessSummary}
+        accountsSummary={fileClosed ? "File closed" : "Post-event & accounts"}
+        confirmContent={(
+          <div className="space-y-6">
+            <LifecyclePanel
+              event={e}
+              actions={actions}
+              nextAction={checklistData?.lifecycle.nextAction ?? null}
+              canChangeStatus={canChangeStatus}
+              canShowStatusActions={activeWorkflowPhase === "confirm"}
+              onOpenBlocker={focusChecklistField}
+              onGenerateMom={requestGenerateMom}
+              onOpenEventFormPrintable={openEventFormExport}
+              onChoose={(status) => {
+                setStatusModal(status);
+                setReason("");
+              }}
+              completion={{
+                operations: e.ops_completion,
+                accounts: e.accounts_completion,
+                overall: e.overall_completion,
+              }}
+              embedded
+            />
+            <div>
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-ink-primary etched-deep">Action checklist</h2>
+                <p className="text-xs text-ink-muted etched">
+                  Confirmation blockers deep-link into the fields below. Complete these to advance.
+                </p>
+              </div>
+              <ChecklistModuleView
+                sections={beforeEventSections}
+                canEdit={canUpdateChecklist}
+                savingItemId={savingChecklistItemId}
+                focusedFieldKey={focusedFieldKey}
+                finalShowDate={e.event_end_date ?? e.event_start_date}
+                showGoToTop
+                onGoToTop={clearFocusedField}
+                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+              />
+            </div>
+          </div>
+        )}
+        eventContent={(
+          <div>
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form readiness</h2>
+              <p className="text-xs text-ink-muted etched">
+                Required event-form fields through the first show date. Automated — these rows cannot be manually ticked.
+              </p>
+            </div>
+            {readiness ? (
+              <EventReadinessPanel eventId={e.id} readiness={readiness} detailed />
+            ) : (
+              <p className="text-sm text-ink-muted etched">Readiness data is not available yet.</p>
+            )}
+          </div>
+        )}
+        accountsContent={(
+          <div className="space-y-6">
+            {Object.keys(postEventSections).length > 0 && (
+              <div>
+                <div className="mb-3">
+                  <h2 className="text-base font-semibold text-ink-primary etched-deep">Post-event closure</h2>
+                  <p className="text-xs text-ink-muted etched">Feedback and closure actions after the final show.</p>
+                </div>
+                <ChecklistModuleView
+                  sections={postEventSections}
+                  canEdit={canUpdateChecklist}
+                  savingItemId={savingChecklistItemId}
+                  focusedFieldKey={focusedFieldKey}
+                  finalShowDate={e.event_end_date ?? e.event_start_date}
+                  onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+                />
+              </div>
+            )}
+            <div>
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-ink-primary etched-deep">Accounts tracking</h2>
+                <p className="text-xs text-ink-muted etched">File ping-pong, TDS, and refunds.</p>
+              </div>
+              <ChecklistModuleView
+                sections={accountsSections}
+                canEdit={canUpdateChecklist}
+                savingItemId={savingChecklistItemId}
+                focusedFieldKey={focusedFieldKey}
+                finalShowDate={null}
+                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+              />
+            </div>
+            {canUpdateChecklist && !fileClosed && fileClosedItem && activeWorkflowPhase === "accounts" && (
+              <div className="rounded-2xl bg-marble-shadow/25 px-4 py-4">
+                <h3 className="text-sm font-semibold text-ink-primary etched-deep">Close file</h3>
+                <p className="mt-1 text-xs text-ink-muted etched">
+                  Mark the venue hire file closed when accounts and post-event work are finished.
+                </p>
+                <button
+                  type="button"
+                  disabled={checklistUpdate.isPending}
+                  onClick={closeFile}
+                  className="carved-btn-sage mt-3 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+                >
+                  {checklistUpdate.isPending ? "Closing..." : "Close file"}
+                </button>
+              </div>
+            )}
+            {fileClosed && (
+              <div className="rounded-2xl bg-status-confirmed/10 px-4 py-3 text-sm text-sage-text etched">
+                File closed{fileClosedItem?.value ? ` on ${formatDate(fileClosedItem.value)}` : ""}.
+              </div>
+            )}
+          </div>
+        )}
       />
 
       {momOpen && (
@@ -568,8 +739,6 @@ export function EventDetailPage() {
 
       <div className="mb-4 flex flex-wrap gap-1">
         {([
-          ["operations", "Operations"],
-          ["accounts", "Accounts"],
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
           ["venues", venuesAndScheduleTabLabel(
             data?.venue_bookings.length ?? 0,
@@ -583,7 +752,7 @@ export function EventDetailPage() {
             onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (tab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
+              (visibleTab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
             }
           >
             {label}
@@ -591,34 +760,20 @@ export function EventDetailPage() {
         ))}
       </div>
 
-      {tab === "operations" && (
-        <OperationsFlow
-          eventId={e.id}
-          readiness={checklistData?.readiness ?? e.event_readiness}
-          sections={checklistData?.checklist.operations ?? {}}
-          finalShowDate={e.event_end_date ?? e.event_start_date}
-          canEdit={canUpdateChecklist}
-          savingItemId={savingChecklistItemId}
-          focusedFieldKey={focusedFieldKey}
-          showGoToTop
-          onGoToTop={clearFocusedField}
-          onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
-        />
-      )}
-
-      {tab === "accounts" && (
-        <ChecklistModuleView
-          sections={checklistData?.checklist.accounts ?? {}}
-          finalShowDate={null}
-          canEdit={canUpdateChecklist}
-          savingItemId={savingChecklistItemId}
-          focusedFieldKey={focusedFieldKey}
-          onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
-        />
-      )}
-
-      {tab === "tasks" && (
+      {visibleTab === "tasks" && (
         <section className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-ink-muted etched">
+              Showing {showAllWorkflowTasks ? "all" : "active-workflow"} tasks
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowAllWorkflowTasks((value) => !value)}
+              className="text-xs font-medium text-sage-text underline decoration-current/40 underline-offset-2 etched hover:decoration-current"
+            >
+              {showAllWorkflowTasks ? "Show active workflow only" : "Show all tasks"}
+            </button>
+          </div>
           <div className="mb-4 flex flex-col gap-2 md:flex-row">
             <input
               value={taskTitle}
@@ -635,11 +790,16 @@ export function EventDetailPage() {
               {createTask.isPending ? "Adding..." : "Add task"}
             </button>
           </div>
-          <TaskList tasks={taskData?.tasks ?? []} />
+          <TaskList
+            tasks={workflowScopedTasks.map((task) => {
+              const original = allEventTasks.find((row) => String(row.id) === task.id);
+              return original ?? task;
+            })}
+          />
         </section>
       )}
 
-      {tab === "venues" && (
+      {visibleTab === "venues" && (
         <div id={VENUES_SCHEDULE_ANCHOR_ID} className="scroll-mt-3">
           <VenuesView
             bookings={data?.venue_bookings ?? []}
@@ -648,7 +808,7 @@ export function EventDetailPage() {
           />
         </div>
       )}
-      {tab === "documents" && (
+      {visibleTab === "documents" && (
         <DocumentsView
           eventId={id}
           documents={documentsData?.documents ?? []}
@@ -881,6 +1041,7 @@ function LifecyclePanel({
   onOpenEventFormPrintable,
   onChoose,
   completion,
+  embedded = false,
 }: {
   event: DetailResponse["event"];
   actions: LifecycleAction[];
@@ -896,6 +1057,7 @@ function LifecyclePanel({
     accounts: number | null;
     overall: number | null;
   };
+  embedded?: boolean;
 }) {
   const forwardStatuses: EventStatus[] = ["approved", "confirmed"];
   const visibleActions = useMemo(() => {
@@ -918,10 +1080,19 @@ function LifecyclePanel({
   const displayedForwardAction = nextAction ?? blockedForwardAction;
 
   return (
-    <section id="event-lifecycle" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
+    <section
+      id="event-lifecycle"
+      className={
+        embedded
+          ? "scroll-mt-2"
+          : "carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5"
+      }
+    >
       <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start lg:gap-5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Lifecycle</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">
+            {embedded ? "Confirmation status" : "Lifecycle"}
+          </h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusBadge status={event.status} />
             {nextAction ? (
@@ -1004,7 +1175,7 @@ function LifecyclePanel({
           )}
           {canChangeStatus && !canShowStatusActions && (nextAction || closeOutActions.length > 0) && (
             <span className="rounded-full bg-marble-shadow/50 px-3 py-1.5 text-xs font-medium text-ink-muted etched">
-              Open Operations to change lifecycle status
+              Status changes are available while Confirm is the active workflow
             </span>
           )}
         </div>
@@ -1052,78 +1223,6 @@ function LifecyclePanel({
         )}
       </div>
     </section>
-  );
-}
-
-function OperationsFlow({
-  eventId,
-  readiness,
-  sections,
-  canEdit,
-  savingItemId,
-  focusedFieldKey,
-  finalShowDate,
-  showGoToTop = false,
-  onGoToTop,
-  onUpdate,
-}: {
-  eventId: string;
-  readiness?: EventFormReadiness;
-  sections: Record<string, ChecklistItem[]>;
-  canEdit: boolean;
-  savingItemId: string | null;
-  focusedFieldKey: string | null;
-  finalShowDate: string | null;
-  showGoToTop?: boolean;
-  onGoToTop?: () => void;
-  onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
-}) {
-  const beforeEvent = Object.fromEntries(Object.entries(sections).filter(([section]) => section !== "Post-Event Closure"));
-  const postEvent = Object.fromEntries(Object.entries(sections).filter(([section]) => section === "Post-Event Closure"));
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="mb-3">
-          <h2 className="text-base font-semibold text-ink-primary etched-deep">Action checklist</h2>
-          <p className="text-xs text-ink-muted etched">Identification and follow-up actions through Technical Meeting and Minutes.</p>
-        </div>
-        <ChecklistModuleView
-          sections={beforeEvent}
-          canEdit={canEdit}
-          savingItemId={savingItemId}
-          focusedFieldKey={focusedFieldKey}
-          finalShowDate={finalShowDate}
-          showGoToTop={showGoToTop}
-          onGoToTop={onGoToTop}
-          onUpdate={onUpdate}
-        />
-      </div>
-      {readiness && (
-        <div>
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form completeness</h2>
-            <p className="text-xs text-ink-muted etched">Automated from the event form; these rows cannot be manually ticked.</p>
-          </div>
-          <EventReadinessPanel eventId={eventId} readiness={readiness} detailed />
-        </div>
-      )}
-      {Object.keys(postEvent).length > 0 && (
-        <div>
-          <div className="mb-3">
-            <h2 className="text-base font-semibold text-ink-primary etched-deep">Post-event closure</h2>
-            <p className="text-xs text-ink-muted etched">Close the file, then continue to Accounts.</p>
-          </div>
-          <ChecklistModuleView
-            sections={postEvent}
-            canEdit={canEdit}
-            savingItemId={savingItemId}
-            focusedFieldKey={focusedFieldKey}
-            finalShowDate={finalShowDate}
-            onUpdate={onUpdate}
-          />
-        </div>
-      )}
-    </div>
   );
 }
 

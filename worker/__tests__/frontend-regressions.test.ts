@@ -56,8 +56,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Regret");
     expect(source).toContain("useSearchParams");
     expect(source).toContain("parseEventDetailTab");
-    expect(source).toContain("canShowStatusActions={tab === \"operations\"}");
-    expect(source).toContain("Open Operations to change lifecycle status");
+    expect(source).toContain("canShowStatusActions={activeWorkflowPhase === \"confirm\"}");
+    expect(source).toContain("Status changes are available while Confirm is the active workflow");
     expect(source).toContain("forwardMilestoneButtonClass");
     // Blocked forward milestones use awaiting-approval amber, not confirmed-green.
     expect(source).toContain("bg-status-awaitingApproval/15");
@@ -155,9 +155,19 @@ describe("frontend regression guards", () => {
   it("drops overview tab and shows completion inside lifecycle", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
     expect(source).not.toContain('["overview", "Overview"]');
-    expect(source).toContain('parseEventDetailTab(searchParams.get("tab")) ?? "operations"');
+    expect(source).toContain('parseEventDetailTab(searchParams.get("tab")) ?? "tasks"');
+    expect(source).toContain("LifecycleWorkflowStack");
     expect(source).toContain("completion={{");
     expect(source).toContain("<h3 className=\"mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched\">Completion</h3>");
+  });
+
+  it("uses single-focus lifecycle workflow phases instead of ops/accounts tabs", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(source).toContain('["tasks", `Tasks');
+    expect(source).not.toContain('["operations", "Operations"]');
+    expect(source).not.toContain('["accounts", "Accounts"]');
+    expect(source).toContain("Close file");
+    expect(source).toContain("filterTasksForActiveWorkflow");
   });
 
   it("warns on post-show operational dates without generic reopen controls", () => {

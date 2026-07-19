@@ -31,6 +31,8 @@ import {
   reconcileFileToAccountsReminderForEvent,
   reconcileFinancialSequenceForEvent,
   reconcileTasksForLifecycleTransition,
+  reconcileWorkflowPhaseTasksForEvent,
+  resolveEventWorkflowPhase,
   syncAdditionalRequirementsChecklist,
   syncAutomaticTaskOwnerForEvent,
   syncEventReferenceChecklist,
@@ -677,7 +679,9 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   ).bind(makeId("sh"), id, from, to, user.id, now, lifecycleReason, lifecycleNote).run();
 
   await reconcileTasksForLifecycleTransition(db, id, from, to, user.id);
+  await reconcileReadinessTasksForEvent(db, id);
   await reconcileFileToAccountsReminderForEvent(db, id);
+  await reconcileWorkflowPhaseTasksForEvent(db, id);
 
   await audit({
     db, actor: actorFrom(user), action: "event.status_changed",
@@ -691,11 +695,12 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
 // GET /:id/checklist — per-event checklist grouped by module and lifecycle readiness.
 eventRoutes.get("/:id/checklist", requireUser, async (c) => {
   const id = c.req.param("id");
-  const [items, lifecycle, event, venueRows] = await Promise.all([
+  const [items, lifecycle, event, venueRows, workflow] = await Promise.all([
     getChecklistItems(c.env.DB, id),
     getEventLifecycle(c.env.DB, id),
     c.env.DB.prepare("SELECT requirements FROM events WHERE id = ?").bind(id).first<{ requirements: string | null }>(),
     c.env.DB.prepare(VENUE_BOOKINGS_FOR_READINESS_SQL).bind(id).all<{ venue: string | null; schedule_json: unknown }>(),
+    resolveEventWorkflowPhase(c.env.DB, id),
   ]);
 
   const grouped: Record<string, Record<string, unknown[]>> = {};
@@ -710,6 +715,7 @@ eventRoutes.get("/:id/checklist", requireUser, async (c) => {
   return c.json({
     checklist: grouped,
     lifecycle: lifecycle.readiness,
+    workflow,
     poc: lifecycle.poc,
     readiness: calculateEventFormReadiness(event?.requirements, parseVenueBookingsForReadiness(venueRows.results)),
   });

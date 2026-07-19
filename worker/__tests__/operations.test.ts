@@ -466,6 +466,16 @@ describe("operational lifecycle readiness", () => {
           async first() {
             // No custom checklist intervals stored → defaults (1 day after show).
             if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("SELECT status, event_start_date, event_end_date FROM events")) {
+              return {
+                status: "confirmed",
+                event_start_date: "2026-07-05",
+                event_end_date: "2026-07-06",
+              };
+            }
+            if (sql.includes("field_key = 'file_closed'")) {
+              return { value: null };
+            }
             if (sql.includes("JOIN checklist_items ci")) {
               return {
                 event_id: "ev_after_show",

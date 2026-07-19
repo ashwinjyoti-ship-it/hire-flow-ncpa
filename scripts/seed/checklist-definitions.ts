@@ -108,6 +108,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },
   { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
   { module: "operations", section: "Post-Event Closure", field_key: "final_closure_notes", label: "Final Closure Notes", field_type: "textarea" },
+  { module: "operations", section: "Post-Event Closure", field_key: "file_closed", label: "File Closed", field_type: "date" },
 
   // ===== ACCOUNTS TRACKING CHECKLIST =====
   // File ping-pong with Accounts: sent → edit received → sent back → … → final received.
