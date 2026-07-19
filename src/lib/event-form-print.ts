@@ -251,10 +251,29 @@ function fieldTable(rows: Array<[string, string]>): string {
   return `<table class="fields">${rows.map(([label, value]) => row(label, value)).join("")}</table>`;
 }
 
+/** Primary heading on the printable form — event name only (code lives in the body). */
 export function eventFormPrintTitle(input: EventFormPrintInput): string {
-  const code = text(input.event_code);
-  const title = text(input.title) ?? "Event";
-  return code ? `Event Form — ${code} — ${title}` : `Event Form — ${title}`;
+  return text(input.title) ?? "Event";
+}
+
+/** Browser tab / PDF document title. */
+export function eventFormPrintDocumentTitle(input: EventFormPrintInput): string {
+  return `Event Form — ${eventFormPrintTitle(input)}`;
+}
+
+/** Short description for the print header; full text remains in the Event & Client section. */
+export function eventFormPrintDescriptionSummary(
+  value: string | null | undefined,
+  maxLength = 280,
+): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, " ");
+  if (collapsed.length <= maxLength) return collapsed;
+  const slice = collapsed.slice(0, maxLength);
+  const lastSpace = slice.lastIndexOf(" ");
+  const trimmed = (lastSpace > maxLength * 0.55 ? slice.slice(0, lastSpace) : slice).trimEnd();
+  return `${trimmed}…`;
 }
 
 export function eventFormPrintFileBase(input: EventFormPrintInput): string {
@@ -358,7 +377,9 @@ ${fieldTable(requirementRows)}
 }
 
 export function buildEventFormHtml(input: EventFormPrintInput): string {
-  const title = eventFormPrintTitle(input);
+  const heading = eventFormPrintTitle(input);
+  const documentTitle = eventFormPrintDocumentTitle(input);
+  const descriptionSummary = eventFormPrintDescriptionSummary(input.description);
   const generatedAt = new Date().toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
     day: "2-digit",
@@ -369,21 +390,52 @@ export function buildEventFormHtml(input: EventFormPrintInput): string {
     hourCycle: "h23",
   });
 
+  const summaryHtml = descriptionSummary
+    ? `<p class="header-summary">${escapeHtml(descriptionSummary)}</p>`
+    : "";
+
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(documentTitle)}</title>
 <style>
   :root { color-scheme: light; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 28px; line-height: 1.4; font-size: 11pt; }
-  h1 { font-size: 16pt; margin: 0 0 4px; }
-  .meta { color: #6b655c; font-size: 9pt; margin-bottom: 18px; }
-  h2 { font-size: 11pt; text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 8px; border-bottom: 1px solid #cfc7ba; padding-bottom: 4px; }
+  @page { size: A4; margin: 18mm 15mm 20mm 15mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #2f2c27;
+    line-height: 1.45;
+    font-size: 10.5pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @media screen {
+    body { margin: 28px auto; padding: 0 12px; max-width: 210mm; }
+  }
+  header {
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #cfc7ba;
+  }
+  h1 { font-size: 18pt; line-height: 1.25; margin: 0 0 6px; font-weight: 700; }
+  .header-summary { margin: 0 0 8px; font-size: 10.5pt; color: #4a453d; line-height: 1.5; }
+  .meta { color: #6b655c; font-size: 9pt; margin: 0; }
+  h2 {
+    font-size: 11pt;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 20px 0 8px;
+    border-bottom: 1px solid #cfc7ba;
+    padding-bottom: 4px;
+  }
   h3 { font-size: 11pt; margin: 14px 0 6px; }
   h4 { font-size: 10pt; margin: 10px 0 4px; color: #5c564c; }
-  table.fields { width: 100%; border-collapse: collapse; }
-  table.fields th, table.fields td { vertical-align: top; padding: 4px 8px 4px 0; border-bottom: 1px solid #ece7df; }
-  table.fields th { width: 32%; text-align: left; font-weight: 600; color: #5c564c; }
-  table.fields td { white-space: pre-wrap; }
-  .venue-block { margin-bottom: 12px; }
+  section { margin-bottom: 4px; }
+  table.fields { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.fields th, table.fields td { vertical-align: top; padding: 5px 10px 5px 0; border-bottom: 1px solid #ece7df; }
+  table.fields th { width: 34%; text-align: left; font-weight: 600; color: #5c564c; }
+  table.fields td { width: 66%; white-space: pre-wrap; word-break: break-word; }
+  .venue-block { margin-bottom: 14px; }
   .schedule, .docs { margin: 0; padding-left: 18px; }
   .schedule li, .docs li { margin: 3px 0; }
   .empty, .notes { margin: 0; }
@@ -396,8 +448,11 @@ export function buildEventFormHtml(input: EventFormPrintInput): string {
   .toolbar button { font: inherit; padding: 6px 14px; cursor: pointer; }
   @media print {
     .toolbar { display: none; }
-    body { margin: 12px; }
-    .sign-grid { break-inside: avoid; }
+    header { break-after: avoid-page; page-break-after: avoid; }
+    h2, h3, h4 { break-after: avoid-page; page-break-after: avoid; }
+    table.fields tr { break-inside: avoid; page-break-inside: avoid; }
+    .venue-block { break-inside: avoid-page; page-break-inside: avoid; }
+    .sign-grid { break-inside: avoid; page-break-inside: avoid; }
   }
 </style></head>
 <body>
@@ -406,7 +461,8 @@ export function buildEventFormHtml(input: EventFormPrintInput): string {
   <button type="button" onclick="window.print()">Export to PDF</button>
 </div>
 <header>
-  <h1>${escapeHtml(title)}</h1>
+  <h1>${escapeHtml(heading)}</h1>
+  ${summaryHtml}
   <div class="meta">NCPA Venue for Hire · Filled form snapshot · Generated ${escapeHtml(generatedAt)} IST</div>
 </header>
 ${buildEventFormPrintBody(input)}
