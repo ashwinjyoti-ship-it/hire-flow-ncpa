@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -742,14 +742,14 @@ describe("event completion rollups", () => {
             if (!sql.includes("FROM checklist_items ci")) return { results: [] };
             return {
               results: [
-                { module: "accounts", status: "not_started", due_date: null, is_computed: 0 },
-                { module: "accounts", status: "not_started", due_date: null, is_computed: 0 },
-                { module: "accounts", status: "not_applicable", due_date: null, is_computed: 0 },
-                { module: "accounts", status: "not_applicable", due_date: null, is_computed: 0 },
-                { module: "accounts", status: "completed", due_date: null, is_computed: 0 },
-                { module: "operations", status: "not_applicable", due_date: null, is_computed: 0 },
-                { module: "operations", status: "completed", due_date: null, is_computed: 0 },
-                { module: "operations", status: "not_started", due_date: null, is_computed: 0 },
+                { module: "accounts", status: "not_started", due_date: null, field_key: "final_file_received", value: "No", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_started", due_date: null, field_key: "payment_advice", value: "Awaiting", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "completed", due_date: null, field_key: "tax_invoice_sent", value: "Sent", is_computed: 0, visibility_rule: null },
+                { module: "operations", status: "not_applicable", due_date: null, field_key: "emailer_asked_client", value: null, is_computed: 0, visibility_rule: "onlyWhen(emailer == Yes)" },
+                { module: "operations", status: "completed", due_date: null, field_key: "costing_email", value: "Yes", is_computed: 0, visibility_rule: null },
+                { module: "operations", status: "not_started", due_date: null, field_key: "payment_status", value: "Incomplete", is_computed: 0, visibility_rule: null },
               ],
             };
           },
@@ -769,6 +769,58 @@ describe("event completion rollups", () => {
     expect(completionUpdate.binds[0]).toBeCloseTo(0.5);
     expect(completionUpdate.binds[1]).toBeCloseTo(1 / 3);
     expect(completionUpdate.binds[2]).toBeCloseTo(0.4);
+  });
+
+  it("returns zero for untouched accounts defaults with only hidden or N/A fields", async () => {
+    const db = {
+      prepare() {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async all() {
+            return {
+              results: [
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "box_office_collection_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "tds_certificate_from_client", value: "N.A.", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "tds_received_from_client_date", value: null, is_computed: 0, visibility_rule: "onlyWhen(tds_certificate_from_client == Received)" },
+                { module: "accounts", status: "not_started", due_date: null, field_key: "payment_advice", value: "Awaiting", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_started", due_date: null, field_key: "final_file_received", value: "No", is_computed: 0, visibility_rule: null },
+              ],
+            };
+          },
+          async run() { return { success: true }; },
+        };
+      },
+    } as unknown as D1Database;
+
+    const result = await recalculateEventCompletion(db, "ev_accounts");
+    expect(result.accounts).toBe(0);
+  });
+
+  it("excludes hidden instalment dates when Instalment = No", async () => {
+    const db = {
+      prepare() {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async all() {
+            return {
+              results: [
+                { module: "operations", status: "not_started", due_date: null, field_key: "instalment", value: "No", is_computed: 0, visibility_rule: null },
+                { module: "operations", status: "not_started", due_date: null, field_key: "installment_1_expected_date", value: null, is_computed: 0, visibility_rule: "onlyWhen(instalment == Yes)" },
+                { module: "operations", status: "completed", due_date: null, field_key: "costing_email", value: "Yes", is_computed: 0, visibility_rule: null },
+              ],
+            };
+          },
+          async run() { return { success: true }; },
+        };
+      },
+    } as unknown as D1Database;
+
+    const result = await recalculateEventCompletion(db, "ev_instalment");
+    // Hidden instalment dates must not count: only Instalment + Costing Email apply.
+    expect(result.operations).toBe(0.5);
   });
 });
 
@@ -1060,6 +1112,36 @@ describe("OnStage required + Emailer checklist fields", () => {
     await syncEmailerDependentChecklist(db, "ev_1", "No");
 
     expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("status = 'not_applicable'");
+    expect(updates[0]?.binds[1]).toBe("ev_1");
+  });
+
+  it("marks instalment date fields not_applicable when Instalment = No", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await syncInstalmentDependentChecklist(db, "ev_1", "No");
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.sql).toContain("installment_1_expected_date");
     expect(updates[0]?.sql).toContain("status = 'not_applicable'");
     expect(updates[0]?.binds[1]).toBe("ev_1");
   });
