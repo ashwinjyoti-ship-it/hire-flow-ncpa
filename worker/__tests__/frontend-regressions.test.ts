@@ -83,6 +83,7 @@ describe("frontend regression guards", () => {
 
   it("uses the established status palette for event-form readiness", () => {
     const source = readFileSync(resolve(root, "src/components/EventReadinessPanel.tsx"), "utf8");
+    const detailPage = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
     expect(source).toContain("bg-status-cancelled/10");
     expect(source).toContain("bg-status-awaitingApproval/10");
@@ -93,7 +94,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Venues &amp; schedule");
     expect(source).toContain("Fix schedule");
     expect(source).toContain("VENUES_SCHEDULE_READINESS_KEY");
-    expect(source).toContain("VENUES_SCHEDULE_ANCHOR_ID");
+    expect(detailPage).toContain("VENUES_SCHEDULE_ANCHOR_ID");
+    expect(detailPage).toContain("scrollAppMainToElement(el, \"start\", \"smooth\")");
     expect(source).toContain("section.missingLabels.map");
     expect(source).not.toContain("section.missingLabels.slice(0, 2)");
     expect(source).toContain("section.missingKeys[index]");
