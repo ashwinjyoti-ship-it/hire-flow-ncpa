@@ -209,9 +209,11 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "box_office_statement": return "Awaiting";
     case "event_status": return event.status;
     case "file_sent_to_accounts": return null;
-    case "file_received_back_edit_1": return "Pending";
-    case "file_received_back_edit_2": return "Pending";
-    case "final_file_received": return "No";
+    case "file_received_back_edit_1": return null;
+    case "file_sent_back_after_edit_1": return null;
+    case "file_received_back_edit_2": return null;
+    case "file_sent_back_after_edit_2": return null;
+    case "final_file_received": return null;
     case "security_deposit_refund": return event.eventType === "VFH" ? "Applicable" : "N/A";
     case "box_office_collection_refund": return event.eventType === "FR" ? "Applicable" : "N/A";
     case "payment_advice": return "Awaiting";

@@ -126,6 +126,138 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function daysBetweenIso(fromIso: string, toIso: string): number {
+  return Math.round(
+    (new Date(`${toIso}T00:00:00.000Z`).getTime() - new Date(`${fromIso}T00:00:00.000Z`).getTime()) / 86_400_000
+  );
+}
+
+const ACCOUNTS_FILE_TRACKING_KEYS = [
+  "file_sent_to_accounts",
+  "file_received_back_edit_1",
+  "file_sent_back_after_edit_1",
+  "file_received_back_edit_2",
+  "file_sent_back_after_edit_2",
+  "final_file_received",
+] as const;
+
+type AccountsFileTrackingKey = (typeof ACCOUNTS_FILE_TRACKING_KEYS)[number];
+type AccountsFileTracking = Record<AccountsFileTrackingKey, string | null>;
+
+async function getAccountsFileTracking(db: D1Database, eventId: string): Promise<AccountsFileTracking> {
+  const tracking = Object.fromEntries(ACCOUNTS_FILE_TRACKING_KEYS.map((key) => [key, null])) as AccountsFileTracking;
+  const placeholders = ACCOUNTS_FILE_TRACKING_KEYS.map(() => "?").join(", ");
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN (${placeholders})`
+  ).bind(eventId, ...ACCOUNTS_FILE_TRACKING_KEYS).all<{ field_key: string; value: string | null }>();
+  for (const row of results ?? []) {
+    const trimmed = row.value?.trim();
+    if (trimmed) tracking[row.field_key as AccountsFileTrackingKey] = trimmed;
+  }
+  return tracking;
+}
+
+async function getChecklistItemIdByFieldKey(db: D1Database, eventId: string, fieldKey: string): Promise<string | null> {
+  const row = await db.prepare("SELECT id FROM checklist_items WHERE event_id = ? AND field_key = ?")
+    .bind(eventId, fieldKey).first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+async function completeAutomaticTasksForChecklistItem(
+  db: D1Database,
+  eventId: string,
+  checklistItemId: string,
+  rules: string[],
+  userId: string,
+  completionNote: string,
+): Promise<void> {
+  if (!rules.length) return;
+  const now = new Date().toISOString();
+  for (const rule of rules) {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'completed', completed_at = ?, completed_by = ?, completion_note = ?, updated_at = ?
+       WHERE event_id = ? AND source_checklist_item_id = ? AND source_rule = ?
+         AND status IN ('open','in_progress')`
+    ).bind(now, userId, completionNote, now, eventId, checklistItemId, rule).run();
+  }
+}
+
+async function cancelAutomaticTasksForChecklistItem(
+  db: D1Database,
+  eventId: string,
+  checklistItemId: string,
+  rules: string[],
+  reason: string,
+): Promise<void> {
+  if (!rules.length) return;
+  const now = new Date().toISOString();
+  for (const rule of rules) {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled', completion_note = ?, updated_at = ?
+       WHERE event_id = ? AND source_checklist_item_id = ? AND source_rule = ?
+         AND status IN ('open','in_progress')`
+    ).bind(reason, now, eventId, checklistItemId, rule).run();
+  }
+}
+
+export async function maybeCompleteAccountsFileTasks(
+  db: D1Database,
+  eventId: string,
+  fieldKey: string,
+  value: string | null | undefined,
+  userId: string,
+): Promise<void> {
+  if (!(ACCOUNTS_FILE_TRACKING_KEYS as readonly string[]).includes(fieldKey)) return;
+
+  const trimmed = (value ?? "").trim();
+  const note = "Completed automatically from checklist update.";
+
+  if (fieldKey === "final_file_received") {
+    if (trimmed) {
+      await completeTasksForSourceRules(db, eventId, ["accounts_file", "accounts_file_send_back"], userId, note);
+    } else {
+      await reopenAutomaticallyCompletedTasks(db, eventId, ["accounts_file", "accounts_file_send_back"]);
+    }
+    return;
+  }
+
+  if (!trimmed) return;
+
+  if (fieldKey === "file_received_back_edit_1") {
+    const sentItemId = await getChecklistItemIdByFieldKey(db, eventId, "file_sent_to_accounts");
+    if (sentItemId) {
+      await completeAutomaticTasksForChecklistItem(db, eventId, sentItemId, ["accounts_file"], userId, note);
+    }
+    return;
+  }
+
+  if (fieldKey === "file_sent_back_after_edit_1") {
+    const edit1ItemId = await getChecklistItemIdByFieldKey(db, eventId, "file_received_back_edit_1");
+    if (edit1ItemId) {
+      await completeAutomaticTasksForChecklistItem(db, eventId, edit1ItemId, ["accounts_file_send_back"], userId, note);
+    }
+    return;
+  }
+
+  if (fieldKey === "file_received_back_edit_2") {
+    const sentBack1ItemId = await getChecklistItemIdByFieldKey(db, eventId, "file_sent_back_after_edit_1");
+    if (sentBack1ItemId) {
+      await completeAutomaticTasksForChecklistItem(db, eventId, sentBack1ItemId, ["accounts_file"], userId, note);
+    }
+    return;
+  }
+
+  if (fieldKey === "file_sent_back_after_edit_2") {
+    const edit2ItemId = await getChecklistItemIdByFieldKey(db, eventId, "file_received_back_edit_2");
+    if (edit2ItemId) {
+      await completeAutomaticTasksForChecklistItem(db, eventId, edit2ItemId, ["accounts_file_send_back"], userId, note);
+    }
+  }
+}
+
 function normalise(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -1372,8 +1504,29 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
     return;
   }
   if (!rule?.rule) return;
+
   const intervals = await getChecklistIntervals(db);
   const dueAfterDays = dueAfterDaysForRule(intervals, rule.rule, Number(rule.due_after_days ?? 0));
+
+  if ((ACCOUNTS_FILE_TRACKING_KEYS as readonly string[]).includes(item.field_key)) {
+    const tracking = await getAccountsFileTracking(db, item.event_id);
+    if (tracking.final_file_received) return;
+
+    if (item.field_key === "file_sent_to_accounts" && item.value) {
+      const edit1 = tracking.file_received_back_edit_1;
+      if (edit1 && daysBetweenIso(item.value, edit1) < dueAfterDays) {
+        await cancelAutomaticTasksForChecklistItem(
+          db,
+          item.event_id,
+          item.id,
+          ["accounts_file"],
+          "Edit 1 received within the follow-up window.",
+        );
+        return;
+      }
+    }
+  }
+
   const baseDate = item.due_date ?? todayIso();
   const dueDate = addDays(baseDate, dueAfterDays);
   const idempotency = `checklist:${item.id}:${rule.rule}`;
@@ -1421,6 +1574,8 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 }
 
 async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined, userId: string): Promise<void> {
+  await maybeCompleteAccountsFileTasks(db, eventId, fieldKey, value, userId);
+
   const v = normalise(value);
   const completionByField: Record<string, { rule: string; complete: boolean }> = {
     approval_required: { rule: "approval_followup", complete: v === "not required" },
@@ -1431,7 +1586,6 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
     feedback_received: { rule: "feedback", complete: Boolean(v) },
     minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },
     file_sent_to_accounts: { rule: "send_file_to_accounts", complete: Boolean(v) },
-    final_file_received: { rule: "accounts_file", complete: v === "yes" },
     tds_certificate_sent_to_accounts: { rule: "tds_send_to_accounts", complete: Boolean(v) },
     payment_status: { rule: "instalment", complete: v === "completed" },
   };

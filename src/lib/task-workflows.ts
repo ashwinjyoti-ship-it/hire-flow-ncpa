@@ -253,6 +253,15 @@ function isSoonBlocker(task: TaskLike, todayIso: string): boolean {
 
 function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_field_key" | "source_rule" | "title">): { module: "operations" | "accounts"; fieldKey: string | null } {
   if ((task.source_module === "operations" || task.source_module === "accounts") && task.source_field_key) {
+    if (task.source_rule === "accounts_file") {
+      if (task.source_field_key === "file_sent_to_accounts") return { module: "accounts", fieldKey: "file_received_back_edit_1" };
+      if (task.source_field_key === "file_sent_back_after_edit_1") return { module: "accounts", fieldKey: "file_received_back_edit_2" };
+      if (task.source_field_key === "file_sent_back_after_edit_2") return { module: "accounts", fieldKey: "final_file_received" };
+    }
+    if (task.source_rule === "accounts_file_send_back") {
+      if (task.source_field_key === "file_received_back_edit_1") return { module: "accounts", fieldKey: "file_sent_back_after_edit_1" };
+      if (task.source_field_key === "file_received_back_edit_2") return { module: "accounts", fieldKey: "file_sent_back_after_edit_2" };
+    }
     return { module: task.source_module, fieldKey: task.source_field_key };
   }
 
