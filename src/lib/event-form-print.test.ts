@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildEventFormHtml,
   buildEventFormPrintBody,
+  eventFormPrintDescriptionSummary,
+  eventFormPrintDocumentTitle,
   eventFormPrintFileBase,
   eventFormPrintTitle,
 } from "./event-form-print";
@@ -62,9 +64,20 @@ const sample = {
 };
 
 describe("event-form-print", () => {
-  it("titles and file bases include the event code when present", () => {
-    expect(eventFormPrintTitle(sample)).toBe("Event Form — VFH-2026-014 — Gujrati Play - Long Drive");
+  it("uses event name for the print heading and keeps the code for file naming", () => {
+    expect(eventFormPrintTitle(sample)).toBe("Gujrati Play - Long Drive");
+    expect(eventFormPrintDocumentTitle(sample)).toBe("Event Form — Gujrati Play - Long Drive");
     expect(eventFormPrintFileBase(sample)).toBe("Event-Form-VFH-2026-014");
+  });
+
+  it("summarises long descriptions for the print header", () => {
+    expect(eventFormPrintDescriptionSummary("Evening performance")).toBe("Evening performance");
+    expect(eventFormPrintDescriptionSummary(null)).toBeNull();
+    const long = "A".repeat(300);
+    const summary = eventFormPrintDescriptionSummary(long);
+    expect(summary).not.toBeNull();
+    expect(summary!.length).toBeLessThanOrEqual(281);
+    expect(summary!.endsWith("…")).toBe(true);
   });
 
   it("renders filled client, venue, requirement, document, and sign-off sections", () => {
@@ -144,7 +157,10 @@ describe("event-form-print", () => {
     expect(html).toContain("window.print()");
     expect(html).toContain(">Print</button>");
     expect(html).toContain(">Export to PDF</button>");
-    expect(html).toContain("@media print");
+    expect(html).toContain("@page { size: A4;");
+    expect(html).toContain("<h1>Gujrati Play - Long Drive</h1>");
+    expect(html).toContain('class="header-summary">Evening performance</p>');
+    expect(html).not.toContain("<h1>Event Form — VFH-2026-014");
     expect(html).toContain("Filled form snapshot");
   });
 });
