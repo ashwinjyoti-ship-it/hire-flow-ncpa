@@ -135,9 +135,12 @@ describe("frontend regression guards", () => {
     expect(venuesIdx).toBeLessThan(documentsIdx);
     expect(source).not.toContain('["conflicts"');
     expect(source).not.toContain('["activity", "Activity"]');
-    expect(source).toContain("Activity timings");
-    expect(source).toContain("Call times");
+    expect(source).toContain("Schedule");
     expect(source).toContain("With AC");
+    expect(source).toContain("venues booked");
+    expect(source).toContain("getDefaultExpandedVenueKeys");
+    expect(source).not.toContain("Sound, light &amp; staffing");
+    expect(source).not.toContain("Call times");
   });
 
   it("drops overview tab and shows completion inside lifecycle", () => {
