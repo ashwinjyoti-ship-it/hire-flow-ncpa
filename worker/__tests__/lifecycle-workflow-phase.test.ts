@@ -5,8 +5,11 @@ import {
   completedWorkflowPhases,
   finalShowDate,
   getActiveWorkflowPhase,
+  isEventPrepOpsFieldKey,
+  isEventPrepOpsSection,
   isFileClosedValue,
   isWorkflowPhaseVisible,
+  WORKFLOW_PHASE_LABELS,
   workflowPhaseForTaskRule,
 } from "../lib/lifecycle-workflow-phase";
 
@@ -121,5 +124,14 @@ describe("lifecycle workflow phase", () => {
   it("resolves final show date", () => {
     expect(finalShowDate("2026-07-10", null)).toBe("2026-07-10");
     expect(finalShowDate("2026-07-10", "2026-07-12")).toBe("2026-07-12");
+  });
+
+  it("labels the event phase as Event prep and classifies prep ops sections", () => {
+    expect(WORKFLOW_PHASE_LABELS.event).toBe("Event prep");
+    expect(isEventPrepOpsSection("NOC")).toBe(true);
+    expect(isEventPrepOpsSection("Onstage/Emailer")).toBe(true);
+    expect(isEventPrepOpsSection("Financials")).toBe(false);
+    expect(isEventPrepOpsFieldKey("technical_meeting_date")).toBe(true);
+    expect(isEventPrepOpsFieldKey("costing_email")).toBe(false);
   });
 });

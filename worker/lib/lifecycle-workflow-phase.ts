@@ -1,9 +1,40 @@
 /**
  * Single-focus lifecycle workflow phases for the event detail form.
  *
- * Confirm → Event (readiness until first show date) → Accounts (day after last show).
+ * Confirm → Event prep (ops actions + form readiness, until first show date)
+ * → Accounts (day after last show).
  * Completed phases stay collapsible; only one phase is active at a time.
+ *
+ * Event prep runs two parallel tracks (neither gates the other):
+ * - Ops actions: NOC, OnStage/Emailer, Monthly Chart, Technical Meeting
+ * - Event form readiness: required event-form sections
  */
+
+/** Ops checklist sections that belong to the Confirm workflow. */
+export const CONFIRM_CHECKLIST_SECTIONS = [
+  "Event Reference",
+  "Approval",
+  "Financials",
+  "Confirmation Letter",
+] as const;
+
+/** Ops checklist sections that belong to Event prep (parallel with form readiness). */
+export const EVENT_PREP_OPS_SECTIONS = [
+  "NOC",
+  "Onstage/Emailer",
+  "Monthly Chart",
+  "Technical Meeting & Minutes",
+] as const;
+
+export const POST_EVENT_CHECKLIST_SECTION = "Post-Event Closure";
+
+export function isConfirmChecklistSection(section: string): boolean {
+  return (CONFIRM_CHECKLIST_SECTIONS as readonly string[]).includes(section);
+}
+
+export function isEventPrepOpsSection(section: string): boolean {
+  return (EVENT_PREP_OPS_SECTIONS as readonly string[]).includes(section);
+}
 
 export type LifecycleWorkflowPhase =
   | "confirm"
@@ -130,12 +161,39 @@ export function canGenerateTaskForPhase(
 
 export const WORKFLOW_PHASE_LABELS: Record<LifecycleWorkflowPhase, string> = {
   confirm: "Confirm",
-  event: "Event readiness",
+  event: "Event prep",
   duringEvent: "Event in progress",
   accounts: "Accounts",
   complete: "File closed",
   terminal: "Closed",
 };
+
+/** Field keys that deep-link into the Event prep ops track (not Confirm). */
+const EVENT_PREP_FIELD_PREFIXES = ["noc_", "onstage_", "emailer"] as const;
+const EVENT_PREP_FIELD_KEYS = new Set([
+  "noc_sent",
+  "noc_sent_on",
+  "onstage_required",
+  "onstage_asked_client",
+  "onstage_received_from_client",
+  "onstage_sent_to_team",
+  "onstage_verified",
+  "onstage_complete",
+  "emailer",
+  "emailer_asked_client",
+  "emailer_received_from_client",
+  "emailer_sent_to_team",
+  "emailer_sent",
+  "monthly_chart_sent",
+  "technical_meeting_date",
+  "minutes_of_meeting",
+]);
+
+export function isEventPrepOpsFieldKey(fieldKey: string | null | undefined): boolean {
+  if (!fieldKey) return false;
+  if (EVENT_PREP_FIELD_KEYS.has(fieldKey)) return true;
+  return EVENT_PREP_FIELD_PREFIXES.some((prefix) => fieldKey.startsWith(prefix));
+}
 
 export function isFileClosedValue(value: string | null | undefined): boolean {
   if (!value) return false;

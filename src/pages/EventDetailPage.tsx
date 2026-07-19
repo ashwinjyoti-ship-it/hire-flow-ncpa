@@ -27,7 +27,10 @@ import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
 import {
   accountsStartDate,
   getActiveWorkflowPhase,
+  isConfirmChecklistSection,
+  isEventPrepOpsSection,
   isFileClosedValue,
+  POST_EVENT_CHECKLIST_SECTION,
   type LifecycleWorkflowPhase,
   WORKFLOW_PHASE_LABELS,
 } from "../../worker/lib/lifecycle-workflow-phase";
@@ -326,11 +329,14 @@ export function EventDetailPage() {
   const showPocAlert = pocCompletion && !pocCompletion.complete && e.status !== "cancelled" && e.status !== "regret";
   const opsSections = checklistData?.checklist.operations ?? {};
   const accountsSections = checklistData?.checklist.accounts ?? {};
-  const beforeEventSections = Object.fromEntries(
-    Object.entries(opsSections).filter(([section]) => section !== "Post-Event Closure"),
+  const confirmSections = Object.fromEntries(
+    Object.entries(opsSections).filter(([section]) => isConfirmChecklistSection(section)),
+  );
+  const eventPrepOpsSections = Object.fromEntries(
+    Object.entries(opsSections).filter(([section]) => isEventPrepOpsSection(section)),
   );
   const postEventSections = Object.fromEntries(
-    Object.entries(opsSections).filter(([section]) => section === "Post-Event Closure"),
+    Object.entries(opsSections).filter(([section]) => section === POST_EVENT_CHECKLIST_SECTION),
   );
   const fileClosedItem = Object.values(postEventSections).flat().find((item) => item.field_key === "file_closed");
   const fileClosed = isFileClosedValue(fileClosedItem?.value);
@@ -380,9 +386,18 @@ export function EventDetailPage() {
   );
   const pendingTasks = workflowScopedTasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
   const readiness = checklistData?.readiness ?? e.event_readiness;
-  const eventReadinessSummary = readiness
-    ? `${readiness.percentage}% form complete`
-    : "Event form readiness";
+  const eventPrepOpsItems = Object.values(eventPrepOpsSections).flat();
+  const eventPrepOpsByKey = new Map(eventPrepOpsItems.map((item) => [item.field_key, item]));
+  const eventPrepOpsVisible = eventPrepOpsItems.filter((item) => isChecklistFieldVisible(item, eventPrepOpsByKey));
+  const eventPrepOpsDone = eventPrepOpsVisible.filter(
+    (item) => item.status === "completed" || item.status === "not_applicable",
+  ).length;
+  const eventPrepOpsTotal = eventPrepOpsVisible.length;
+  const eventPrepOpsRatio = eventPrepOpsTotal ? eventPrepOpsDone / eventPrepOpsTotal : 1;
+  const eventPrepSummary = [
+    eventPrepOpsTotal ? `Ops ${eventPrepOpsDone}/${eventPrepOpsTotal}` : "Ops",
+    readiness ? `Form ${readiness.percentage}%` : "Form",
+  ].join(" · ");
 
   const momInput: MomEventInput = {
     title: e.title,
@@ -556,7 +571,7 @@ export function EventDetailPage() {
         workflow={workflow}
         forceExpandPhase={forceExpandPhase}
         confirmSummary="Confirmation blockers cleared"
-        eventSummary={eventReadinessSummary}
+        eventSummary={eventPrepSummary}
         accountsSummary={fileClosed ? "File closed" : "Post-event & accounts"}
         confirmContent={(
           <div className="space-y-6">
@@ -582,13 +597,13 @@ export function EventDetailPage() {
             />
             <div>
               <div className="mb-3">
-                <h2 className="text-base font-semibold text-ink-primary etched-deep">Action checklist</h2>
+                <h2 className="text-base font-semibold text-ink-primary etched-deep">Confirmation checklist</h2>
                 <p className="text-xs text-ink-muted etched">
                   Confirmation blockers deep-link into the fields below. Complete these to advance.
                 </p>
               </div>
               <ChecklistModuleView
-                sections={beforeEventSections}
+                sections={confirmSections}
                 canEdit={canUpdateChecklist}
                 savingItemId={savingChecklistItemId}
                 focusedFieldKey={focusedFieldKey}
@@ -601,18 +616,58 @@ export function EventDetailPage() {
           </div>
         )}
         eventContent={(
-          <div>
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form readiness</h2>
+          <div className="space-y-6">
+            <div>
               <p className="text-xs text-ink-muted etched">
-                Required event-form fields through the first show date. Automated — these rows cannot be manually ticked.
+                After confirmation, finish ops actions and the event form in parallel — neither blocks the other.
+                Window runs through the first show date.
               </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-marble-shadow/20 px-3.5 py-3">
+                  <ProgressBar label="Ops actions" value={eventPrepOpsRatio} compact />
+                </div>
+                <div className="rounded-xl bg-marble-shadow/20 px-3.5 py-3">
+                  <ProgressBar
+                    label="Event form"
+                    value={readiness ? readiness.percentage / 100 : null}
+                    compact
+                  />
+                </div>
+              </div>
             </div>
-            {readiness ? (
-              <EventReadinessPanel eventId={e.id} readiness={readiness} detailed />
-            ) : (
-              <p className="text-sm text-ink-muted etched">Readiness data is not available yet.</p>
-            )}
+
+            <div id="lifecycle-event-prep-ops">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-ink-primary etched-deep">Ops actions</h2>
+                <p className="text-xs text-ink-muted etched">
+                  NOC, OnStage/Emailer, Monthly Chart, and Technical Meeting — post-confirm prep.
+                </p>
+              </div>
+              <ChecklistModuleView
+                sections={eventPrepOpsSections}
+                canEdit={canUpdateChecklist}
+                savingItemId={savingChecklistItemId}
+                focusedFieldKey={focusedFieldKey}
+                finalShowDate={e.event_end_date ?? e.event_start_date}
+                showGoToTop
+                onGoToTop={clearFocusedField}
+                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+              />
+            </div>
+
+            <div id="lifecycle-event-prep-form">
+              <div className="mb-3">
+                <h2 className="text-base font-semibold text-ink-primary etched-deep">Event form readiness</h2>
+                <p className="text-xs text-ink-muted etched">
+                  Required event-form fields. Automated — these rows cannot be manually ticked.
+                </p>
+              </div>
+              {readiness ? (
+                <EventReadinessPanel eventId={e.id} readiness={readiness} detailed />
+              ) : (
+                <p className="text-sm text-ink-muted etched">Readiness data is not available yet.</p>
+              )}
+            </div>
           </div>
         )}
         accountsContent={(
