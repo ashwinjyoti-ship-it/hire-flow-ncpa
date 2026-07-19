@@ -1,3 +1,9 @@
+import {
+  canGenerateTaskForPhase,
+  getActiveWorkflowPhase,
+  type LifecycleWorkflowPhase,
+  workflowPhaseForTaskRule,
+} from "../../worker/lib/lifecycle-workflow-phase";
 import { getEventPocEditLink } from "./event-edit-form";
 
 export type TaskLike = {
@@ -99,6 +105,38 @@ export function getTaskIntentLabel(task: TaskLike): string {
 
 export function isStaleConfirmedLifecycleTask(task: Pick<TaskLike, "event_status" | "source_rule">): boolean {
   return task.event_status === "confirmed" && Boolean(task.source_rule && STALE_CONFIRMED_LIFECYCLE_RULES.has(task.source_rule));
+}
+
+/** Active workflow phase for a task's event (client-side, from embedded event fields). */
+export function getTaskWorkflowPhase(
+  task: Pick<TaskLike, "event_status" | "event_start_date" | "event_end_date" | "source_rule">,
+  todayIso = isoToday(),
+  fileClosed = false,
+): LifecycleWorkflowPhase | null {
+  if (!task.event_status) return workflowPhaseForTaskRule(task.source_rule);
+  return getActiveWorkflowPhase({
+    status: task.event_status,
+    eventStartDate: task.event_start_date,
+    eventEndDate: task.event_end_date,
+    fileClosed,
+  }, todayIso);
+}
+
+/**
+ * Keep Tasks-tab focus on the active workflow. Manual tasks always stay visible.
+ * Pass `showAll` to reveal history from earlier phases.
+ */
+export function filterTasksForActiveWorkflow<T extends TaskLike>(
+  tasks: T[],
+  activePhase: LifecycleWorkflowPhase | null | undefined,
+  showAll = false,
+): T[] {
+  if (showAll || !activePhase) return tasks;
+  return tasks.filter((task) => {
+    if (task.task_type === "manual" || !task.source_rule) return true;
+    if (task.status === "completed" || task.status === "cancelled") return showAll;
+    return canGenerateTaskForPhase(task.source_rule, activePhase);
+  });
 }
 
 export function getEventOperationsLink(eventId: string | null | undefined): string {

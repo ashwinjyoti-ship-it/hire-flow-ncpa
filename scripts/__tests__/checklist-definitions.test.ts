@@ -78,8 +78,9 @@ describe("operations action checklist", () => {
     }
   });
 
-  it("ends with post-event closure actions", () => {
-    expect(operations.at(-1)?.field_key).toBe("final_closure_notes");
+  it("ends with post-event closure actions including close file", () => {
+    expect(operations.at(-1)?.field_key).toBe("file_closed");
     expect(operations.at(-1)?.section).toBe("Post-Event Closure");
+    expect(operations.some((item) => item.field_key === "final_closure_notes")).toBe(true);
   });
 });

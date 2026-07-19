@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEventCommandCards,
+  filterTasksForActiveWorkflow,
   getDaysOverdue,
   getEventOperationsLink,
   groupTasksByTiming,
@@ -51,6 +52,18 @@ describe("task workflow helpers", () => {
     expect(getWorkflowFamily(task({ id: "e", title: "Accounts file status" }))).toBe("accounts");
     expect(getWorkflowFamily(task({ id: "f", title: "Send feedback form" }))).toBe("postEvent");
     expect(getWorkflowFamily(task({ id: "g", title: "Call client" }))).toBe("manual");
+  });
+
+  it("filters tasks to the active lifecycle workflow phase", () => {
+    const tasks = [
+      task({ id: "confirm", title: "Approval", source_rule: "approval_followup" }),
+      task({ id: "ready", title: "Fill venues", source_rule: "event_form_readiness:venues_schedule" }),
+      task({ id: "feedback", title: "Feedback", source_rule: "feedback" }),
+      task({ id: "manual", title: "Call client", task_type: "manual", source_rule: null }),
+    ];
+    expect(filterTasksForActiveWorkflow(tasks, "event").map((row) => row.id)).toEqual(["ready", "manual"]);
+    expect(filterTasksForActiveWorkflow(tasks, "accounts").map((row) => row.id)).toEqual(["feedback", "manual"]);
+    expect(filterTasksForActiveWorkflow(tasks, "event", true)).toHaveLength(4);
   });
 
   it("orders event command cards by due-date urgency before priority", () => {
