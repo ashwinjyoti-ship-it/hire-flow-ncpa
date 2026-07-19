@@ -170,6 +170,16 @@ describe("frontend regression guards", () => {
     expect(source).toContain("filterTasksForActiveWorkflow");
   });
 
+  it("shows Event prep as parallel ops actions and form readiness tracks", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    expect(source).toContain("eventPrepOpsSections");
+    expect(source).toContain("confirmSections");
+    expect(source).toContain("Ops actions");
+    expect(source).toContain("neither blocks the other");
+    expect(source).toContain('label="Ops actions"');
+    expect(source).toContain('label="Event form"');
+  });
+
   it("warns on post-show operational dates without generic reopen controls", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 

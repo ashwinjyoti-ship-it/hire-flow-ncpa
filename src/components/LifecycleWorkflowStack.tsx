@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  isEventPrepOpsFieldKey,
   isWorkflowPhaseVisible,
   type LifecycleWorkflowPhase,
   WORKFLOW_PHASE_LABELS,
@@ -36,7 +37,7 @@ export function LifecycleWorkflowStack({
   accountsContent,
   forceExpandPhase = null,
   confirmSummary = "Confirmation blockers cleared",
-  eventSummary = "Event form readiness complete",
+  eventSummary = "Ops actions & event form ready",
   accountsSummary = "Accounts & post-event closed",
 }: LifecycleWorkflowStackProps) {
   const active = workflow.activePhase;
@@ -179,5 +180,6 @@ export function workflowPhaseForChecklistTarget(
   ) {
     return "accounts";
   }
+  if (isEventPrepOpsFieldKey(fieldKey)) return "event";
   return "confirm";
 }
