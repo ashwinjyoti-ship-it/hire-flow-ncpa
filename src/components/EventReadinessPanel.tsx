@@ -44,6 +44,7 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
   const complete = section.state === "complete";
   const partiallyFilled = section.state === "partial" || section.state === "almost";
   const issueCount = section.missingLabels.length;
+  const setActivityLabels = section.setLabels ?? [];
   const venueChips = section.missingLabels
     .slice(0, 4)
     .map((label, index) => ({
@@ -65,9 +66,30 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted etched">Venues &amp; schedule</p>
-          {complete ? (
+          {setActivityLabels.length > 0 ? (
+            <>
+              {partiallyFilled && (
+                <p className="mt-1 text-sm font-semibold text-ink-primary etched-deep">Partially filled</p>
+              )}
+              <div className={`flex flex-wrap gap-1.5 ${partiallyFilled ? "mt-2" : "mt-1.5"}`}>
+                {setActivityLabels.map((label) => (
+                  <span
+                    key={label}
+                    className={
+                      "rounded-full px-2.5 py-0.5 text-[11px] font-semibold etched " +
+                      (complete
+                        ? "bg-status-confirmed/20 text-sage-text"
+                        : "bg-marble-highlight/80 text-ink-secondary")
+                    }
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : complete ? (
             <p className="mt-1 text-sm font-semibold text-sage-text etched">
-              {section.total === 1 ? "Venue show schedule is set" : `All ${section.total} venues have show schedules`}
+              {section.total === 1 ? "Venue schedule is set" : `All ${section.total} venues have schedules`}
             </p>
           ) : partiallyFilled ? (
             <p className="mt-1 text-sm font-semibold text-ink-primary etched-deep">Partially filled</p>
@@ -78,7 +100,7 @@ function VenueScheduleHighlight({ eventId, section }: { eventId: string; section
               {issueCount} {issueCount === 1 ? "venue still needs" : "venues still need"} activity schedules
             </p>
           )}
-          {!complete && venueChips.length > 0 && (
+          {!complete && setActivityLabels.length === 0 && venueChips.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {venueChips.map((chip) => (
                 <span
