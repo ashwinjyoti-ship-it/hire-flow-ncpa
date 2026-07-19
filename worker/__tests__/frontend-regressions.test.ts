@@ -69,6 +69,8 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain("disabled={!nextAction && !visibleBlockerTarget}");
     // One blocker at a time — do not dump the full blocker list in the panel.
     expect(source).toContain("selectNextLifecycleBlocker");
+    expect(source).toContain("currentMilestoneTrackClass");
+    expect(source).toContain("getEventStatusSurface");
   });
 
   it("labels event tasks as system-generated and separates completed history", () => {

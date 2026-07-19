@@ -16,6 +16,7 @@ import type { EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 import { BLOCKER_TARGETS } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
+import { getEventStatusSurface } from "../lib/event-status-surface";
 import { getPostShowDateWarning } from "../../worker/lib/checklist-date-policy";
 import {
   buildMomDocument,
@@ -1853,7 +1854,7 @@ function LifecycleTrack({
           const milestoneClass =
             "rounded-full px-3 py-1.5 text-xs font-semibold etched transition-colors " +
             (isCurrent
-              ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
+              ? currentMilestoneTrackClass(s)
               : action
                 ? action.allowed
                   ? "carved-btn-sage bg-sage-btn text-sage-text hover:bg-sage-btn-hover"
@@ -1910,6 +1911,12 @@ function lifecycleActionLabel(status: EventStatus): string {
   if (status === "cancelled") return "Cancel event";
   if (status === "regret") return "Mark as Regret";
   return statusLabel(status);
+}
+
+function currentMilestoneTrackClass(status: EventStatus): string {
+  const surface = getEventStatusSurface(status);
+  const carved = status === "confirmed" || status === "approved" ? "carved-btn-sage" : "carved-btn";
+  return `${carved} ${surface.chip}`;
 }
 
 function forwardMilestoneButtonClass(status: EventStatus, blocked: boolean): string {
