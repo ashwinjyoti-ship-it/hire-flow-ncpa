@@ -1,4 +1,5 @@
 import type { ReadinessSection, ReadinessState } from "./event-readiness";
+import { ACTIVITY_TYPES, formatActivityType } from "./types";
 
 export const VENUES_SCHEDULE_READINESS_KEY = "venues_schedule";
 export const VENUES_SCHEDULE_ANCHOR_ID = "event-venues-schedule";
@@ -9,6 +10,9 @@ export type VenueBookingReadinessInput = {
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Preferred display order for set activity chips. */
+const ACTIVITY_LABEL_ORDER = ["setup", "rehearsal", "zero_show", "show", "dismantling"] as const;
 
 function venueLabel(booking: VenueBookingReadinessInput, index: number): string {
   const name = String(booking.venue ?? "").trim();
@@ -31,6 +35,23 @@ function hasDatedShowEntry(booking: VenueBookingReadinessInput): boolean {
   );
 }
 
+export function collectSetActivityLabels(bookings: VenueBookingReadinessInput[]): string[] {
+  const set = new Set<string>();
+  for (const booking of bookings) {
+    for (const entry of booking.schedule_entries ?? []) {
+      if (
+        typeof entry.activity_type === "string"
+        && (ACTIVITY_TYPES as readonly string[]).includes(entry.activity_type)
+        && typeof entry.activity_date === "string"
+        && DATE_RE.test(entry.activity_date)
+      ) {
+        set.add(entry.activity_type);
+      }
+    }
+  }
+  return ACTIVITY_LABEL_ORDER.filter((type) => set.has(type)).map((type) => formatActivityType(type));
+}
+
 export function calculateVenueScheduleReadinessSection(
   bookings: VenueBookingReadinessInput[],
 ): ReadinessSection {
@@ -45,6 +66,7 @@ export function calculateVenueScheduleReadinessSection(
       percentage: 0,
       missingKeys: ["venues"],
       missingLabels: ["Add at least one venue with activity schedule"],
+      setLabels: [],
     };
   }
 
@@ -91,6 +113,7 @@ export function calculateVenueScheduleReadinessSection(
     percentage,
     missingKeys: issues.map((issue) => issue.key),
     missingLabels: issues.map((issue) => issue.label),
+    setLabels: collectSetActivityLabels(bookings),
   };
 }
 
