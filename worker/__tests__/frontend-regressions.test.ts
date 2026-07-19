@@ -165,6 +165,17 @@ describe("frontend regression guards", () => {
     expect(source).toContain('<SummaryItem label="Type" value={formatEventType(e.event_type)} />');
   });
 
+  it("shows payment status in the event detail summary instead of signed confirmation", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const routes = readFileSync(resolve(root, "worker/routes/events.ts"), "utf8");
+
+    expect(detail).toContain('<SummaryItem label="Payment status" value={prettyState(e.payment_status)} />');
+    expect(detail).not.toContain('<SummaryItem label="Signed confirmation"');
+    expect(detail).toContain("payment_status: string | null;");
+    expect(routes).toContain("field_key = 'payment_status'");
+    expect(routes).toContain("payment_status: paymentStatusRow?.value ?? null");
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
     const shell = readFileSync(resolve(root, "src/components/shell/AppShell.tsx"), "utf8");
