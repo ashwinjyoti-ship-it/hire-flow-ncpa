@@ -171,7 +171,8 @@ describe("buildMomHtml", () => {
     const page = buildMomHtml(sample, "Minutes of Meeting — Test");
     expect(page).toContain("<!DOCTYPE html>");
     expect(page).toContain("font-weight:700");
-    expect(page).toContain("Print / Save as PDF");
+    expect(page).toContain(">Print</button>");
+    expect(page).toContain(">Export to PDF</button>");
     expect(page).toContain("Godrej Dance Theatre");
   });
 });

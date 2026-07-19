@@ -12,6 +12,7 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
+import { buildPrintablePageHtml } from "../../shared/printable-html";
 import { escapeHtml } from "./export";
 import { omitEventLevelRequirements } from "./event-edit-form";
 
@@ -650,16 +651,8 @@ export function buildMomHtml(
   customNotes?: string | null,
 ): string {
   const body = buildMomDocumentHtml(input, customNotes);
-  return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
-<style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 32px; line-height: 1.45; font-size: 12pt; }
-  .toolbar { margin-bottom: 16px; }
-  .toolbar button { font: inherit; padding: 6px 16px; }
-  @media print { .toolbar { display: none; } body { margin: 12px; } }
-</style></head>
-<body>
-<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-${body}
-</body></html>`;
+  return buildPrintablePageHtml({
+    title,
+    bodyHtml: `<div class="mom-document">${body}</div>`,
+  });
 }

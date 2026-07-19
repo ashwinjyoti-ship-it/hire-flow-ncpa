@@ -25,6 +25,7 @@ import { makeId } from "../lib/id";
 import { buildDailyReportContent, istToday, type DailyReportContent } from "../lib/daily-report";
 import { buildBriefContent, conflictAttentionLabel, type BriefContent, type EveningBriefContent, type MorningBriefContent } from "../lib/brief";
 import { renderBriefPrintable } from "../lib/brief-html";
+import { buildPrintablePageHtml } from "../../shared/printable-html";
 
 export const reportRoutes = new Hono<AuthEnv>();
 
@@ -307,29 +308,11 @@ function tableSection(title: string, headers: string[], rows: string[][]): strin
 function renderPrintableReport(s: DailyReportContent, generatedByName: string | null, notes: string | null): string {
   const taskRows = (tasks: DailyReportContent["system_tasks"]) =>
     tasks.map((t) => [esc(t.title), esc(t.status), esc(t.priority), esc(t.due_date), esc(t.event_title), esc(t.assignee_name)]);
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Daily Operational Report — ${esc(s.report_date)}</title>
-<style>
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2f2c27; margin: 32px; }
-  h1 { font-size: 22px; margin-bottom: 2px; }
-  .meta { color: #6b675f; font-size: 12px; margin-bottom: 20px; }
-  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid #cfcabf; padding-bottom: 4px; margin: 22px 0 8px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; color: #6b675f; font-weight: 600; padding: 4px 8px; border-bottom: 1px solid #e0dcd2; }
-  td { padding: 4px 8px; border-bottom: 1px solid #eeebe4; vertical-align: top; }
-  td.empty { color: #9a958a; font-style: italic; }
-  .toolbar { margin-bottom: 16px; }
-  .toolbar button { font: inherit; padding: 6px 16px; }
-  @media print { .toolbar { display: none; } body { margin: 8px; } }
-</style>
-</head>
-<body>
-<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
-<h1>Daily Operational Report — ${esc(s.report_date)}</h1>
-<div class="meta">Generated ${esc(s.generated_at)}${generatedByName ? ` by ${esc(generatedByName)}` : ""}${notes ? ` · ${esc(notes)}` : ""}</div>
+  const title = `Daily Operational Report — ${s.report_date}`;
+  const bodyHtml = `<header>
+  <h1>${esc(title)}</h1>
+  <p class="meta">Generated ${esc(s.generated_at)}${generatedByName ? ` by ${esc(generatedByName)}` : ""}${notes ? ` · ${esc(notes)}` : ""}</p>
+</header>
 ${tableSection("Scheduled", ["Venue", "Activity", "Start", "End", "Event", "Organisation", "Status"],
     s.scheduled.map((r) => [esc(r.venue), esc(r.activity_type), esc(r.start_time), esc(r.end_time), esc(r.event_title), esc(r.organisation_name), esc(r.event_status)]))}
 ${tableSection("System Tasks", ["Task", "Status", "Priority", "Due", "Event", "Assignee"], taskRows(s.system_tasks))}
@@ -340,7 +323,7 @@ ${tableSection("Work Achieved", ["Type", "Item", "Event", "By", "Detail"], [
     ...s.work_achieved.status_changes.map((sc) => ["Status change", esc(`${sc.from_status ?? "—"} → ${sc.to_status}`), esc(sc.event_title), esc(sc.changed_by_name), esc(sc.reason)]),
   ])}
 ${tableSection("Outstanding", ["Task", "Status", "Priority", "Due", "Days Overdue", "Event", "Assignee"],
-    s.outstanding.map((t) => [esc(t.title), esc(t.status), esc(t.priority), esc(t.due_date), String(t.days_overdue), esc(t.event_title), esc(t.assignee_name)]))}
-</body>
-</html>`;
+    s.outstanding.map((t) => [esc(t.title), esc(t.status), esc(t.priority), esc(t.due_date), String(t.days_overdue), esc(t.event_title), esc(t.assignee_name)]))}`;
+  return buildPrintablePageHtml({ title, bodyHtml });
 }
+
