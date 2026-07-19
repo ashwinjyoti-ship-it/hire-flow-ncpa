@@ -15,7 +15,7 @@ describe("venue schedule readiness", () => {
   it("flags venues without dated schedule entries", () => {
     const section = calculateVenueScheduleReadinessSection([
       { venue: "TET", schedule_entries: [] },
-      { venue: "JBT", schedule_entries: [{ activity_date: "2026-08-28" }] },
+      { venue: "JBT", schedule_entries: [{ activity_type: "show", activity_date: "2026-08-28" }] },
     ]);
     expect(section.state).toBe("partial");
     expect(section.filled).toBe(1);
@@ -23,10 +23,31 @@ describe("venue schedule readiness", () => {
     expect(section.missingLabels).toEqual(["TET: add activity schedule"]);
   });
 
-  it("completes when every venue has at least one dated activity", () => {
+  it("treats setup/rehearsal without show as partially filled", () => {
     const section = calculateVenueScheduleReadinessSection([
-      { venue: "TET", schedule_entries: [{ activity_date: "2026-08-27" }] },
-      { venue: "JBT", schedule_entries: [{ activity_date: "2026-08-28" }, { activity_date: null }] },
+      {
+        venue: "TET",
+        schedule_entries: [
+          { activity_type: "setup", activity_date: "2026-08-27" },
+          { activity_type: "rehearsal", activity_date: "2026-08-27" },
+        ],
+      },
+    ]);
+    expect(section.state).toBe("partial");
+    expect(section.filled).toBe(0);
+    expect(section.missingLabels).toEqual(["TET: add show"]);
+  });
+
+  it("completes only when every venue has a dated show", () => {
+    const section = calculateVenueScheduleReadinessSection([
+      {
+        venue: "TET",
+        schedule_entries: [
+          { activity_type: "setup", activity_date: "2026-08-27" },
+          { activity_type: "show", activity_date: "2026-08-28" },
+        ],
+      },
+      { venue: "JBT", schedule_entries: [{ activity_type: "show", activity_date: "2026-08-28" }, { activity_date: null }] },
     ]);
     expect(section.state).toBe("complete");
     expect(section.missingLabels).toEqual([]);
@@ -34,13 +55,14 @@ describe("venue schedule readiness", () => {
 
   it("parses venue booking rows from D1 schedule_json", () => {
     const bookings = parseVenueBookingsForReadiness([
-      { venue: "TET", schedule_json: '[{"activity_date":"2026-08-28"}]' },
+      { venue: "TET", schedule_json: '[{"activity_date":"2026-08-28","activity_type":"show"}]' },
     ]);
-    expect(bookings[0]?.schedule_entries).toEqual([{ activity_date: "2026-08-28" }]);
+    expect(bookings[0]?.schedule_entries).toEqual([{ activity_date: "2026-08-28", activity_type: "show" }]);
   });
 
   it("shortens venue issue labels for compact chips", () => {
     expect(venueScheduleIssueLabel("TET: add activity schedule")).toBe("TET");
+    expect(venueScheduleIssueLabel("TET: add show")).toBe("TET");
     expect(venueScheduleIssueLabel("Venue 2: select a venue")).toBe("Venue 2");
   });
 });

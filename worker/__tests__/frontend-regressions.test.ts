@@ -134,7 +134,7 @@ describe("frontend regression guards", () => {
 
   it("shows venues and schedule before documents and omits conflict/activity tabs", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
-    const venuesIdx = source.indexOf('["venues", `Venues & Schedule');
+    const venuesIdx = source.indexOf('["venues", venuesAndScheduleTabLabel(');
     const documentsIdx = source.indexOf('["documents", `Documents');
     expect(venuesIdx).toBeGreaterThan(-1);
     expect(documentsIdx).toBeGreaterThan(-1);
@@ -145,6 +145,7 @@ describe("frontend regression guards", () => {
     expect(source).toContain("With AC");
     expect(source).toContain("venues booked");
     expect(source).toContain("getDefaultExpandedVenueKeys");
+    expect(source).toContain("carved-btn border border-ink-muted/25 bg-neutral-btn");
     expect(source).not.toContain("Sound, light &amp; staffing");
     expect(source).not.toContain("Call times");
   });

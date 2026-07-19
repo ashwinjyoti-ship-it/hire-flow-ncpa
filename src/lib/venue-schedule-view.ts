@@ -45,3 +45,15 @@ export function shouldUseCompactSchedule(entriesCount: number): boolean {
 export function shouldUseTwoColumnSchedule(entriesCount: number, venueCount: number): boolean {
   return venueCount === 1 && entriesCount > 0 && entriesCount <= 2;
 }
+
+/** Tab label — setup/rehearsal without show stays "Partially filled". */
+export function venuesAndScheduleTabLabel(
+  bookingCount: number,
+  readinessState?: string | null,
+): string {
+  if (!bookingCount) return "Venues & Schedule";
+  const partial = readinessState === "partial" || readinessState === "almost";
+  return partial
+    ? `Venues & Schedule (${bookingCount}) · Partially filled`
+    : `Venues & Schedule (${bookingCount})`;
+}

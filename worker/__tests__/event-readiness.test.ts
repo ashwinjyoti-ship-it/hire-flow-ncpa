@@ -119,7 +119,7 @@ describe("event form readiness", () => {
 
   it("includes venue schedule readiness ahead of requirement sections", () => {
     const readiness = calculateEventFormReadiness({}, [
-      { venue: "TET", schedule_entries: [{ activity_date: "2026-08-28" }] },
+      { venue: "TET", schedule_entries: [{ activity_type: "show", activity_date: "2026-08-28" }] },
       { venue: "JBT", schedule_entries: [] },
     ]);
     const venueSection = readiness.sections[0];
@@ -129,3 +129,4 @@ describe("event form readiness", () => {
     expect(readiness.missingCount).toBeGreaterThan(0);
   });
 });
+

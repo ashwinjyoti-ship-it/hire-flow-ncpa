@@ -5,6 +5,7 @@ import {
   getVenueBookingKey,
   shouldUseCompactSchedule,
   shouldUseTwoColumnSchedule,
+  venuesAndScheduleTabLabel,
 } from "./venue-schedule-view";
 
 describe("venue-schedule-view", () => {
@@ -43,4 +44,13 @@ describe("venue-schedule-view", () => {
     expect(getVenueBookingKey({ id: "vb_9" }, 2)).toBe("vb_9");
     expect(getVenueBookingKey({}, 2)).toBe("venue-2");
   });
+
+  it("marks the venues tab as partially filled when show is still missing", () => {
+    expect(venuesAndScheduleTabLabel(0)).toBe("Venues & Schedule");
+    expect(venuesAndScheduleTabLabel(6, "complete")).toBe("Venues & Schedule (6)");
+    expect(venuesAndScheduleTabLabel(6, "missing")).toBe("Venues & Schedule (6)");
+    expect(venuesAndScheduleTabLabel(6, "partial")).toBe("Venues & Schedule (6) · Partially filled");
+    expect(venuesAndScheduleTabLabel(2, "almost")).toBe("Venues & Schedule (2) · Partially filled");
+  });
 });
+
