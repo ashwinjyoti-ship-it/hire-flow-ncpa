@@ -93,6 +93,8 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Still needed");
     expect(source).toContain("Venues &amp; schedule");
     expect(source).toContain("Fix schedule");
+    expect(source).toContain("setActivityLabels");
+    expect(source).toContain("section.setLabels");
     expect(source).toContain("VENUES_SCHEDULE_READINESS_KEY");
     expect(detailPage).toContain("VENUES_SCHEDULE_ANCHOR_ID");
     expect(detailPage).toContain("scrollAppMainToElement(el, \"start\", \"smooth\")");

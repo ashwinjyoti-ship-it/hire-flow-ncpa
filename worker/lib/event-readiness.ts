@@ -26,6 +26,8 @@ export type ReadinessSection = {
   missingKeys: string[];
   missingLabels: string[];
   formSection: string;
+  /** Venues & schedule: dated activity types that are already set (e.g. Show). */
+  setLabels?: string[];
 };
 
 export type EventFormReadiness = {
