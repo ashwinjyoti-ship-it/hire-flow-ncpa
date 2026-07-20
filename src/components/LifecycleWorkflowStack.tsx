@@ -16,7 +16,7 @@ export type WorkflowSnapshot = {
   fileClosed: boolean;
 };
 
-type AccordionPhase = "confirm" | "accounts";
+type AccordionPhase = "confirm";
 
 type LifecycleWorkflowStackProps = {
   workflow: WorkflowSnapshot;
@@ -25,15 +25,13 @@ type LifecycleWorkflowStackProps = {
   confirmContent: ReactNode;
   postConfirmOpsContent: ReactNode;
   eventReadinessContent: ReactNode;
-  accountsContent: ReactNode;
   postConfirmOpsComplete?: boolean;
   postConfirmOpsSummary?: string;
   eventReadinessComplete?: boolean;
   eventReadinessSummary?: string;
-  /** Force-expand an accordion phase (e.g. deep link to a confirm/accounts field). */
-  forceExpandPhase?: AccordionPhase | "event" | null;
+  /** Force-expand an accordion phase (e.g. deep link to a confirm field). */
+  forceExpandPhase?: AccordionPhase | "event" | "accounts" | null;
   confirmSummary?: string;
-  accountsSummary?: string;
 };
 
 export function LifecycleWorkflowStack({
@@ -42,14 +40,12 @@ export function LifecycleWorkflowStack({
   confirmContent,
   postConfirmOpsContent,
   eventReadinessContent,
-  accountsContent,
   postConfirmOpsComplete = false,
   postConfirmOpsSummary = "Ops actions complete",
   eventReadinessComplete = false,
   eventReadinessSummary = "Event form ready",
   forceExpandPhase = null,
   confirmSummary = "Confirmation blockers cleared",
-  accountsSummary = "Accounts & post-event closed",
 }: LifecycleWorkflowStackProps) {
   const active = workflow.activePhase;
   const [expanded, setExpanded] = useState<Record<AccordionPhase, boolean>>(() => initialExpanded(active, forceExpandPhase));
@@ -134,17 +130,6 @@ export function LifecycleWorkflowStack({
         </>
       )}
 
-      {active !== "terminal" && isWorkflowPhaseVisible("accounts", active) && (
-        <WorkflowAccordion
-          phase="accounts"
-          active={active}
-          expanded={expanded.accounts}
-          onToggle={() => setExpanded((prev) => ({ ...prev, accounts: !prev.accounts }))}
-          summary={accountsSummary}
-        >
-          {accountsContent}
-        </WorkflowAccordion>
-      )}
     </section>
   );
 }
@@ -284,15 +269,14 @@ function WorkflowAccordion({
 
 function initialExpanded(
   active: LifecycleWorkflowPhase,
-  force: AccordionPhase | "event" | null,
+  force: AccordionPhase | "event" | "accounts" | null,
 ): Record<AccordionPhase, boolean> {
-  const next: Record<AccordionPhase, boolean> = { confirm: false, accounts: false };
-  if (force && force !== "event") {
+  const next: Record<AccordionPhase, boolean> = { confirm: false };
+  if (force && force !== "event" && force !== "accounts") {
     next[force] = true;
     return next;
   }
   if (active === "confirm") next.confirm = true;
-  if (active === "accounts") next.accounts = true;
   return next;
 }
 

@@ -142,7 +142,7 @@ type EventPageFreshState = {
 };
 
 type EventDetailTab = "operations" | "accounts" | "tasks" | "venues" | "documents";
-type VisibleEventDetailTab = "tasks" | "venues" | "documents";
+type VisibleEventDetailTab = "tasks" | "venues" | "documents" | "accounts";
 
 type ScheduleEntryView = {
   id: string;
@@ -215,7 +215,11 @@ export function EventDetailPage() {
   useEffect(() => {
     const nextTab = parseEventDetailTab(searchParams.get("tab"));
     const nextField = searchParams.get("field");
-    if (nextTab && nextTab !== tab) setTab(nextTab);
+    const resolvedTab =
+      nextField && workflowPhaseForChecklistTarget(nextTab ?? tab, nextField) === "accounts"
+        ? "accounts"
+        : nextTab;
+    if (resolvedTab && resolvedTab !== tab) setTab(resolvedTab);
     setFocusedFieldKey(nextField);
     if (nextField !== scrolledToFieldRef.current) {
       scrolledToFieldRef.current = null;
@@ -233,6 +237,9 @@ export function EventDetailPage() {
         scrolledToFieldRef.current = focusedFieldKey;
         scrollAppMainToElement(el, "start", "smooth");
         return;
+      }
+      if (workflowPhaseForChecklistTarget(tab, focusedFieldKey) === "accounts") {
+        if (tab !== "accounts") return;
       }
       const el = document.getElementById(`checklist-${focusedFieldKey}`);
       if (!el) return;
@@ -358,7 +365,8 @@ export function EventDetailPage() {
   const activeWorkflowPhase: LifecycleWorkflowPhase = workflow.activePhase;
   const forceExpandPhase = workflowPhaseForChecklistTarget(tab, focusedFieldKey);
   const visibleTab: VisibleEventDetailTab =
-    tab === "venues" || tab === "documents" || tab === "tasks" ? tab : "tasks";
+    tab === "venues" || tab === "documents" || tab === "tasks" || tab === "accounts" ? tab : "tasks";
+  const accountsPendingCount = countPendingChecklistItems(postEventSections) + countPendingChecklistItems(accountsSections);
   const allEventTasks = (taskData?.tasks ?? []) as Array<Record<string, unknown> & {
     status?: string;
     task_type?: string;
@@ -583,7 +591,6 @@ export function EventDetailPage() {
         eventReadinessComplete={eventReadinessComplete}
         eventReadinessSummary={eventReadinessSummary}
         confirmSummary="Confirmation blockers cleared"
-        accountsSummary={fileClosed ? "File closed" : "Post-event & accounts"}
         confirmContent={(
           <div className="space-y-6">
             <LifecyclePanel
@@ -675,61 +682,6 @@ export function EventDetailPage() {
             )}
           </div>
         )}
-        accountsContent={(
-          <div className="space-y-6">
-            {Object.keys(postEventSections).length > 0 && (
-              <div>
-                <div className="mb-3">
-                  <h2 className="text-base font-semibold text-ink-primary etched-deep">Post-event closure</h2>
-                  <p className="text-xs text-ink-muted etched">Feedback and closure actions after the final show.</p>
-                </div>
-                <ChecklistModuleView
-                  sections={postEventSections}
-                  canEdit={canUpdateChecklist}
-                  savingItemId={savingChecklistItemId}
-                  focusedFieldKey={focusedFieldKey}
-                  finalShowDate={e.event_end_date ?? e.event_start_date}
-                  onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
-                />
-              </div>
-            )}
-            <div>
-              <div className="mb-3">
-                <h2 className="text-base font-semibold text-ink-primary etched-deep">Accounts tracking</h2>
-                <p className="text-xs text-ink-muted etched">File ping-pong, TDS, and refunds.</p>
-              </div>
-              <ChecklistModuleView
-                sections={accountsSections}
-                canEdit={canUpdateChecklist}
-                savingItemId={savingChecklistItemId}
-                focusedFieldKey={focusedFieldKey}
-                finalShowDate={null}
-                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
-              />
-            </div>
-            {canUpdateChecklist && !fileClosed && fileClosedItem && activeWorkflowPhase === "accounts" && (
-              <div className="rounded-2xl bg-marble-shadow/25 px-4 py-4">
-                <h3 className="text-sm font-semibold text-ink-primary etched-deep">Close file</h3>
-                <p className="mt-1 text-xs text-ink-muted etched">
-                  Mark the venue hire file closed when accounts and post-event work are finished.
-                </p>
-                <button
-                  type="button"
-                  disabled={checklistUpdate.isPending}
-                  onClick={closeFile}
-                  className="carved-btn-sage mt-3 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
-                >
-                  {checklistUpdate.isPending ? "Closing..." : "Close file"}
-                </button>
-              </div>
-            )}
-            {fileClosed && (
-              <div className="rounded-2xl bg-status-confirmed/10 px-4 py-3 text-sm text-sage-text etched">
-                File closed{fileClosedItem?.value ? ` on ${formatDate(fileClosedItem.value)}` : ""}.
-              </div>
-            )}
-          </div>
-        )}
       />
 
       {momOpen && (
@@ -805,6 +757,7 @@ export function EventDetailPage() {
             e.event_readiness?.sections.find((section) => section.key === VENUES_SCHEDULE_READINESS_KEY)?.state,
           )],
           ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
+          ["accounts", `Accounts${accountsPendingCount ? ` (${accountsPendingCount})` : ""}`],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -874,6 +827,22 @@ export function EventDetailPage() {
           documents={documentsData?.documents ?? []}
           canUpload={can(user?.permissions, "document.upload")}
           canArchive={can(user?.permissions, "document.delete")}
+        />
+      )}
+      {visibleTab === "accounts" && (
+        <AccountsView
+          postEventSections={postEventSections}
+          accountsSections={accountsSections}
+          canUpdateChecklist={canUpdateChecklist}
+          savingItemId={savingChecklistItemId}
+          focusedFieldKey={focusedFieldKey}
+          finalShowDate={e.event_end_date ?? e.event_start_date}
+          fileClosed={fileClosed}
+          fileClosedItem={fileClosedItem}
+          checklistPending={checklistUpdate.isPending}
+          onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+          onCloseFile={closeFile}
+          onGoToTop={clearFocusedField}
         />
       )}
 
@@ -1525,6 +1494,100 @@ function formatFileSize(bytes: number | null): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function countPendingChecklistItems(sections: Record<string, ChecklistItem[]>): number {
+  return Object.values(sections).flat().filter(
+    (item) => item.status !== "completed" && item.status !== "not_applicable",
+  ).length;
+}
+
+function AccountsView({
+  postEventSections,
+  accountsSections,
+  canUpdateChecklist,
+  savingItemId,
+  focusedFieldKey,
+  finalShowDate,
+  fileClosed,
+  fileClosedItem,
+  checklistPending,
+  onUpdate,
+  onCloseFile,
+  onGoToTop,
+}: {
+  postEventSections: Record<string, ChecklistItem[]>;
+  accountsSections: Record<string, ChecklistItem[]>;
+  canUpdateChecklist: boolean;
+  savingItemId: string | null;
+  focusedFieldKey: string | null;
+  finalShowDate: string | null;
+  fileClosed: boolean;
+  fileClosedItem: ChecklistItem | undefined;
+  checklistPending: boolean;
+  onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
+  onCloseFile: () => void;
+  onGoToTop: () => void;
+}) {
+  return (
+    <section id="event-accounts-tab" className="scroll-mt-3 space-y-6">
+      {Object.keys(postEventSections).length > 0 && (
+        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-ink-primary etched-deep">Post-event closure</h2>
+            <p className="text-xs text-ink-muted etched">Feedback and closure actions after the final show.</p>
+          </div>
+          <ChecklistModuleView
+            sections={postEventSections}
+            canEdit={canUpdateChecklist}
+            savingItemId={savingItemId}
+            focusedFieldKey={focusedFieldKey}
+            finalShowDate={finalShowDate}
+            showGoToTop
+            onGoToTop={onGoToTop}
+            onUpdate={onUpdate}
+          />
+        </div>
+      )}
+      <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-ink-primary etched-deep">Accounts tracking</h2>
+          <p className="text-xs text-ink-muted etched">File ping-pong, TDS, and refunds.</p>
+        </div>
+        <ChecklistModuleView
+          sections={accountsSections}
+          canEdit={canUpdateChecklist}
+          savingItemId={savingItemId}
+          focusedFieldKey={focusedFieldKey}
+          finalShowDate={null}
+          showGoToTop
+          onGoToTop={onGoToTop}
+          onUpdate={onUpdate}
+        />
+      </div>
+      {canUpdateChecklist && !fileClosed && fileClosedItem && (
+        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          <h3 className="text-sm font-semibold text-ink-primary etched-deep">Close file</h3>
+          <p className="mt-1 text-xs text-ink-muted etched">
+            Mark the venue hire file closed when accounts and post-event work are finished.
+          </p>
+          <button
+            type="button"
+            disabled={checklistPending}
+            onClick={onCloseFile}
+            className="carved-btn-sage mt-3 rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched disabled:opacity-60"
+          >
+            {checklistPending ? "Closing..." : "Close file"}
+          </button>
+        </div>
+      )}
+      {fileClosed && (
+        <div className="rounded-2xl bg-status-confirmed/10 px-4 py-3 text-sm text-sage-text etched">
+          File closed{fileClosedItem?.value ? ` on ${formatDate(fileClosedItem.value)}` : ""}.
+        </div>
+      )}
+    </section>
+  );
 }
 
 function DocumentsView({

@@ -161,13 +161,16 @@ describe("frontend regression guards", () => {
     expect(source).toContain("<h3 className=\"mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched\">Completion</h3>");
   });
 
-  it("uses single-focus lifecycle workflow phases instead of ops/accounts tabs", () => {
+  it("keeps lifecycle confirm in accordion and surfaces accounts as its own tab", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const stack = readFileSync(resolve(root, "src/components/LifecycleWorkflowStack.tsx"), "utf8");
     expect(source).toContain('["tasks", `Tasks');
+    expect(source).toContain('["accounts", `Accounts');
     expect(source).not.toContain('["operations", "Operations"]');
-    expect(source).not.toContain('["accounts", "Accounts"]');
+    expect(source).toContain("AccountsView");
     expect(source).toContain("Close file");
     expect(source).toContain("filterTasksForActiveWorkflow");
+    expect(stack).not.toContain("accountsContent");
   });
 
   it("shows post-confirm ops and event readiness outside the Event prep accordion", () => {
