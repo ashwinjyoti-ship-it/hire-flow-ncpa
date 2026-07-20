@@ -122,12 +122,12 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "accounts", section: "File Tracking", field_key: "file_sent_back_after_edit_2", label: "File Sent Back After Edit 2 — Date", field_type: "date", triggers_task: { rule: "accounts_file", title: "Follow up with Accounts", due_after_days: 3, complete_when: "Final file received" } },
   { module: "accounts", section: "File Tracking", field_key: "final_file_received", label: "Final File Received — Date", field_type: "date" },
 
-  // A2. PAYMENT & REFUND TRACKING
-  { module: "accounts", section: "Payment & Refund", field_key: "security_deposit_refund", label: "Security Deposit Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
-  { module: "accounts", section: "Payment & Refund", field_key: "box_office_collection_refund", label: "Box Office Collection Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
-  { module: "accounts", section: "Payment & Refund", field_key: "payment_advice", label: "Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
-  { module: "accounts", section: "Payment & Refund", field_key: "tds_certificate_refund_and_payment_advice", label: "TDS Certificate Refund & Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
-  { module: "accounts", section: "Payment & Refund", field_key: "payment_ledger", label: "Payment Ledger", field_type: "dropdown", options: ["Requested", "Received"], default_value: "Requested" },
+  // A2. TO ACCOUNTS — PAYMENTS AND REFUNDS
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "security_deposit_refund", label: "Security Deposit Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "box_office_collection_refund", label: "Box Office Collection Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_advice", label: "Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "tds_certificate_refund_and_payment_advice", label: "TDS Certificate Refund & Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_ledger", label: "Payment Ledger", field_type: "dropdown", options: ["Requested", "Received"], default_value: "Requested" },
 
   // B. TO CLIENT (outbound documents)
   { module: "accounts", section: "To Client", field_key: "tax_invoice_sent", label: "Tax Invoice — Sent?", field_type: "dropdown", options: ["Not Sent", "Sent"], default_value: "Not Sent" },
