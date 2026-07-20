@@ -23,6 +23,7 @@
     "db:demo:local": "tsx scripts/seed/demo-events.ts --env=local",
     "db:demo:remote": "tsx scripts/seed/demo-events.ts --env=remote --allow-remote-demo",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "schema:xlsx": "tsx scripts/generate-event-form-schema-xlsx.ts",
     "deploy": "npm run build && wrangler pages deploy dist --project-name ncpa-hire",
     "deploy:scheduler": "wrangler deploy --config scheduler/wrangler.jsonc"
   },
