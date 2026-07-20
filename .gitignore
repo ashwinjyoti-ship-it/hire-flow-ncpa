@@ -26,8 +26,8 @@ npm-debug.log*
 .idea/
 *.swp
 
-# Cloudflare
-.mf/
+# Generated schema workbook (run npm run schema:xlsx)
+artifacts/
 
 # Temp
 tmp/

@@ -1,9 +1,9 @@
 /**
- * Generates docs/event-form-database-schema.xlsx — a client-facing reference for
- * event-form data entry and bulk import. Re-run after schema or form-field changes:
- *   npx tsx scripts/generate-event-form-schema-xlsx.ts
+ * Generates artifacts/event-form-database-schema.xlsx (gitignored) — a client-facing
+ * reference for event-form data entry and bulk import. Re-run after schema changes:
+ *   npm run schema:xlsx
  */
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { utils, write } from "xlsx";
 import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey } from "../worker/lib/catering-meals";
@@ -343,7 +343,8 @@ for (const { name, ws } of sheets) {
   utils.book_append_sheet(wb, ws, name.slice(0, 31));
 }
 
-const outPath = resolve("docs/event-form-database-schema.xlsx");
+const outPath = resolve("artifacts/event-form-database-schema.xlsx");
+mkdirSync(resolve("artifacts"), { recursive: true });
 const bytes = write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 writeFileSync(outPath, bytes);
 console.log(`Wrote ${outPath} (${bytes.length} bytes, ${sheets.length} sheets)`);
