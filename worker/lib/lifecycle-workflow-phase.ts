@@ -60,7 +60,7 @@ export function finalShowDate(
   return eventEndDate ?? eventStartDate ?? null;
 }
 
-/** Accounts workflow opens the calendar day after the final show date. */
+/** Accounts workflow opens the morning after the final show date (calendar next day). */
 export function accountsStartDate(
   eventStartDate: string | null | undefined,
   eventEndDate: string | null | undefined,

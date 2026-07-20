@@ -394,6 +394,18 @@ export function EventDetailPage() {
   ).length;
   const eventPrepOpsTotal = eventPrepOpsVisible.length;
   const eventPrepOpsRatio = eventPrepOpsTotal ? eventPrepOpsDone / eventPrepOpsTotal : 1;
+  const postConfirmOpsComplete = eventPrepOpsTotal > 0 && eventPrepOpsDone === eventPrepOpsTotal;
+  const eventReadinessComplete = readiness
+    ? readiness.sections.every((section) => section.state === "complete" || section.state === "not_applicable")
+    : false;
+  const postConfirmOpsSummary = postConfirmOpsComplete
+    ? `Ops actions complete (${eventPrepOpsDone}/${eventPrepOpsTotal})`
+    : `Ops ${eventPrepOpsDone}/${eventPrepOpsTotal} complete`;
+  const eventReadinessSummary = eventReadinessComplete
+    ? "Event form ready"
+    : readiness
+      ? `Event form ${readiness.percentage}% ready · ${readiness.missingCount} missing`
+      : "Event form readiness";
   const momInput: MomEventInput = {
     title: e.title,
     description: e.description,
@@ -566,6 +578,10 @@ export function EventDetailPage() {
         workflow={workflow}
         confirmed={e.status === "confirmed"}
         forceExpandPhase={forceExpandPhase}
+        postConfirmOpsComplete={postConfirmOpsComplete}
+        postConfirmOpsSummary={postConfirmOpsSummary}
+        eventReadinessComplete={eventReadinessComplete}
+        eventReadinessSummary={eventReadinessSummary}
         confirmSummary="Confirmation blockers cleared"
         accountsSummary={fileClosed ? "File closed" : "Post-event & accounts"}
         confirmContent={(
