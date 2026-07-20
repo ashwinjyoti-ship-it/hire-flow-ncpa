@@ -757,7 +757,7 @@ export function EventDetailPage() {
             e.event_readiness?.sections.find((section) => section.key === VENUES_SCHEDULE_READINESS_KEY)?.state,
           )],
           ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
-          ["accounts", `Accounts${accountsPendingCount ? ` (${accountsPendingCount})` : ""}`],
+          ["accounts", `Post Event Accounts/Feedback${accountsPendingCount ? ` (${accountsPendingCount})` : ""}`],
         ] as const).map(([key, label]) => (
           <button
             key={key}
