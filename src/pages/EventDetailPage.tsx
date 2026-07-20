@@ -749,16 +749,15 @@ export function EventDetailPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-1">
+      <div className="mb-4 flex flex-wrap items-center gap-1">
         {([
-          ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`],
+          ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`] as const,
           ["venues", venuesAndScheduleTabLabel(
             data?.venue_bookings.length ?? 0,
             e.event_readiness?.sections.find((section) => section.key === VENUES_SCHEDULE_READINESS_KEY)?.state,
-          )],
-          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`],
-          ["accounts", `Post Event Accounts/Feedback${accountsPendingCount ? ` (${accountsPendingCount})` : ""}`],
-        ] as const).map(([key, label]) => (
+          )] as const,
+          ["documents", `Documents${documentsData?.documents.length ? ` (${documentsData.documents.length})` : ""}`] as const,
+        ]).map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -771,6 +770,19 @@ export function EventDetailPage() {
             {label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => selectTab("accounts")}
+          className={
+            "rounded-2xl px-3 py-1 text-center etched " +
+            (visibleTab === "accounts" ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
+          }
+        >
+          <span className="block text-xs font-semibold leading-tight">
+            Post Event{accountsPendingCount ? ` (${accountsPendingCount})` : ""}
+          </span>
+          <span className="block text-[10px] font-medium leading-tight opacity-90">Feedback/Accounts</span>
+        </button>
       </div>
 
       {visibleTab === "tasks" && (
