@@ -165,7 +165,7 @@ describe("frontend regression guards", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
     const stack = readFileSync(resolve(root, "src/components/LifecycleWorkflowStack.tsx"), "utf8");
     expect(source).toContain('["tasks", `Tasks');
-    expect(source).toContain('["accounts", `Accounts');
+    expect(source).toContain('["accounts", `Post Event Accounts/Feedback');
     expect(source).not.toContain('["operations", "Operations"]');
     expect(source).toContain("AccountsView");
     expect(source).toContain("Close file");
