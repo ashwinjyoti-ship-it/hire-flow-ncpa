@@ -88,6 +88,8 @@ describe("event-form-print", () => {
     expect(body).toContain("Kaveesha Entertainments");
     expect(body).toContain("Godrej Dance Theatre");
     expect(body).toContain("Show");
+    expect(body).toContain("Shows by date");
+    expect(body).toContain("30/07/2026: 1 show");
     expect(body).toContain("NCPA basic sound");
     expect(body).toContain("14:30");
     expect(body).toContain("Venues, Schedule &amp; Requirements");

@@ -9,6 +9,7 @@ import {
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
 import { buildPrintablePageHtml } from "../../shared/printable-html";
+import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
 import { escapeHtml } from "./export";
 import { omitEventLevelRequirements } from "./event-edit-form";
 import { openPrintableHtml } from "./open-printable";
@@ -241,6 +242,18 @@ function formatScheduleEntry(entry: EventFormPrintScheduleEntry): string {
   return parts.length > 0 ? parts.join(" · ") : BLANK;
 }
 
+function formatShowsByDate(booking: EventFormPrintVenueBooking): string {
+  const schedule = booking.schedule_entries ?? [];
+  const counts = countScheduledShowsByDate(schedule);
+  if (counts.size > 0) {
+    return Array.from(counts, ([date, count]) => `${formatDate(date)}: ${count} ${count === 1 ? "show" : "shows"}`).join("; ");
+  }
+  if (schedule.length === 0 && Number(booking.number_of_shows) > 0) {
+    return `${booking.number_of_shows} (legacy total; schedule not detailed)`;
+  }
+  return "No shows scheduled";
+}
+
 function row(label: string, value: string): string {
   return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`;
 }
@@ -335,7 +348,7 @@ export function buildEventFormPrintBody(input: EventFormPrintInput): string {
 ${fieldTable([
   ["Venue", display(booking.venue)],
   ["Booking status", formatStatus(booking.booking_status)],
-  ["Number of shows", display(booking.number_of_shows)],
+  ["Shows by date", formatShowsByDate(booking)],
   ["Notes", display(booking.notes)],
 ])}
 <h4>Schedule</h4>

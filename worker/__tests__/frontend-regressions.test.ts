@@ -39,6 +39,15 @@ describe("frontend regression guards", () => {
     expect(routes).toContain("parseScheduleJson");
   });
 
+  it("captures each show as a dated schedule occurrence instead of a venue-level number", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(source).not.toContain('<Field label="Number of Shows">');
+    expect(source).toContain("Add one Show detail for each performance");
+    expect(source).toContain("+ Add another show");
+    expect(source).toContain("dailyShowCount");
+  });
+
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
     const source = readFileSync(resolve(root, "src/pages/ProfilePage.tsx"), "utf8");
 

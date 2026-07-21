@@ -76,7 +76,9 @@ export const VenueBookingInput = z.object({
   id: z.string().optional(),
   venue: z.string().min(1),
   booking_status: z.enum(["tentative", "confirmed"]).default("tentative"),
-  number_of_shows: z.number().int().min(1).default(1),
+  // Derived from individual `show` schedule rows. Zero is valid for setup,
+  // rehearsal, dismantling, and explicit Zero Show bookings.
+  number_of_shows: z.number().int().min(0).default(0),
   requirements: z.record(z.unknown()).nullish(),
   notes: z.string().nullish(),
   schedule_entries: z.array(ScheduleEntryInput).default([]),

@@ -1,4 +1,5 @@
 import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
+import { deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
 import { getEventDateIssues } from "../../worker/lib/event-date-policy";
 
@@ -51,7 +52,10 @@ export function pruneIncompleteScheduleEntries(venueBookings: EventInputT["venue
 
 /** Venue bookings ready for API save: no empty venues, no undated schedule stubs. */
 export function prepareVenueBookingsForSave(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
-  return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings));
+  return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings)).map((booking) => ({
+    ...booking,
+    number_of_shows: deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows),
+  }));
 }
 
 /** Requirement decisions intentionally start unknown. Readiness only advances

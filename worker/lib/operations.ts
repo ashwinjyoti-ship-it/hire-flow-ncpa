@@ -1512,6 +1512,149 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
   return (inserted.meta?.changes ?? 1) > 0 ? 1 : 0;
 }
 
+export const TENTATIVE_VENUE_PAYMENT_TASK_RULE = "venue_booking_payment_followup";
+const TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE = "Completed automatically because the venue booking was confirmed.";
+const TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE = "Cancelled automatically because the tentative venue booking no longer applies.";
+
+/** Keep one payment follow-up task open for every tentative venue booking. */
+export async function reconcileTentativeVenuePaymentTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  today = todayIso(),
+): Promise<number> {
+  const event = await db.prepare(
+    `SELECT id, status, event_owner_id, is_archived
+     FROM events WHERE id = ?`
+  ).bind(eventId).first<{
+    id: string;
+    status: EventStatus;
+    event_owner_id: string | null;
+    is_archived: number;
+  }>();
+  if (!event) return 0;
+
+  const { results: bookings } = await db.prepare(
+    `SELECT id, venue, booking_status
+     FROM venue_bookings WHERE event_id = ?`
+  ).bind(eventId).all<{ id: string; venue: string; booking_status: string }>();
+  const { results: existingTasks } = await db.prepare(
+    `SELECT id, venue_booking_id
+     FROM tasks WHERE event_id = ? AND source_rule = ? AND task_type = 'automatic'`
+  ).bind(eventId, TENTATIVE_VENUE_PAYMENT_TASK_RULE).all<{ id: string; venue_booking_id: string | null }>();
+
+  const currentBookingIds = new Set((bookings ?? []).map((booking) => booking.id));
+  const eventInactive = Boolean(event.is_archived) || event.status === "cancelled" || event.status === "regret";
+  const now = new Date().toISOString();
+  let changed = 0;
+
+  for (const booking of bookings ?? []) {
+    const idempotency = `venue-booking:${booking.id}:payment-follow-up`;
+    if (eventInactive || booking.booking_status !== "tentative") {
+      const completed = booking.booking_status === "confirmed" && !eventInactive;
+      const result = await db.prepare(
+        `UPDATE tasks
+         SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, ?) ELSE NULL END,
+             completion_note = ?, updated_at = ?
+         WHERE idempotency_key = ? AND status IN ('open','in_progress')`
+      ).bind(
+        completed ? "completed" : "cancelled",
+        completed ? "completed" : "cancelled",
+        now,
+        completed ? TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE : TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE,
+        now,
+        idempotency,
+      ).run();
+      changed += result.meta?.changes ?? 0;
+      continue;
+    }
+
+    const title = `Follow up with client for payment — ${booking.venue}`;
+    const taskId = makeId("task");
+    const result = await db.prepare(
+      `INSERT INTO tasks
+       (id, title, description, event_id, venue_booking_id, task_type, source_rule,
+        idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'automatic', ?, ?, ?, ?, 'medium', 'open', NULL, ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         title = excluded.title,
+         description = excluded.description,
+         venue_booking_id = excluded.venue_booking_id,
+         assignee_id = excluded.assignee_id,
+         due_date = COALESCE(tasks.due_date, excluded.due_date),
+         status = CASE
+           WHEN tasks.status = 'cancelled' AND tasks.completion_note = ? THEN 'open'
+           WHEN tasks.status = 'completed' AND tasks.completion_note = ? THEN 'open'
+           ELSE tasks.status
+         END,
+         completed_at = CASE
+           WHEN tasks.completion_note IN (?, ?) THEN NULL
+           ELSE tasks.completed_at
+         END,
+         completion_note = CASE
+           WHEN tasks.completion_note IN (?, ?) THEN NULL
+           ELSE tasks.completion_note
+         END,
+         updated_at = excluded.updated_at`
+    ).bind(
+      taskId,
+      title,
+      `Follow up with the client for payment so the ${booking.venue} booking can be confirmed.`,
+      eventId,
+      booking.id,
+      TENTATIVE_VENUE_PAYMENT_TASK_RULE,
+      idempotency,
+      event.event_owner_id,
+      today,
+      now,
+      now,
+      TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE,
+      TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE,
+      TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE,
+      TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE,
+      TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE,
+      TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE,
+    ).run();
+    changed += result.meta?.changes ?? 1;
+    await createNotification(db, {
+      idempotencyKey: `task-created:${idempotency}`,
+      recipientId: event.event_owner_id,
+      recipientPermission: event.event_owner_id ? null : "task.assign",
+      title: "Payment follow-up task created",
+      body: `${booking.venue} is tentative and needs client payment follow-up before confirmation.`,
+      relatedEventId: eventId,
+      relatedTaskId: taskId,
+    });
+  }
+
+  for (const task of existingTasks ?? []) {
+    if (task.venue_booking_id && currentBookingIds.has(task.venue_booking_id)) continue;
+    const result = await db.prepare(
+      `UPDATE tasks SET status = 'cancelled', completion_note = ?, updated_at = ?
+       WHERE id = ? AND status IN ('open','in_progress')`
+    ).bind(TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE, now, task.id).run();
+    changed += result.meta?.changes ?? 0;
+  }
+
+  return changed;
+}
+
+export async function reconcileAllTentativeVenuePaymentTasks(db: D1Database, today = todayIso()): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT DISTINCT e.id
+     FROM events e
+     WHERE e.is_archived = 0 AND e.status NOT IN ('cancelled','regret')
+       AND (
+         EXISTS (SELECT 1 FROM venue_bookings vb WHERE vb.event_id = e.id AND vb.booking_status = 'tentative')
+         OR EXISTS (SELECT 1 FROM tasks t WHERE t.event_id = e.id AND t.source_rule = ? AND t.task_type = 'automatic')
+       )`
+  ).bind(TENTATIVE_VENUE_PAYMENT_TASK_RULE).all<{ id: string }>();
+  let changed = 0;
+  for (const event of results ?? []) {
+    changed += await reconcileTentativeVenuePaymentTasksForEvent(db, event.id, today);
+  }
+  return changed;
+}
+
 /** Keep one smart task per incomplete event-form section, due before the event starts. */
 export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: string, today = todayIso()): Promise<number> {
   const event = await db.prepare(
@@ -2315,6 +2458,7 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
   }
   changed += await createFileToAccountsReminders(db, today);
   changed += await reconcileAllPocTasks(db, today);
+  changed += await reconcileAllTentativeVenuePaymentTasks(db, today);
   changed += await reconcileAllReadinessTasks(db);
   const { results: activeEvents } = await db.prepare(
     `SELECT id FROM events WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')`

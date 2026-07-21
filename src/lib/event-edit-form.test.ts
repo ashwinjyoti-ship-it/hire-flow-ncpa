@@ -150,6 +150,7 @@ describe("prepareVenueBookingsForSave", () => {
     expect(prepared).toHaveLength(1);
     expect(prepared[0]?.schedule_entries).toHaveLength(1);
     expect(prepared[0]?.schedule_entries[0]?.activity_date).toBe("2026-07-10");
+    expect(prepared[0]?.number_of_shows).toBe(1);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
 import type { EventInputT } from "../../worker/lib/types";
+import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
 import { formatDate, formatDuration } from "./use-lookups";
 
 export type ReviewEntry = {
@@ -143,9 +144,16 @@ export function buildReviewItems(
       const labelPrefix = `Venue ${venueIndex + 1}`;
       pushItem(labelPrefix, venueBooking.venue || "—");
       pushItem(`${labelPrefix} Booking Status`, titleCaseWords(venueBooking.booking_status));
-      pushItem(`${labelPrefix} Number of Shows`, venueBooking.number_of_shows);
       pushItem(`${labelPrefix} Notes`, venueBooking.notes);
       const schedules = venueBooking.schedule_entries ?? [];
+      const showsByDate = countScheduledShowsByDate(schedules);
+      if (showsByDate.size > 0) {
+        for (const [date, count] of showsByDate) {
+          pushItem(`${labelPrefix} Shows — ${formatDate(date)}`, `${count} ${count === 1 ? "show" : "shows"}`);
+        }
+      } else if (schedules.length === 0 && venueBooking.number_of_shows > 0) {
+        pushItem(`${labelPrefix} Shows (legacy total)`, venueBooking.number_of_shows);
+      }
       if (schedules.length === 0) {
         pushItem(`${labelPrefix} Schedule`, "No schedule details");
       } else {

@@ -28,6 +28,19 @@ const baseForm = {
           without_ac_minutes: 180,
           notes: null,
         },
+        {
+          activity_type: "show",
+          activity_date: "2026-08-28",
+          start_time: "18:00",
+          end_time: "20:00",
+          with_ac_start: null,
+          with_ac_end: null,
+          with_ac_minutes: null,
+          without_ac_start: null,
+          without_ac_end: null,
+          without_ac_minutes: null,
+          notes: null,
+        },
       ],
     },
     {
@@ -65,13 +78,13 @@ describe("buildReviewItems", () => {
 
     expect(items.find((item) => item.label === "Venue 1")?.value).toBe("JBT");
     expect(items.find((item) => item.label === "Venue 1 Booking Status")?.value).toBe("Tentative");
-    expect(items.find((item) => item.label === "Venue 1 Number of Shows")?.value).toBe("2");
+    expect(items.find((item) => item.label === "Venue 1 Shows — 28/08/2026")?.value).toBe("2 shows");
     expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("With AC 10:00 - 12:00");
     expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("Without AC 12:00 - 15:00");
 
     expect(items.find((item) => item.label === "Venue 2")?.value).toBe("TATA");
     expect(items.find((item) => item.label === "Venue 2 Booking Status")?.value).toBe("Confirmed");
-    expect(items.find((item) => item.label === "Venue 2 Number of Shows")?.value).toBe("1");
+    expect(items.some((item) => item.label.startsWith("Venue 2 Shows"))).toBe(false);
     expect(items.find((item) => item.label === "Venue 2 Notes")?.value).toBe("Piano tuned");
     expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("Rehearsal");
     expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("With AC 09:00 - 11:00");

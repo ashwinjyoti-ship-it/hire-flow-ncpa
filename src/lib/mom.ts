@@ -13,6 +13,7 @@ import {
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
 import { buildPrintablePageHtml } from "../../shared/printable-html";
+import { deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { escapeHtml } from "./export";
 import { omitEventLevelRequirements } from "./event-edit-form";
 
@@ -303,7 +304,10 @@ function buildGuestLines(bookings: MomVenueBooking[], eventReqs: Record<string, 
 
 function buildGuestLinesForReqs(bookings: MomVenueBooking[], reqs: Record<string, unknown>): string[] {
   const lines: string[] = [];
-  const totalShows = bookings.reduce((sum, b) => sum + (Number(b.number_of_shows) || 0), 0);
+  const totalShows = bookings.reduce(
+    (sum, booking) => sum + deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows),
+    0,
+  );
   if (totalShows > 0) {
     lines.push(totalShows === 1 ? "One show only" : `${totalShows} shows`);
   }

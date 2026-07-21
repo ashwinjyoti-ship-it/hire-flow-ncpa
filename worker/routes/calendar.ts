@@ -350,7 +350,12 @@ calendarRoutes.get("/", requireUser, async (c) => {
       u.email AS event_owner_email,
       e.description, e.requirements AS event_requirements, e.notes AS event_notes,
       o.name AS organisation_name,
-      vb.venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes`;
+      vb.venue, vb.booking_status, vb.number_of_shows,
+      (SELECT COUNT(*) FROM schedule_entries se_count
+       WHERE se_count.venue_booking_id = se.venue_booking_id
+         AND se_count.activity_type = 'show'
+         AND ${normalisedDateSql("se_count.activity_date")} = ${scheduleActivityDateExpr}) AS shows_on_date,
+      vb.requirements, vb.notes AS venue_notes`;
 
   // Set 2: one card per (event × venue_booking) for confirmed events with no
   // schedule entries. activity_date is the best available show date clamped
@@ -369,7 +374,8 @@ calendarRoutes.get("/", requireUser, async (c) => {
       u.email AS event_owner_email,
       e.description, e.requirements AS event_requirements, e.notes AS event_notes,
       o.name AS organisation_name,
-      COALESCE(vb.venue, 'No venue') AS venue, vb.booking_status, vb.number_of_shows, vb.requirements, vb.notes AS venue_notes
+      COALESCE(vb.venue, 'No venue') AS venue, vb.booking_status, vb.number_of_shows,
+      vb.number_of_shows AS shows_on_date, vb.requirements, vb.notes AS venue_notes
     FROM events e
     LEFT JOIN event_status_history sh ON sh.id = (
       SELECT latest.id
