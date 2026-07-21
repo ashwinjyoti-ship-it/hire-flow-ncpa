@@ -775,6 +775,7 @@ export const TDS_DEPENDENT_FIELD_KEYS = [
   "tds_received_from_client_date",
   "tds_certificate_sent_to_accounts",
   "tds_accounts_refund_or_action",
+  "tds_payment_and_advice_sent",
   "tds_proof_sent_to_client",
 ] as const;
 
@@ -1096,6 +1097,7 @@ export async function syncTdsDependentChecklist(
            'tds_received_from_client_date',
            'tds_certificate_sent_to_accounts',
            'tds_accounts_refund_or_action',
+           'tds_payment_and_advice_sent',
            'tds_proof_sent_to_client'
          )
          AND status != 'not_applicable'`
@@ -1112,6 +1114,7 @@ export async function syncTdsDependentChecklist(
          'tds_received_from_client_date',
          'tds_certificate_sent_to_accounts',
          'tds_accounts_refund_or_action',
+         'tds_payment_and_advice_sent',
          'tds_proof_sent_to_client'
        )`
   ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
