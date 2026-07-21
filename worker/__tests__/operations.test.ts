@@ -746,14 +746,14 @@ describe("accounts file ping-pong tasks", () => {
 });
 
 describe("task lifecycle reconciliation", () => {
-  it("cancels actionable tasks when an event becomes terminal", async () => {
+  it("cancels actionable tasks and creates an Accounts refund review when a confirmed event is cancelled", async () => {
     const writes: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
       prepare(sql: string) {
         return {
           binds: [] as unknown[],
           bind(...values: unknown[]) { this.binds = values; return this; },
-          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 2 } }; },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 1 } }; },
         };
       },
     } as unknown as D1Database;
@@ -762,6 +762,28 @@ describe("task lifecycle reconciliation", () => {
 
     expect(writes[0]?.sql).toContain("SET status = 'cancelled'");
     expect(writes[0]?.binds).toContain("Cancelled automatically because event became cancelled.");
+    expect(writes[1]?.sql).toContain("Review refund for cancelled confirmed event");
+    expect(writes[1]?.binds).toContain("confirmed-cancellation:ev_cancelled:accounts-refund-review");
+    expect(writes[2]?.sql).toContain("INSERT OR IGNORE INTO notifications");
+    expect(writes[2]?.binds).toContain("Accounts refund review needed");
+  });
+
+  it("does not create a refund task when a pre-confirmation event is cancelled", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 1 } }; },
+        };
+      },
+    } as unknown as D1Database;
+
+    await reconcileTasksForLifecycleTransition(db, "ev_cancelled", "approved", "cancelled", "user_1");
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.sql).toContain("SET status = 'cancelled'");
   });
 });
 

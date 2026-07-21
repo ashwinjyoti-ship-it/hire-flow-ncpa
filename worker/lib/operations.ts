@@ -1898,6 +1898,10 @@ export async function reconcileTasksForLifecycleTransition(
        SET status = 'cancelled', completion_note = ?, completed_at = NULL, completed_by = NULL, updated_at = ?
        WHERE event_id = ? AND status IN ('open','in_progress')`
     ).bind(`Cancelled automatically because event became ${to}.`, now, eventId).run();
+
+    if (from === "confirmed" && to === "cancelled") {
+      await createConfirmedCancellationRefundTask(db, eventId, userId, now);
+    }
     return;
   }
 
@@ -1917,6 +1921,34 @@ export async function reconcileTasksForLifecycleTransition(
     userId,
     "Completed automatically from lifecycle transition.",
   );
+}
+
+
+async function createConfirmedCancellationRefundTask(db: D1Database, eventId: string, userId: string, now: string): Promise<void> {
+  const taskId = makeId("task");
+  const idempotency = `confirmed-cancellation:${eventId}:accounts-refund-review`;
+  await db.prepare(
+    `INSERT INTO tasks
+     (id, title, description, event_id, task_type, source_rule, idempotency_key, assignee_id, due_date, priority, status, created_by, created_at, updated_at)
+     VALUES (?, 'Review refund for cancelled confirmed event',
+      'Confirmed event was cancelled. Accounts should review money received and process any refund or mark no refund required.',
+      ?, 'automatic', 'confirmed_cancellation_refund', ?, NULL, ?, 'high', 'open', ?, ?, ?)
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       status = CASE WHEN tasks.status = 'cancelled' THEN 'open' ELSE tasks.status END,
+       completion_note = CASE WHEN tasks.status = 'cancelled' THEN NULL ELSE tasks.completion_note END,
+       due_date = excluded.due_date,
+       priority = excluded.priority,
+       updated_at = excluded.updated_at`
+  ).bind(taskId, eventId, idempotency, now.slice(0, 10), userId, now, now).run();
+
+  await createNotification(db, {
+    idempotencyKey: `task-created:${idempotency}`,
+    recipientPermission: "task.view.all",
+    title: "Accounts refund review needed",
+    body: "A confirmed event was cancelled. Review any received money and process refund or mark no refund required.",
+    relatedEventId: eventId,
+    relatedTaskId: taskId,
+  });
 }
 
 export function taskRulesCompletedByLifecycleTransition(from: EventStatus, to: EventStatus): string[] {
