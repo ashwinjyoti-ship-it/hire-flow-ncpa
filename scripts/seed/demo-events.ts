@@ -206,7 +206,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "feedback_sent": return null;
     case "feedback_received": return null;
     case "event_report": return "Not Ready";
-    case "box_office_statement": return "Awaiting";
+    case "box_office_statement": return "NA";
     case "event_status": return event.status;
     case "file_sent_to_accounts": return null;
     case "file_received_back_edit_1": return null;

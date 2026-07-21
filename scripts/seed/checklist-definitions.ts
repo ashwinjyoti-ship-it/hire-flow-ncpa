@@ -106,7 +106,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_sent", label: "Feedback Form — Sent", field_type: "date", triggers_task: { rule: "feedback", title: "Follow up on Feedback", due_after_days: 5, complete_when: "marked Received" } },
   { module: "operations", section: "Post-Event Closure", field_key: "feedback_received", label: "Feedback Form — Received", field_type: "date" },
   { module: "operations", section: "Post-Event Closure", field_key: "event_report", label: "Event Report", field_type: "dropdown", options: ["Not Ready", "Ready"], default_value: "Not Ready" },
-  { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["Awaiting", "Received", "NA"], default_value: "Awaiting" },
+  { module: "operations", section: "Post-Event Closure", field_key: "box_office_statement", label: "Box Office Statement", field_type: "dropdown", options: ["NA", "Awaiting", "Received"], default_value: "NA" },
   { module: "operations", section: "Post-Event Closure", field_key: "final_closure_notes", label: "Final Closure Notes", field_type: "textarea" },
   { module: "operations", section: "Post-Event Closure", field_key: "file_closed", label: "File Closed", field_type: "date" },
 
