@@ -225,6 +225,12 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain('type={item.field_type === "date" ? "date"');
   });
 
+  it("allows the confirmation courier date to change without a correction prompt", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain('item.field_key !== "confirmation_couriered" && item.value && next');
+  });
+
   it("shows event type on the detail page with normalized fallback formatting", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
