@@ -1408,8 +1408,15 @@ describe("API regressions", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json() as {
-      venue_bookings: Array<{ schedule_entries: Array<{ with_ac_start: string }> }>;
+      venue_bookings: Array<{
+        schedule_days: Array<{ activity_date: string; with_ac_start: string }>;
+        schedule_entries: Array<{ with_ac_start: string }>;
+      }>;
     };
+    expect(body.venue_bookings[0]?.schedule_days).toEqual([expect.objectContaining({
+      activity_date: "2026-07-10",
+      with_ac_start: "18:00",
+    })]);
     expect(body.venue_bookings[0]?.schedule_entries).toHaveLength(1);
     expect(body.venue_bookings[0]?.schedule_entries[0]?.with_ac_start).toBe("18:00");
   });

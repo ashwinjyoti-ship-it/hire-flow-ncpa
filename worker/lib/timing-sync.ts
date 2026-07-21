@@ -1,4 +1,6 @@
 import { formatActivityType } from "./types";
+import { deriveScheduleDaysFromEntries } from "./schedule-days";
+import type { ScheduleDayInputT, ScheduleEntryInputT } from "./types";
 
 export type ScheduleTimingRow = {
   venue: string;
@@ -142,38 +144,26 @@ export function parseMinutesFromTimingsText(text: string | null | undefined): nu
 export function sumTimingMinutesFromVenueBookings(
   venueBookings: Array<{
     venue: string;
-    schedule_entries?: Array<{
-      activity_type: string;
-      activity_date: string;
-      start_time?: string | null;
-      end_time?: string | null;
-      with_ac_start?: string | null;
-      with_ac_end?: string | null;
-      with_ac_minutes?: number | null;
-      without_ac_start?: string | null;
-      without_ac_end?: string | null;
-      without_ac_minutes?: number | null;
-      notes?: string | null;
-    }>;
+    schedule_days?: ScheduleDayInputT[];
+    schedule_entries?: ScheduleEntryInputT[];
   }>,
 ): { acMinutes: number; withoutAcMinutes: number } {
   const rows: ScheduleTimingRow[] = [];
   for (const booking of venueBookings) {
-    for (const [index, entry] of (booking.schedule_entries ?? []).entries()) {
-      if (!entry.activity_date?.trim()) continue;
+    const entries = booking.schedule_entries ?? [];
+    const days = booking.schedule_days?.length ? booking.schedule_days : deriveScheduleDaysFromEntries(entries);
+    for (const [index, day] of days.entries()) {
+      if (!day.activity_date?.trim()) continue;
       rows.push({
         venue: booking.venue.trim() || "Venue",
-        activity_type: entry.activity_type,
-        activity_date: entry.activity_date,
-        start_time: entry.start_time,
-        end_time: entry.end_time,
-        with_ac_start: entry.with_ac_start,
-        with_ac_end: entry.with_ac_end,
-        with_ac_minutes: entry.with_ac_minutes,
-        without_ac_start: entry.without_ac_start,
-        without_ac_end: entry.without_ac_end,
-        without_ac_minutes: entry.without_ac_minutes,
-        notes: entry.notes,
+        activity_type: "venue_day",
+        activity_date: day.activity_date,
+        with_ac_start: day.with_ac_start,
+        with_ac_end: day.with_ac_end,
+        with_ac_minutes: day.with_ac_minutes,
+        without_ac_start: day.without_ac_start,
+        without_ac_end: day.without_ac_end,
+        without_ac_minutes: day.without_ac_minutes,
         sort_order: index + 1,
       });
     }

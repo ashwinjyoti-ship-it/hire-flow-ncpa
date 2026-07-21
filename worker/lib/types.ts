@@ -68,6 +68,20 @@ export const ScheduleEntryInput = z.object({
 });
 export type ScheduleEntryInputT = z.infer<typeof ScheduleEntryInput>;
 
+// AC/non-AC is a venue-day operating window shared by every activity that day.
+// The API still mirrors these values onto schedule entries for compatibility
+// with calendar/report consumers that read the legacy row shape.
+export const ScheduleDayInput = z.object({
+  activity_date: IsoDate,
+  with_ac_start: z.string().nullish(),
+  with_ac_end: z.string().nullish(),
+  with_ac_minutes: z.number().int().nonnegative().nullish(),
+  without_ac_start: z.string().nullish(),
+  without_ac_end: z.string().nullish(),
+  without_ac_minutes: z.number().int().nonnegative().nullish(),
+});
+export type ScheduleDayInputT = z.infer<typeof ScheduleDayInput>;
+
 // ---- Venue bookings ----
 // Note: per-venue 'cancelled' is intentionally absent from the create/update
 // enum. Cancellation is an event-level concept (events.status -> 'cancelled'),
@@ -81,6 +95,7 @@ export const VenueBookingInput = z.object({
   number_of_shows: z.number().int().min(0).default(0),
   requirements: z.record(z.unknown()).nullish(),
   notes: z.string().nullish(),
+  schedule_days: z.array(ScheduleDayInput).optional(),
   schedule_entries: z.array(ScheduleEntryInput).default([]),
 });
 export type VenueBookingInputT = z.infer<typeof VenueBookingInput>;

@@ -50,7 +50,8 @@ import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { parseChecklistItemOptions } from "../lib/checklist-cache";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
-import { formatActivityType } from "../../worker/lib/types";
+import { formatActivityType, type ActivityType, type ScheduleDayInputT } from "../../worker/lib/types";
+import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import {
   formatScheduleSummary,
   getDefaultExpandedVenueKeys,
@@ -95,6 +96,7 @@ type DetailResponse = {
     number_of_shows?: number | null;
     notes?: string | null;
     requirements?: Record<string, unknown> | string | null;
+    schedule_days?: unknown[];
     schedule_entries: unknown[];
   }>;
   activity: Array<Record<string, unknown>>;
@@ -148,7 +150,7 @@ type VisibleEventDetailTab = "tasks" | "venues" | "documents" | "accounts";
 
 type ScheduleEntryView = {
   id: string;
-  activity_type: string;
+  activity_type: ActivityType;
   activity_date: string;
   start_time: string | null;
   end_time: string | null;
@@ -1818,8 +1820,6 @@ function ScheduleTimingCell({ label, value }: { label: string; value: string | n
 }
 
 function ScheduleEntryCard({ entry, compact = false }: { entry: ScheduleEntryView; compact?: boolean }) {
-  const withAc = formatAcTiming(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes);
-  const withoutAc = formatAcTiming(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes);
   const mainTime = entry.start_time || entry.end_time ? formatTimeRange(entry.start_time, entry.end_time) : null;
 
   if (compact) {
@@ -1829,29 +1829,17 @@ function ScheduleEntryCard({ entry, compact = false }: { entry: ScheduleEntryVie
           <div className="font-medium text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</div>
           {entry.notes && <div className="mt-1 text-xs text-ink-muted etched">{entry.notes}</div>}
         </td>
-        <td className="px-3 py-2.5 text-ink-secondary etched">{entry.activity_date ? formatDate(entry.activity_date) : "—"}</td>
         <td className="px-3 py-2.5 tabular-nums text-ink-primary etched-deep">{mainTime ?? "—"}</td>
-        <td className="px-3 py-2.5 tabular-nums text-ink-secondary etched">{withAc ?? "—"}</td>
-        <td className="px-3 py-2.5 tabular-nums text-ink-secondary etched">{withoutAc ?? "—"}</td>
       </tr>
     );
   }
 
   return (
     <article className="rounded-xl border border-marble-shadow/30 bg-marble-highlight/60 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <h5 className="text-sm font-semibold text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</h5>
-        {entry.activity_date && (
-          <span className="rounded-full bg-marble-shadow/35 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-secondary etched">
-            {formatDate(entry.activity_date)}
-          </span>
-        )}
-      </div>
+      <h5 className="text-sm font-semibold text-sage-text etched-deep">{formatActivityType(entry.activity_type)}</h5>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3">
         {mainTime && <ScheduleTimingCell label="Time" value={mainTime} />}
-        {withAc && <ScheduleTimingCell label="With AC" value={withAc} />}
-        {withoutAc && <ScheduleTimingCell label="Without AC" value={withoutAc} />}
       </div>
 
       {entry.notes && (
@@ -1863,9 +1851,11 @@ function ScheduleEntryCard({ entry, compact = false }: { entry: ScheduleEntryVie
 
 function VenueScheduleSection({
   entries,
+  days,
   venueCount,
 }: {
   entries: ScheduleEntryView[];
+  days?: ScheduleDayInputT[];
   venueCount: number;
 }) {
   if (entries.length === 0) {
@@ -1876,38 +1866,48 @@ function VenueScheduleSection({
     );
   }
 
-  if (shouldUseCompactSchedule(entries.length)) {
-    return (
-      <div className="overflow-x-auto rounded-xl border border-marble-shadow/30 bg-marble-highlight/50">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-marble-shadow/30 text-[10px] uppercase tracking-wider text-ink-muted">
-              <th className="px-3 py-2.5 font-semibold etched">Activity</th>
-              <th className="px-3 py-2.5 font-semibold etched">Date</th>
-              <th className="px-3 py-2.5 font-semibold etched">Time</th>
-              <th className="px-3 py-2.5 font-semibold etched">With AC</th>
-              <th className="px-3 py-2.5 font-semibold etched">Without AC</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, entryIdx) => (
-              <ScheduleEntryCard
-                key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`}
-                entry={entry}
-                compact
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
+  const scheduleDays = days?.length ? days : deriveScheduleDaysFromEntries(entries);
   return (
-    <div className={"grid gap-3 " + (shouldUseTwoColumnSchedule(entries.length, venueCount) ? "lg:grid-cols-2" : "grid-cols-1")}>
-      {entries.map((entry, entryIdx) => (
-        <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entry.activity_date}-${entryIdx}`} entry={entry} />
-      ))}
+    <div className="space-y-4">
+      {scheduleDays.map((day) => {
+        const dayEntries = entries.filter((entry) => entry.activity_date === day.activity_date);
+        const withAc = formatAcTiming(day.with_ac_start, day.with_ac_end, day.with_ac_minutes);
+        const withoutAc = formatAcTiming(day.without_ac_start, day.without_ac_end, day.without_ac_minutes);
+        return (
+          <section key={day.activity_date} className="rounded-xl border border-marble-shadow/30 bg-marble-highlight/45 p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-marble-shadow/25 pb-3">
+              <h5 className="font-semibold text-ink-primary etched-deep">{formatDate(day.activity_date)}</h5>
+              <div className="flex flex-wrap gap-2">
+                {withAc && <ScheduleTimingCell label="With AC" value={withAc} />}
+                {withoutAc && <ScheduleTimingCell label="Without AC" value={withoutAc} />}
+              </div>
+            </div>
+            {shouldUseCompactSchedule(dayEntries.length) ? (
+              <div className="mt-3 overflow-x-auto rounded-xl bg-marble-highlight/50">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-marble-shadow/30 text-[10px] uppercase tracking-wider text-ink-muted">
+                      <th className="px-3 py-2.5 font-semibold etched">Activity</th>
+                      <th className="px-3 py-2.5 font-semibold etched">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dayEntries.map((entry, entryIdx) => (
+                      <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entryIdx}`} entry={entry} compact />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className={"mt-3 grid gap-3 " + (shouldUseTwoColumnSchedule(dayEntries.length, venueCount) ? "lg:grid-cols-2" : "grid-cols-1")}>
+                {dayEntries.map((entry, entryIdx) => (
+                  <ScheduleEntryCard key={entry.id || `${entry.activity_type}-${entryIdx}`} entry={entry} />
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -1928,6 +1928,7 @@ function VenueBookingPanel({
   onToggle: () => void;
 }) {
   const entries = (booking.schedule_entries as ScheduleEntryView[]) ?? [];
+  const days = (booking.schedule_days as ScheduleDayInputT[] | undefined) ?? undefined;
   const venueName = (booking.venue as string) || "Untitled venue";
   const scheduleSummary = formatScheduleSummary(entries);
   const showCount = deriveVenueShowCount(entries, booking.number_of_shows);
@@ -1966,7 +1967,7 @@ function VenueBookingPanel({
       {expanded && (
         <div className="px-4 py-4 sm:px-5">
           <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Schedule</h4>
-          <VenueScheduleSection entries={entries} venueCount={venueCount} />
+          <VenueScheduleSection entries={entries} days={days} venueCount={venueCount} />
         </div>
       )}
     </section>

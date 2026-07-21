@@ -5,6 +5,7 @@ import {
 } from "../../worker/lib/catering-meals";
 import type { EventInputT } from "../../worker/lib/types";
 import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
+import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import { formatDate, formatDuration } from "./use-lookups";
 
 export type ReviewEntry = {
@@ -36,22 +37,26 @@ function minutesBetween(start: string | null | undefined, end: string | null | u
 }
 
 function formatScheduleSummary(entry: EventInputT["venue_bookings"][number]["schedule_entries"][number]): string {
-  const withAcMins = entry.with_ac_minutes ?? minutesBetween(entry.with_ac_start, entry.with_ac_end);
-  const withoutAcMins = entry.without_ac_minutes ?? minutesBetween(entry.without_ac_start, entry.without_ac_end);
   const segments = [
     titleCaseWords(entry.activity_type),
-    entry.activity_date ? formatDate(entry.activity_date) : null,
     entry.start_time && entry.end_time ? `${entry.start_time} - ${entry.end_time}` : null,
-    entry.with_ac_start && entry.with_ac_end
-      ? `With AC ${entry.with_ac_start} - ${entry.with_ac_end} (${formatDuration(withAcMins)})`
-      : null,
-    entry.without_ac_start && entry.without_ac_end
-      ? `Without AC ${entry.without_ac_start} - ${entry.without_ac_end} (${formatDuration(withoutAcMins)})`
-      : null,
     entry.notes?.trim() || null,
   ].filter((segment): segment is string => Boolean(segment && segment.trim().length > 0));
 
   return segments.join(" · ");
+}
+
+function formatDayTiming(day: NonNullable<EventInputT["venue_bookings"][number]["schedule_days"]>[number]): string {
+  const withAcMins = day.with_ac_minutes ?? minutesBetween(day.with_ac_start, day.with_ac_end);
+  const withoutAcMins = day.without_ac_minutes ?? minutesBetween(day.without_ac_start, day.without_ac_end);
+  return [
+    day.with_ac_start && day.with_ac_end
+      ? `With AC ${day.with_ac_start} - ${day.with_ac_end} (${formatDuration(withAcMins)})`
+      : null,
+    day.without_ac_start && day.without_ac_end
+      ? `Without AC ${day.without_ac_start} - ${day.without_ac_end} (${formatDuration(withoutAcMins)})`
+      : null,
+  ].filter((segment): segment is string => Boolean(segment)).join(" · ") || "No AC timings";
 }
 
 function isFilledReviewValue(value: unknown): boolean {
@@ -157,8 +162,14 @@ export function buildReviewItems(
       if (schedules.length === 0) {
         pushItem(`${labelPrefix} Schedule`, "No schedule details");
       } else {
-        schedules.forEach((entry, scheduleIndex) => {
-          pushItem(`Schedule ${venueIndex + 1}.${scheduleIndex + 1}`, formatScheduleSummary(entry));
+        const scheduleDays = venueBooking.schedule_days?.length
+          ? venueBooking.schedule_days
+          : deriveScheduleDaysFromEntries(schedules);
+        scheduleDays.forEach((day, dayIndex) => {
+          pushItem(`${labelPrefix} Schedule — ${formatDate(day.activity_date)}`, formatDayTiming(day));
+          schedules.filter((entry) => entry.activity_date === day.activity_date).forEach((entry, activityIndex) => {
+            pushItem(`Activity ${venueIndex + 1}.${dayIndex + 1}.${activityIndex + 1}`, formatScheduleSummary(entry));
+          });
         });
       }
       const venueRequirements = (venueBooking.requirements ?? {}) as Record<string, unknown>;

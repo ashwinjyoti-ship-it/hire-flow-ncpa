@@ -33,7 +33,7 @@ describe("frontend regression guards", () => {
     expect(source).toContain("await apiPut(`/events/${id}`, payload)");
     expect(source).not.toContain("venue_bookings: _vb");
     expect(source).toContain("setForm((f) => ({");
-    expect(source).toContain("with_ac_minutes: withMin");
+    expect(source).toContain("with_ac_minutes: diffMinutes");
     expect(routes).toContain("venueBookingSyncStatements");
     expect(routes).toContain("db.batch([updateEvent, ...venueWrites])");
     expect(routes).toContain("UPDATE schedule_entries");
@@ -47,10 +47,12 @@ describe("frontend regression guards", () => {
     expect(source).toContain("Total Shows");
     expect(source).toContain("Auto-calculated from Schedule Details");
     expect(source).toContain("deriveVenueShowCount(vb.schedule_entries, vb.number_of_shows)");
-    expect(source).toContain("Add one Show detail for each performance");
+    expect(source).toContain("one venue-day operating window");
+    expect(source).toContain("+ Add another date");
     expect(source).toContain("+ Add activity on this date");
     expect(source).not.toContain("+ Add another show");
     expect(source).toContain("dailyShowCount");
+    expect(source).not.toContain('<Field label="Date">\n                            <input type="date"');
   });
 
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
