@@ -19,7 +19,7 @@ export function AppShell() {
   return (
     <div className="relative flex h-dvh flex-col overflow-hidden">
       <MarbleBackdrop />
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 pt-3 md:px-5 lg:px-6 lg:pt-4">
+      <div className="relative z-10 mx-auto flex h-full w-full max-w-[1600px] flex-col px-3 pt-3 sm:px-4 md:px-5 lg:px-6 lg:pt-4">
         <Topbar onMenuToggle={() => setMobileNavOpen((open) => !open)} />
         <div className="mt-4 flex min-h-0 flex-1 gap-4 pb-4 lg:gap-6 lg:pb-5">
           <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
