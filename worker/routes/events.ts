@@ -798,7 +798,12 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
       correctionReason: parsed.data.correction_reason,
       user: c.get("user")!,
     });
-    return c.json({ item });
+    return c.json({
+      item: {
+        ...item,
+        options: item.options ? JSON.parse(item.options) as unknown[] : null,
+      },
+    });
   } catch (err) {
     const message = (err as Error).message;
     const status = message.includes("not found")

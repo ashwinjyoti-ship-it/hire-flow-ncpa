@@ -48,6 +48,7 @@ import { openPrintableHtml } from "../lib/open-printable";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
+import { parseChecklistItemOptions } from "../lib/checklist-cache";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
 import { formatActivityType } from "../../worker/lib/types";
 import {
@@ -304,6 +305,7 @@ export function EventDetailPage() {
 
   const checklistUpdate = useChecklistUpdate(id);
   const savingChecklistItemId = checklistUpdate.savingItemId;
+  const savingChecklistFieldKey = checklistUpdate.savingFieldKey;
 
   const createTask = useMutation({
     mutationFn: async (title: string) => apiPost("/tasks", { title, event_id: id, priority: "medium" }),
@@ -600,6 +602,7 @@ export function EventDetailPage() {
               nextAction={checklistData?.lifecycle.nextAction ?? null}
               canChangeStatus={canChangeStatus}
               canShowStatusActions={activeWorkflowPhase === "confirm"}
+              savingFieldKey={savingChecklistFieldKey}
               onOpenBlocker={focusChecklistField}
               onGenerateMom={requestGenerateMom}
               onOpenEventFormPrintable={openEventFormExport}
@@ -1078,6 +1081,7 @@ function LifecyclePanel({
   nextAction,
   canChangeStatus,
   canShowStatusActions,
+  savingFieldKey,
   onOpenBlocker,
   onGenerateMom,
   onOpenEventFormPrintable,
@@ -1090,6 +1094,7 @@ function LifecyclePanel({
   nextAction: LifecycleAction | null;
   canChangeStatus: boolean;
   canShowStatusActions: boolean;
+  savingFieldKey?: string | null;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onGenerateMom: () => void;
   onOpenEventFormPrintable: () => void;
@@ -1224,18 +1229,26 @@ function LifecyclePanel({
 
         {blockedForwardAction && visibleBlocker && (
           <div className="mt-3 rounded-xl bg-status-awaitingApproval/10 px-4 py-3 text-xs text-status-awaitingApproval etched">
-            {visibleBlockerTarget ? (
-              <button
-                type="button"
-                onClick={() => onOpenBlocker(visibleBlockerTarget)}
-                className="text-left font-medium underline decoration-current/40 underline-offset-2 hover:decoration-current"
-                title={`Go to ${visibleBlockerTarget.label}`}
-              >
-                {visibleBlocker}
-              </button>
-            ) : (
-              <span>{visibleBlocker}</span>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {visibleBlockerTarget ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenBlocker(visibleBlockerTarget)}
+                  className="text-left font-medium underline decoration-current/40 underline-offset-2 hover:decoration-current"
+                  title={`Go to ${visibleBlockerTarget.label}`}
+                >
+                  {visibleBlocker}
+                </button>
+              ) : (
+                <span>{visibleBlocker}</span>
+              )}
+              {savingFieldKey && visibleBlockerTarget?.fieldKey === savingFieldKey ? (
+                <span className="inline-flex items-center gap-1.5 text-ink-muted">
+                  <FieldSavingSpinner />
+                  Saving…
+                </span>
+              ) : null}
+            </div>
           </div>
         )}
 
@@ -1350,9 +1363,19 @@ function ChecklistModuleView({
   );
 }
 
+function FieldSavingSpinner() {
+  return (
+    <span
+      className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-sage/25 border-t-sage"
+      role="status"
+      aria-label="Saving"
+    />
+  );
+}
+
 function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; saving?: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
-  const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-70" : "");
+  const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-80" : "");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   return (
@@ -1360,18 +1383,22 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
       id={`checklist-${item.field_key}`}
       className={
         "block rounded-xl bg-marble-shadow/20 p-3 transition-shadow " +
-        (focused ? "ring-2 ring-sage/70 ring-offset-2 ring-offset-marble-highlight" : "")
+        (focused ? "ring-2 ring-sage/70 ring-offset-2 ring-offset-marble-highlight" : "") +
+        (saving ? " ring-1 ring-sage/30" : "")
       }
     >
       <span className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-ink-secondary etched">{item.label}</span>
-        {/* Instalment = No means there are no installments to track, so there is
-            nothing to progress — hide the status badge in that case. */}
-        {item.field_key === "instalment" && (item.value ?? "").trim().toLowerCase() === "no" ? null : (
-          <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(item.status)}>
-            {item.status.replace(/_/g, " ")}
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {saving ? <FieldSavingSpinner /> : null}
+          {/* Instalment = No means there are no installments to track, so there is
+              nothing to progress — hide the status badge in that case. */}
+          {item.field_key === "instalment" && (item.value ?? "").trim().toLowerCase() === "no" ? null : (
+            <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(item.status)}>
+              {item.status.replace(/_/g, " ")}
+            </span>
+          )}
+        </span>
       </span>
       {item.field_type === "dropdown" || item.field_type === "status" ? (
         <select
@@ -1382,14 +1409,15 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
           className={baseClass}
         >
           <option value="">Select</option>
-          {(item.options ?? []).map((option) => (
+          {(parseChecklistItemOptions(item.options) ?? []).map((option) => (
             <option key={option} value={option}>{option}</option>
           ))}
         </select>
       ) : item.field_type === "textarea" ? (
         <textarea
           disabled={disabled}
-          defaultValue={item.value ?? ""}
+          value={item.value ?? ""}
+          aria-busy={saving || undefined}
           onBlur={(ev) => ev.currentTarget.value !== (item.value ?? "") && onUpdate(item, ev.currentTarget.value || null)}
           rows={2}
           className={baseClass}
@@ -1398,7 +1426,8 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
         <input
           disabled={disabled}
           type="checkbox"
-          defaultChecked={item.value === "true"}
+          checked={item.value === "true"}
+          aria-busy={saving || undefined}
           onChange={(ev) => onUpdate(item, ev.target.checked ? "true" : null, ev.target.checked ? "completed" : "not_started")}
           className="mt-3 h-4 w-4 accent-terracotta"
         />
@@ -1407,7 +1436,8 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
           disabled={disabled}
           type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
           lang={item.field_type === "date" ? "en-GB" : undefined}
-          defaultValue={item.value ?? ""}
+          value={item.value ?? ""}
+          aria-busy={saving || undefined}
           aria-invalid={Boolean(validationError)}
           aria-describedby={validationError ? `checklist-error-${item.id}` : undefined}
           onChange={() => validationError && setValidationError(null)}
@@ -1417,13 +1447,11 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
             const warning = item.field_type === "date" ? getPostShowDateWarning(item.field_key, next, finalShowDate) : null;
             if (warning) {
               setValidationError(warning);
-              ev.currentTarget.value = item.value ?? "";
               return;
             }
             if (item.field_type === "date" && item.value && next) {
               const correctionReason = window.prompt("Reason for changing this date?");
               if (!correctionReason?.trim()) {
-                ev.currentTarget.value = item.value;
                 return;
               }
               onUpdate(item, next, undefined, correctionReason);

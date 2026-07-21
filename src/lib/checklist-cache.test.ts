@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { PAYMENT_COMPLETED_BLOCKER } from "../../worker/lib/financial-sequence";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
-import { applyOptimisticChecklistUpdate, OPTIMISTIC_GATE_CONTROLLERS, type ChecklistCacheResponse } from "./checklist-cache";
+import {
+  applyOptimisticChecklistUpdate,
+  OPTIMISTIC_GATE_CONTROLLERS,
+  patchEventDetailCache,
+  parseChecklistItemOptions,
+  mergeChecklistItem,
+  type ChecklistCacheResponse,
+  type OptimisticEventSnapshot,
+} from "./checklist-cache";
 
 function sampleChecklist(): ChecklistCacheResponse {
   return {
@@ -94,6 +103,88 @@ describe("applyOptimisticChecklistUpdate", () => {
     const payment = next.checklist.operations.Financials!.find((i) => i.field_key === "payment_status");
     expect(payment?.value).toBe("Completed");
     expect(payment?.status).toBe("completed");
+  });
+
+  it("recomputes lifecycle blockers when payment becomes Completed", () => {
+    const snapshot: OptimisticEventSnapshot = {
+      status: "tentative",
+      event_type: "Free Event",
+      approval_status: "not_required",
+      confirmation_status: "signed_received",
+      poc_complete: true,
+      payment_status: "Incomplete",
+    };
+    const data: ChecklistCacheResponse = {
+      ...sampleChecklist(),
+      lifecycle: {
+        current: "tentative",
+        canConfirm: false,
+        blockers: [PAYMENT_COMPLETED_BLOCKER],
+        nextAction: null,
+        actions: [],
+      },
+      checklist: {
+        ...sampleChecklist().checklist,
+        operations: {
+          Financials: [
+            { id: "cost", module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", status: "completed", value: "Yes", due_date: null, field_type: "dropdown", options: ["No", "Yes"], is_computed: 0 },
+            { id: "pay", module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", status: "not_started", value: "Incomplete", due_date: null, field_type: "dropdown", options: ["Incomplete", "Completed"], is_computed: 0 },
+          ],
+        },
+      },
+    };
+    const next = applyOptimisticChecklistUpdate(
+      data,
+      { id: "pay", field_key: "payment_status", field_type: "dropdown" },
+      "Completed",
+      undefined,
+      snapshot,
+    );
+    expect(next.lifecycle.blockers).not.toContain(PAYMENT_COMPLETED_BLOCKER);
+  });
+
+  it("patches event detail cache for mirrored payment_status", () => {
+    const patched = patchEventDetailCache(
+      { event: { status: "tentative", payment_status: "Incomplete", approval_status: "not_required", confirmation_status: "none" } },
+      "payment_status",
+      "Completed",
+    );
+    expect(patched.event.payment_status).toBe("Completed");
+  });
+
+  it("parses stringified options from PATCH responses", () => {
+    expect(parseChecklistItemOptions('["Incomplete","Completed"]')).toEqual(["Incomplete", "Completed"]);
+    expect(parseChecklistItemOptions(["Yes", "No"])).toEqual(["Yes", "No"]);
+  });
+
+  it("mergeChecklistItem keeps options as arrays when server returns JSON string", () => {
+    const data: ChecklistCacheResponse = {
+      ...sampleChecklist(),
+      checklist: {
+        operations: {
+          Financials: [
+            { id: "pay", module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", status: "completed", value: "Completed", due_date: null, field_type: "dropdown", options: ["Incomplete", "Completed"], is_computed: 0 },
+          ],
+        },
+        accounts: {},
+      },
+    };
+    const merged = mergeChecklistItem(data, {
+      id: "pay",
+      module: "operations",
+      section: "Financials",
+      field_key: "payment_status",
+      label: "Payment Status",
+      status: "completed",
+      value: "Completed",
+      due_date: null,
+      field_type: "dropdown",
+      options: '["Incomplete","Completed"]' as unknown as string[],
+      is_computed: 0,
+    });
+    const payment = merged.checklist.operations.Financials!.find((i) => i.field_key === "payment_status");
+    expect(payment?.options).toEqual(["Incomplete", "Completed"]);
+    expect(Array.isArray(payment?.options)).toBe(true);
   });
 });
 
