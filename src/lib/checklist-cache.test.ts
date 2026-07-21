@@ -5,6 +5,8 @@ import {
   applyOptimisticChecklistUpdate,
   OPTIMISTIC_GATE_CONTROLLERS,
   patchEventDetailCache,
+  parseChecklistItemOptions,
+  mergeChecklistItem,
   type ChecklistCacheResponse,
   type OptimisticEventSnapshot,
 } from "./checklist-cache";
@@ -148,6 +150,41 @@ describe("applyOptimisticChecklistUpdate", () => {
       "Completed",
     );
     expect(patched.event.payment_status).toBe("Completed");
+  });
+
+  it("parses stringified options from PATCH responses", () => {
+    expect(parseChecklistItemOptions('["Incomplete","Completed"]')).toEqual(["Incomplete", "Completed"]);
+    expect(parseChecklistItemOptions(["Yes", "No"])).toEqual(["Yes", "No"]);
+  });
+
+  it("mergeChecklistItem keeps options as arrays when server returns JSON string", () => {
+    const data: ChecklistCacheResponse = {
+      ...sampleChecklist(),
+      checklist: {
+        operations: {
+          Financials: [
+            { id: "pay", module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", status: "completed", value: "Completed", due_date: null, field_type: "dropdown", options: ["Incomplete", "Completed"], is_computed: 0 },
+          ],
+        },
+        accounts: {},
+      },
+    };
+    const merged = mergeChecklistItem(data, {
+      id: "pay",
+      module: "operations",
+      section: "Financials",
+      field_key: "payment_status",
+      label: "Payment Status",
+      status: "completed",
+      value: "Completed",
+      due_date: null,
+      field_type: "dropdown",
+      options: '["Incomplete","Completed"]' as unknown as string[],
+      is_computed: 0,
+    });
+    const payment = merged.checklist.operations.Financials!.find((i) => i.field_key === "payment_status");
+    expect(payment?.options).toEqual(["Incomplete", "Completed"]);
+    expect(Array.isArray(payment?.options)).toBe(true);
   });
 });
 

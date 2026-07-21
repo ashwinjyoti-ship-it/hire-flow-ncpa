@@ -68,6 +68,29 @@ export const OPTIMISTIC_GATE_CONTROLLERS = [
 
 export type OptimisticGateController = (typeof OPTIMISTIC_GATE_CONTROLLERS)[number];
 
+/** PATCH returns raw DB rows; GET parses options — normalise before merging into cache. */
+export function parseChecklistItemOptions(
+  options: string[] | string | null | undefined,
+): string[] | null {
+  if (options == null) return null;
+  if (Array.isArray(options)) return options;
+  if (typeof options === "string") {
+    try {
+      const parsed = JSON.parse(options) as unknown;
+      return Array.isArray(parsed) ? parsed.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function normalizeChecklistItemForClient<T extends { options?: string[] | string | null }>(
+  item: T,
+): T & { options: string[] | null } {
+  return { ...item, options: parseChecklistItemOptions(item.options) };
+}
+
 function normalise(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -297,9 +320,10 @@ export function mergeChecklistItem(
   item: ChecklistCacheItem,
   eventSnapshot?: OptimisticEventSnapshot | null,
 ): ChecklistCacheResponse {
+  const normalized = normalizeChecklistItemForClient(item);
   const next: ChecklistCacheResponse = structuredClone(data);
   forEachChecklistItem(next, (row) => {
-    if (row.id === item.id) Object.assign(row, item);
+    if (row.id === normalized.id) Object.assign(row, normalized);
   });
   if (eventSnapshot) {
     next.lifecycle = recomputeOptimisticLifecycle(next, eventSnapshot);

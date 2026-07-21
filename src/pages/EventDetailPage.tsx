@@ -48,6 +48,7 @@ import { openPrintableHtml } from "../lib/open-printable";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
+import { parseChecklistItemOptions } from "../lib/checklist-cache";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
 import { formatActivityType } from "../../worker/lib/types";
 import {
@@ -1408,7 +1409,7 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
           className={baseClass}
         >
           <option value="">Select</option>
-          {(item.options ?? []).map((option) => (
+          {(parseChecklistItemOptions(item.options) ?? []).map((option) => (
             <option key={option} value={option}>{option}</option>
           ))}
         </select>
