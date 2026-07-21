@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementsFields } from "../components/event-form/RequirementsFields";
 import { PocFields } from "../components/event-form/PocFields";
@@ -126,6 +126,60 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
   return mins;
 }
 
+function hydrateEventFormFromDetail(existing: EventDetailResponse): { form: EventInputT; singleDay: boolean } {
+  const e = existing.event;
+  const eventReqs = parseRequirements(e.requirements);
+  const bookingsRaw: VenueBookingInputT[] = existing.venue_bookings?.length
+    ? existing.venue_bookings.map((vb) => ({
+        id: vb.id,
+        venue: vb.venue ?? "",
+        booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
+        number_of_shows: vb.number_of_shows ?? 1,
+        requirements: withDefaultVenueRequirements(parseRequirements(vb.requirements)),
+        notes: vb.notes ?? null,
+        schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
+          id: se.id,
+          activity_type: se.activity_type,
+          activity_date: se.activity_date,
+          start_time: se.start_time,
+          end_time: se.end_time,
+          with_ac_start: se.with_ac_start,
+          with_ac_end: se.with_ac_end,
+          with_ac_minutes: se.with_ac_minutes,
+          without_ac_start: se.without_ac_start,
+          without_ac_end: se.without_ac_end,
+          without_ac_minutes: se.without_ac_minutes,
+          notes: se.notes,
+        })),
+      }))
+    : [{ venue: "", booking_status: "tentative", number_of_shows: 0, requirements: createDefaultVenueRequirements(), notes: null, schedule_entries: [] }];
+  const bookings = hydrateVenueRequirements(bookingsRaw, eventReqs).map((booking) => ({
+    ...booking,
+    requirements: withDefaultVenueRequirements(booking.requirements as Record<string, unknown> | null),
+  }));
+
+  return {
+    form: {
+      title: e.title ?? "",
+      description: e.description ?? null,
+      organisation_id: e.organisation_id ?? "",
+      primary_contact_id: e.primary_contact_id ?? null,
+      event_type: normaliseEventType(e.event_type),
+      program_officer: e.program_officer ?? null,
+      event_owner: e.event_owner ?? null,
+      event_owner_id: e.event_owner_id ?? null,
+      event_start_date: e.event_start_date ?? null,
+      event_end_date: e.event_end_date ?? null,
+      enquiry_source: e.enquiry_source ?? null,
+      priority: e.priority ?? "medium",
+      requirements: withDefaultEventLevelRequirements(pickEventLevelRequirements(eventReqs)),
+      notes: e.notes ?? null,
+      venue_bookings: bookings,
+    },
+    singleDay: !e.event_end_date,
+  };
+}
+
 function groupScheduleEntriesByDate(entries: ScheduleEntryInputT[]) {
   const groups = new Map<string, Array<{ entry: ScheduleEntryInputT; index: number }>>();
   entries.forEach((entry, index) => {
@@ -138,14 +192,19 @@ function groupScheduleEntriesByDate(entries: ScheduleEntryInputT[]) {
 }
 // (formatDuration is imported from lib/use-lookups for consistent hh/d rendering)
 
+type SaveOptions = { navigateAfter?: boolean };
+
 export function EventEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const { data: lookups } = useLookups();
   const isEdit = Boolean(id);
   const [step, setStep] = useState(() => searchParams.get("step") === "2" ? 2 : 0);
   const [error, setError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const saveNoticeTimerRef = useRef<number | null>(null);
   const [newOrganisationType, setNewOrganisationType] = useState("");
   const [selectedOrganisation, setSelectedOrganisation] = useState<OrgListItem | null>(null);
 
@@ -194,58 +253,15 @@ export function EventEditPage() {
 
   useEffect(() => {
     if (!isEdit || !existing || hydrated) return;
-    const e = existing.event;
-    const eventReqs = parseRequirements(e.requirements);
-    const bookingsRaw: VenueBookingInputT[] = existing.venue_bookings?.length
-      ? existing.venue_bookings.map((vb) => ({
-          id: vb.id,
-          venue: vb.venue ?? "",
-          booking_status: (vb.booking_status === "confirmed" ? "confirmed" : "tentative") as VenueBookingInputT["booking_status"],
-          number_of_shows: vb.number_of_shows ?? 1,
-          requirements: withDefaultVenueRequirements(parseRequirements(vb.requirements)),
-          notes: vb.notes ?? null,
-          schedule_entries: (vb.schedule_entries ?? []).map((se) => ({
-            id: se.id,
-            activity_type: se.activity_type,
-            activity_date: se.activity_date,
-            start_time: se.start_time,
-            end_time: se.end_time,
-            with_ac_start: se.with_ac_start,
-            with_ac_end: se.with_ac_end,
-            with_ac_minutes: se.with_ac_minutes,
-            without_ac_start: se.without_ac_start,
-            without_ac_end: se.without_ac_end,
-            without_ac_minutes: se.without_ac_minutes,
-            notes: se.notes,
-          })),
-        }))
-      : [{ venue: "", booking_status: "tentative", number_of_shows: 0, requirements: createDefaultVenueRequirements(), notes: null, schedule_entries: [] }];
-    // Legacy events stored requirements only on the event — seed each empty venue booking.
-    const bookings = hydrateVenueRequirements(bookingsRaw, eventReqs).map((booking) => ({
-      ...booking,
-      requirements: withDefaultVenueRequirements(booking.requirements as Record<string, unknown> | null),
-    }));
-
-    setForm({
-      title: e.title ?? "",
-      description: e.description ?? null,
-      organisation_id: e.organisation_id ?? "",
-      primary_contact_id: e.primary_contact_id ?? null,
-      event_type: normaliseEventType(e.event_type),
-      program_officer: e.program_officer ?? null,
-      event_owner: e.event_owner ?? null,
-      event_owner_id: (e as { event_owner_id?: string | null }).event_owner_id ?? null,
-      event_start_date: e.event_start_date ?? null,
-      event_end_date: e.event_end_date ?? null,
-      enquiry_source: e.enquiry_source ?? null,
-      priority: e.priority ?? "medium",
-      requirements: withDefaultEventLevelRequirements(pickEventLevelRequirements(eventReqs)),
-      notes: e.notes ?? null,
-      venue_bookings: bookings,
-    });
-    setSingleDay(!e.event_end_date);
+    const hydratedForm = hydrateEventFormFromDetail(existing);
+    setForm(hydratedForm.form);
+    setSingleDay(hydratedForm.singleDay);
     setHydrated(true);
   }, [isEdit, existing, hydrated]);
+
+  useEffect(() => () => {
+    if (saveNoticeTimerRef.current != null) window.clearTimeout(saveNoticeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -290,7 +306,7 @@ export function EventEditPage() {
 
   const update = (patch: Partial<EventInputT>) => setForm((f) => ({ ...f, ...patch }));
 
-  const save = useMutation<string | undefined, Error, void>({
+  const save = useMutation<string | undefined, Error, SaveOptions | void>({
     mutationFn: async () => {
       // If organisation_id is a temporary "new:<name>" token, create the org first.
       let orgId = form.organisation_id;
@@ -315,8 +331,30 @@ export function EventEditPage() {
       const res = await apiPost<{ id: string }>("/events", payload);
       return res.id;
     },
-    onSuccess: (createdId) => navigate(`/events/${createdId ?? id}`),
-    onError: (e: Error) => setError(e.message),
+    onSuccess: async (createdId, variables) => {
+      const navigateAfter = variables?.navigateAfter !== false;
+      if (!navigateAfter && isEdit && id) {
+        const fresh = await queryClient.fetchQuery({
+          queryKey: ["event", id, "edit"],
+          queryFn: () => apiGet<EventDetailResponse>(`/events/${id}`),
+        });
+        const hydratedForm = hydrateEventFormFromDetail(fresh);
+        setForm(hydratedForm.form);
+        setSingleDay(hydratedForm.singleDay);
+        setError(null);
+        setSaveNotice("Saved");
+        if (saveNoticeTimerRef.current != null) window.clearTimeout(saveNoticeTimerRef.current);
+        saveNoticeTimerRef.current = window.setTimeout(() => setSaveNotice(null), 3000);
+        void queryClient.invalidateQueries({ queryKey: ["event", id] });
+        void queryClient.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
+        return;
+      }
+      navigate(`/events/${createdId ?? id}`);
+    },
+    onError: (e: Error) => {
+      setSaveNotice(null);
+      setError(e.message);
+    },
   });
 
   const venues = lookups?.lookups.venue ?? [];
@@ -517,7 +555,8 @@ export function EventEditPage() {
         canSave={canSave}
         isEdit={isEdit}
         isSaving={save.isPending}
-        onSave={() => save.mutate()}
+        saveNotice={saveNotice}
+        onSave={(options) => save.mutate(options)}
       />
 
       {/* Step 1: Event & Client — Organisation first (record anchor), then Event Name */}
@@ -899,7 +938,8 @@ export function EventEditPage() {
         canSave={canSave}
         isEdit={isEdit}
         isSaving={save.isPending}
-        onSave={() => save.mutate()}
+        saveNotice={saveNotice}
+        onSave={(options) => save.mutate(options)}
         className="mt-6"
       />
     </div>
@@ -1006,6 +1046,7 @@ function FormNavigation({
   canSave,
   isEdit,
   isSaving,
+  saveNotice,
   onSave,
   className = "mb-5",
 }: {
@@ -1014,11 +1055,15 @@ function FormNavigation({
   canSave: boolean;
   isEdit: boolean;
   isSaving: boolean;
-  onSave: () => void;
+  saveNotice?: string | null;
+  onSave: (options?: SaveOptions) => void;
   className?: string;
 }) {
+  const onReviewStep = step === STEPS.length - 1;
+  const showMidStepSave = isEdit && !onReviewStep;
+
   return (
-    <div className={"flex justify-between " + className}>
+    <div className={"flex items-center justify-between gap-3 " + className}>
       <button
         type="button"
         onClick={() => setStep((s) => Math.max(0, s - 1))}
@@ -1027,24 +1072,41 @@ function FormNavigation({
       >
         Back
       </button>
-      {step < STEPS.length - 1 ? (
-        <button
-          type="button"
-          onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
-          className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
-        >
-          Next
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={isSaving || !canSave}
-          className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
-        >
-          {isSaving ? "Saving..." : isEdit ? "Save changes" : "Create event"}
-        </button>
-      )}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {saveNotice ? (
+          <span role="status" className="text-xs font-medium text-sage-text etched">
+            {saveNotice}
+          </span>
+        ) : null}
+        {showMidStepSave ? (
+          <button
+            type="button"
+            onClick={() => onSave({ navigateAfter: false })}
+            disabled={isSaving || !canSave}
+            className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched hover:bg-marble-shadow/60 disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        ) : null}
+        {!onReviewStep ? (
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+            className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched"
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSave()}
+            disabled={isSaving || !canSave}
+            className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : isEdit ? "Save changes" : "Create event"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

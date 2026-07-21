@@ -9,7 +9,7 @@ describe("frontend regression guards", () => {
     const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
     expect(source).not.toContain("let lastCreatedId");
-    expect(source).toContain("onSuccess: (createdId)");
+    expect(source).toContain("navigate(`/events/${createdId ?? id}`)");
   });
 
   it("hydrates the edit form from the existing event (not an empty form)", () => {
@@ -21,6 +21,7 @@ describe("frontend regression guards", () => {
     expect(source).toContain('queryKey: ["event", id, "edit"]');
     expect(source).toContain("apiGet<EventDetailResponse>(`/events/${id}`)");
     expect(source).toContain("enabled: isEdit");
+    expect(source).toContain("hydrateEventFormFromDetail");
     // The hydrated guard prevents the empty form flashing before data lands.
     expect(source).toContain("if (isEdit && (existingLoading || !hydrated))");
   });
@@ -656,6 +657,15 @@ describe("frontend regression guards", () => {
 
     expect((source.match(/<FormNavigation/g) ?? []).length).toBe(2);
     expect(source).toContain("function FormNavigation");
+  });
+
+  it("shows a mid-step Save button in edit mode without leaving the form", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+
+    expect(source).toContain("showMidStepSave = isEdit && !onReviewStep");
+    expect(source).toContain('onSave({ navigateAfter: false })');
+    expect(source).toContain('setSaveNotice("Saved")');
+    expect(source).toContain("hydrateEventFormFromDetail");
   });
 
   it("captures organisation type when creating an organisation from the event form", () => {
