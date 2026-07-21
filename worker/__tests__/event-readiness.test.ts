@@ -153,14 +153,25 @@ describe("event form readiness", () => {
     expect(recording?.missingLabels).toEqual(["Are recording options filled?"]);
   });
 
-  it("uses additional rollup for optional add-ons", () => {
+  it("does not require additional add-on note text for readiness tasks", () => {
     const readiness = calculateEventFormReadiness({
       stage_setup: "Full stage",
       foyer_setup: "Reception desk",
       stalls: "Yes",
     });
     const additional = readiness.sections.find((section) => section.key === "additional");
-    expect(additional?.missingLabels).toEqual(["Are optional add-ons filled?"]);
+    expect(additional?.missingLabels).toEqual([]);
+    expect(additional?.state).toBe("complete");
+  });
+
+  it("does not create additional add-on tasks when optional dropdowns are left as default N/A", () => {
+    const readiness = calculateEventFormReadiness({
+      stage_setup: "Full stage",
+      foyer_setup: "Reception desk",
+    });
+    const additional = readiness.sections.find((section) => section.key === "additional");
+    expect(additional?.missingLabels).toEqual([]);
+    expect(additional?.state).toBe("complete");
   });
 
   it("round-trips readiness task rules", () => {

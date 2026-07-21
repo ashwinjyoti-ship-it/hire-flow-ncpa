@@ -139,14 +139,11 @@ function recordingOptionsFilled(values: RequirementValues): boolean {
   ]);
 }
 
-function additionalOptionsFilled(values: RequirementValues): boolean {
-  return optionalGroupDetailsFilled(values, [
-    { toggle: "digital_standee", details: ["digital_standee_note"] },
-    { toggle: "car_display", details: ["car_display_note"] },
-    { toggle: "bike_display", details: ["bike_display_note"] },
-    { toggle: "stalls", details: ["stalls_note"] },
-    { toggle: "telecasting_media", details: ["telecasting_media_note"] },
-  ]);
+function additionalOptionsFilled(): boolean {
+  // Additional add-ons default to N/A on the form. Their adjacent text boxes are
+  // supporting notes only, so this optional group should not create readiness
+  // tasks when notes are blank.
+  return true;
 }
 
 function toVenueSchedules(bookings: VenueBookingReadinessInput[]): VenueScheduleLike[] {
@@ -270,8 +267,8 @@ const SECTIONS: SectionDefinition[] = [
       decision("stage_setup", "Stage setup"),
       decision("foyer_setup", "Foyer setup"),
     ],
-    gaps: (values) => {
-      if (additionalOptionsFilled(values)) return [];
+    gaps: () => {
+      if (additionalOptionsFilled()) return [];
       return [rollup(ROLLUP.additionalOptions, "Are optional add-ons filled?", additionalOptionsFilled)];
     },
   },
