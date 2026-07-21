@@ -7,6 +7,7 @@ import { apiGet } from "../lib/api";
 import { eventDisplayName } from "../lib/event-display";
 import { formatDate } from "../lib/use-lookups";
 import { STATUS_LABELS, type EventStatus } from "../../worker/lib/state-machine";
+import { closeOutReasonLabel } from "../../worker/lib/close-out-reasons";
 
 type RegretRow = {
   id: string;
@@ -129,7 +130,7 @@ export function RegretsPage() {
                       )}
                     </td>
                     <td className="max-w-xs px-4 py-3 align-top text-ink-secondary etched">
-                      <div>{row.regret_reason ?? "—"}</div>
+                      <div>{closeOutReasonLabel(row.regret_reason)}</div>
                       {row.regret_note && (
                         <div className="mt-1 text-[11px] text-ink-muted etched">{row.regret_note}</div>
                       )}

@@ -17,6 +17,7 @@ import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
 import { calculateEventFormReadiness } from "../lib/event-readiness";
 import { parseVenueBookingsForReadiness, VENUE_BOOKINGS_FOR_READINESS_SQL, normalizeVenueBookingsForReadiness } from "../lib/venue-schedule-readiness";
+import { validateCloseOutReasonInput, requiresStructuredCloseOutReason } from "../lib/close-out-reasons";
 import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../lib/state-machine";
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
@@ -298,9 +299,9 @@ eventRoutes.get("/regrets", requireUser, async (c) => {
     binds.push(user.id);
   }
   if (q) {
-    where.push("(LOWER(e.title) LIKE ? OR LOWER(e.event_code) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(sh.reason, '')) LIKE ?)");
+    where.push("(LOWER(e.title) LIKE ? OR LOWER(e.event_code) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ? OR LOWER(COALESCE(sh.reason, '')) LIKE ? OR LOWER(COALESCE(sh.note, '')) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;
-    binds.push(like, like, like, like);
+    binds.push(like, like, like, like, like);
   }
 
   const sql = `SELECT e.id, e.event_code, e.title, e.status, e.event_type, e.event_start_date, e.event_end_date,
@@ -661,23 +662,34 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   if (lifecycleBlockers.length > 0) {
     return c.json({ error: lifecycleBlockers.join(" ") }, 422);
   }
-  // Cancellation and regret both require a reason.
-  if ((to === "cancelled" || to === "regret") && !parsed.data.reason) {
-    return c.json({ error: "A reason is required to cancel or decline an event" }, 422);
-  }
   // Override-gated transitions require Admin or Venue Manager.
   if (requiresOverride(from, to)) {
     if (!can(user.permissions, "conflict.override")) {
       return c.json({ error: "This transition requires Admin or Venue Manager permission" }, 403);
     }
-    if (!parsed.data.reason) {
+  }
+
+  let lifecycleReason: string | null = parsed.data.reason?.trim() || null;
+  let lifecycleNote: string | null = parsed.data.note?.trim() || null;
+  if (requiresStructuredCloseOutReason(to)) {
+    const validated = validateCloseOutReasonInput({
+      reason: parsed.data.reason,
+      note: parsed.data.note,
+      eventType: event.event_type,
+    });
+    if (!validated.ok) {
+      return c.json({ error: validated.error }, 422);
+    }
+    lifecycleReason = validated.reason;
+    lifecycleNote = validated.note;
+  } else if (requiresOverride(from, to)) {
+    if (!lifecycleReason) {
       return c.json({ error: "A reason is required for this override" }, 422);
     }
+    lifecycleNote = null;
   }
 
   const now = new Date().toISOString();
-  const lifecycleNote = parsed.data.note?.trim() || null;
-  const lifecycleReason = parsed.data.reason?.trim() || null;
   await db.prepare("UPDATE events SET status = ?, updated_at = ? WHERE id = ?").bind(to, now, id).run();
   if (to === "confirmed") {
     await db.prepare(
