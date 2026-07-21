@@ -1607,7 +1607,7 @@ function AccountsView({
       )}
       <div className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
         <div className="mb-3">
-          <h2 className="text-base font-semibold text-ink-primary etched-deep">Accounts tracking</h2>
+          <h2 className="text-base font-semibold text-ink-primary etched-deep">Accounts file tracking</h2>
           <p className="text-xs text-ink-muted etched">File ping-pong, TDS, and refunds.</p>
         </div>
         <ChecklistModuleView
