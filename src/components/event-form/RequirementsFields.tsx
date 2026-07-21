@@ -6,6 +6,20 @@ import {
   cateringMealRequiredKey,
   isCateringMealRequired,
 } from "../../../worker/lib/catering-meals";
+import {
+  CANTEEN_BEFORE_SHOW_KEY,
+  CANTEEN_BETWEEN_SHOWS_KEY,
+  CANTEEN_IN_INTERVAL_KEY,
+  CANTEEN_TIMING_NOT_APPLICABLE,
+  isBetweenShowsCanteenApplicableForEntries,
+  isSitDownMealsRequired,
+  isTheatreCanteenRequired,
+  normalizeCateringRequirements,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_LABEL,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+} from "../../../worker/lib/theatre-canteen";
+import type { ShowScheduleEntryLike } from "../../../worker/lib/show-schedule";
 import { OPTIONAL_NOT_APPLICABLE, isOptionalAffirmative } from "../../../worker/lib/optional-requirements";
 import { withDefaultVenueRequirements } from "../../lib/event-edit-form";
 import { useLookups } from "../../lib/use-lookups";
@@ -16,6 +30,8 @@ type RequirementsFieldsProps = {
   value: RequirementsValue;
   onChange: (next: RequirementsValue) => void;
   focusedFieldKey?: string | null;
+  scheduleEntries?: readonly ShowScheduleEntryLike[];
+  legacyShowCount?: number | null;
 };
 
 const RequirementFocusContext = createContext<string | null>(null);
@@ -138,11 +154,53 @@ function SubsectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Show-flow canteen timing: Yes / No only. */
+function CanteenTimingSelect({
+  value,
+  onChange,
+  id,
+  focused = false,
+  disabled = false,
+  disabledLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  id?: string;
+  focused?: boolean;
+  disabled?: boolean;
+  disabledLabel?: string;
+}) {
+  if (disabled) {
+    return (
+      <select id={id} value={CANTEEN_TIMING_NOT_APPLICABLE} disabled className="carved input opacity-70">
+        <option value={CANTEEN_TIMING_NOT_APPLICABLE}>{disabledLabel ?? CANTEEN_TIMING_NOT_APPLICABLE}</option>
+      </select>
+    );
+  }
+  return (
+    <YesNoSelect
+      id={id}
+      value={value}
+      onChange={onChange}
+      yesValue="Yes"
+      noValue="No"
+      focused={focused}
+    />
+  );
+}
+
 /** Venue-scoped requirements fields (same set for every venue booking). */
-export function RequirementsFields({ value, onChange, focusedFieldKey = null }: RequirementsFieldsProps) {
+export function RequirementsFields({
+  value,
+  onChange,
+  focusedFieldKey = null,
+  scheduleEntries = [],
+  legacyShowCount = null,
+}: RequirementsFieldsProps) {
   const { data: lookups } = useLookups();
-  const reqs = withDefaultVenueRequirements(value);
+  const reqs = normalizeCateringRequirements(withDefaultVenueRequirements(value));
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
+  const betweenShowsApplicable = isBetweenShowsCanteenApplicableForEntries(scheduleEntries, legacyShowCount);
 
   const loadersRequired = isOptionalAffirmative(reqs.loaders_required);
   const greenRoomsRequired = isOptionalAffirmative(reqs.green_rooms_required);
@@ -156,7 +214,8 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
   const bikeDisplay = isOptionalAffirmative(reqs.bike_display);
   const stalls = isOptionalAffirmative(reqs.stalls);
   const telecastingMedia = isOptionalAffirmative(reqs.telecasting_media);
-  const cateringRequired = isYes(reqs.catering_required, "Yes");
+  const theatreCanteenRequired = isTheatreCanteenRequired(reqs);
+  const sitDownMealsRequired = isSitDownMealsRequired(reqs);
   const decoratorRequired = isYes(reqs.decorator_required, "Yes");
 
   return (
@@ -269,28 +328,107 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">Catering / Decorator</h3>
 
           <div id="requirement-catering" className="scroll-mt-6 space-y-5">
-          <div className="space-y-4">
-            <SubsectionTitle>Catering</SubsectionTitle>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field fieldKey="catering_required" label="Catering Required">
-                <YesNoSelect value={(reqs.catering_required as string) ?? ""} onChange={(v) => setReq("catering_required", v || null)} yesValue="Yes" noValue="No" />
-              </Field>
-              {cateringRequired && (
-                <>
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <SubsectionTitle>Theatre canteen</SubsectionTitle>
+              <p className="text-[10px] text-ink-muted etched">
+                Fixed venue caterer — choose whether canteen service is needed at each point in the show flow.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field fieldKey={THEATRE_CANTEEN_REQUIRED_KEY} label="Theatre Canteen Required">
+                  <YesNoSelect
+                    value={(reqs[THEATRE_CANTEEN_REQUIRED_KEY] as string) ?? ""}
+                    onChange={(v) => {
+                      const next: RequirementsValue = { ...reqs, [THEATRE_CANTEEN_REQUIRED_KEY]: v || null };
+                      if (v !== "Yes") {
+                        next[CANTEEN_BEFORE_SHOW_KEY] = null;
+                        next[CANTEEN_IN_INTERVAL_KEY] = null;
+                        next[CANTEEN_BETWEEN_SHOWS_KEY] = betweenShowsApplicable ? null : CANTEEN_TIMING_NOT_APPLICABLE;
+                      } else if (!betweenShowsApplicable) {
+                        next[CANTEEN_BETWEEN_SHOWS_KEY] = CANTEEN_TIMING_NOT_APPLICABLE;
+                      }
+                      onChange(next);
+                    }}
+                    yesValue="Yes"
+                    noValue="No"
+                  />
+                </Field>
+                {theatreCanteenRequired && (
+                  <div className="flex items-end">
+                    <p className="rounded-lg border border-marble-shadow/35 bg-marble-shadow/20 px-3 py-2 text-sm text-ink-secondary etched">
+                      {THEATRE_CANTEEN_LABEL}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {theatreCanteenRequired && (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field fieldKey={CANTEEN_BEFORE_SHOW_KEY} label="Before Show">
+                    <CanteenTimingSelect
+                      value={(reqs[CANTEEN_BEFORE_SHOW_KEY] as string) ?? ""}
+                      onChange={(v) => setReq(CANTEEN_BEFORE_SHOW_KEY, v || null)}
+                      focused={focusedFieldKey === CANTEEN_BEFORE_SHOW_KEY}
+                    />
+                  </Field>
+                  <Field fieldKey={CANTEEN_IN_INTERVAL_KEY} label="In Interval">
+                    <CanteenTimingSelect
+                      value={(reqs[CANTEEN_IN_INTERVAL_KEY] as string) ?? ""}
+                      onChange={(v) => setReq(CANTEEN_IN_INTERVAL_KEY, v || null)}
+                      focused={focusedFieldKey === CANTEEN_IN_INTERVAL_KEY}
+                    />
+                  </Field>
+                  <Field fieldKey={CANTEEN_BETWEEN_SHOWS_KEY} label="Between Shows">
+                    <CanteenTimingSelect
+                      value={
+                        betweenShowsApplicable
+                          ? ((reqs[CANTEEN_BETWEEN_SHOWS_KEY] as string) ?? "")
+                          : CANTEEN_TIMING_NOT_APPLICABLE
+                      }
+                      onChange={(v) => setReq(CANTEEN_BETWEEN_SHOWS_KEY, v || null)}
+                      focused={focusedFieldKey === CANTEEN_BETWEEN_SHOWS_KEY}
+                      disabled={!betweenShowsApplicable}
+                      disabledLabel={CANTEEN_TIMING_NOT_APPLICABLE}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4 border-t border-marble-shadow/30 pt-5">
+              <SubsectionTitle>Sit-down meals</SubsectionTitle>
+              <p className="text-[10px] text-ink-muted etched">
+                Separate from theatre canteen — choose a caterer and meal headcounts when sit-down catering is needed.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field fieldKey={SIT_DOWN_MEALS_REQUIRED_KEY} label="Sit-down Meals">
+                  <YesNoSelect
+                    value={(reqs[SIT_DOWN_MEALS_REQUIRED_KEY] as string) ?? ""}
+                    onChange={(v) => {
+                      const next: RequirementsValue = { ...reqs, [SIT_DOWN_MEALS_REQUIRED_KEY]: v || null };
+                      if (v !== "Yes") {
+                        next.catering_provider = null;
+                        for (const meal of CATERING_MEAL_TYPES) {
+                          next[cateringMealRequiredKey(meal.key)] = null;
+                          next[cateringMealPaxKey(meal.key)] = null;
+                        }
+                      }
+                      onChange(next);
+                    }}
+                    yesValue="Yes"
+                    noValue="No"
+                  />
+                </Field>
+                {sitDownMealsRequired && (
                   <Field fieldKey="catering_provider" label="Caterer">
                     <select value={(reqs.catering_provider as string) ?? ""} onChange={(e) => setReq("catering_provider", e.target.value || null)} className="carved input">
                       <option value="">Select…</option>
                       {(lookups?.lookups.caterer ?? []).map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
                     </select>
                   </Field>
-                  <Field fieldKey="interval" label="Interval">
-                    <YesNoSelect value={(reqs.interval as string) ?? ""} onChange={(v) => setReq("interval", v || null)} yesValue="Yes" noValue="No" />
-                  </Field>
-                </>
-              )}
-            </div>
+                )}
+              </div>
 
-            {cateringRequired && (
+            {sitDownMealsRequired && (
               <div id="requirement-field-catering_meals" className="max-w-md rounded-xl border border-marble-shadow/35 bg-marble-shadow/20 p-3 scroll-mt-24 sm:p-4">
                 <div className="mb-2 space-y-0.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Meals &amp; pax</p>
@@ -355,6 +493,7 @@ export function RequirementsFields({ value, onChange, focusedFieldKey = null }: 
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           <div id="requirement-decorator" className="scroll-mt-6 border-t border-marble-shadow/30 pt-5">

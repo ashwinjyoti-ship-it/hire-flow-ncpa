@@ -26,13 +26,15 @@ const sample = {
     ushers_call_time: "18:00",
     house_seats_release: "Yes",
     house_tickets: "NCPA pass",
-    catering_required: "Yes",
+    theatre_canteen_required: "Yes",
+    canteen_before_show: "No",
+    canteen_in_interval: "Yes",
+    sit_down_meals_required: "Yes",
     catering_provider: "NCPA canteen",
     catering_lunch_required: "Yes",
     catering_lunch_pax: "120",
     catering_hi_tea_required: "Yes",
     catering_hi_tea_pax: "80",
-    interval: "Yes",
     stage_setup: "Props, sofas & chairs by organisers. Black cyclorama & wings ready by 2:30pm.",
     foyer_setup: "Registration desk in the lobby; two digital standees at the entrance.",
     licenses_status: "Received",
@@ -118,7 +120,8 @@ describe("buildMomDocument", () => {
     expect(doc).toContain("Licences: Received — PPL, IPRS");
     expect(doc).toContain("Lunch: 120 pax");
     expect(doc).toContain("Hi-Tea: 80 pax");
-    expect(doc).toContain("Interval – Yes");
+    expect(doc).toContain("Theatre canteen – Before show: No; In interval: Yes");
+    expect(doc).toContain("Sit-down caterer - NCPA canteen");
     expect(doc).toContain("Ms. Binaifar Bhesania – 022 66223822");
     expect(doc).toContain("Additional / undecided items:");
     expect(doc).toContain("Technical Officer: TBC");

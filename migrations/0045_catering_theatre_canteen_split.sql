@@ -1,0 +1,3 @@
+-- Catering form split: theatre canteen timings + sit-down meals gate.
+-- Requirements are stored as JSON on events / venue_bookings — no schema change.
+-- Legacy keys `catering_required` and `interval` are normalized at read time.

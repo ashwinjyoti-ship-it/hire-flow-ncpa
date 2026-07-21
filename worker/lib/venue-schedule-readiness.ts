@@ -6,6 +6,7 @@ export const VENUES_SCHEDULE_ANCHOR_ID = "event-venues-schedule";
 
 export type VenueBookingReadinessInput = {
   venue?: string | null;
+  number_of_shows?: number | null;
   schedule_entries?: Array<{ activity_type?: string | null; activity_date?: string | null }> | null;
 };
 
@@ -126,10 +127,11 @@ export function venueScheduleIssueLabel(label: string): string {
 }
 
 export function normalizeVenueBookingsForReadiness(
-  bookings: Array<{ venue?: unknown; schedule_entries?: unknown }>,
+  bookings: Array<{ venue?: unknown; number_of_shows?: unknown; schedule_entries?: unknown }>,
 ): VenueBookingReadinessInput[] {
   return bookings.map((booking) => ({
     venue: typeof booking.venue === "string" ? booking.venue : null,
+    number_of_shows: typeof booking.number_of_shows === "number" ? booking.number_of_shows : null,
     schedule_entries: Array.isArray(booking.schedule_entries)
       ? booking.schedule_entries as Array<{ activity_type?: string | null; activity_date?: string | null }>
       : [],
@@ -137,10 +139,11 @@ export function normalizeVenueBookingsForReadiness(
 }
 
 export function parseVenueBookingsForReadiness(
-  rows: Array<{ venue?: string | null; schedule_json?: unknown }>,
+  rows: Array<{ venue?: string | null; number_of_shows?: number | null; schedule_json?: unknown }>,
 ): VenueBookingReadinessInput[] {
   return rows.map((row) => ({
     venue: row.venue,
+    number_of_shows: row.number_of_shows ?? null,
     schedule_entries: parseScheduleEntries(row.schedule_json),
   }));
 }
@@ -164,6 +167,7 @@ function parseScheduleEntries(raw: unknown): Array<{ activity_type?: string | nu
 
 export const VENUE_BOOKINGS_FOR_READINESS_SQL = `
   SELECT vb.venue,
+    vb.number_of_shows,
     (SELECT json_group_array(json_object(
       'activity_date', se.activity_date,
       'activity_type', se.activity_type

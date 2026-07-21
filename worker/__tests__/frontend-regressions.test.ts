@@ -760,7 +760,7 @@ describe("frontend regression guards", () => {
     expect(eventForm).not.toContain("<style>{`.carved.input");
   });
 
-  it("keeps MoM-related event form fields for stage setup, interval, and officer contact", () => {
+  it("keeps MoM-related event form fields for theatre canteen timings and officer contact", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
     const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
     const pocFields = readFileSync(resolve(root, "src/components/event-form/PocFields.tsx"), "utf8");
@@ -777,8 +777,9 @@ describe("frontend regression guards", () => {
     expect(eventForm).toContain("lookups?.lookups.program_officer");
     expect(eventForm).toContain('Field label="Program Officer Contact"');
     expect(eventForm).toContain('setReq("program_officer_phone"');
-    expect(fields).toContain('Field fieldKey="interval" label="Interval"');
-    expect(fields).toContain('setReq("interval"');
+    expect(fields).toContain('fieldKey={CANTEEN_IN_INTERVAL_KEY} label="In Interval"');
+    expect(fields).toContain('fieldKey={SIT_DOWN_MEALS_REQUIRED_KEY} label="Sit-down Meals"');
+    expect(eventForm).toContain("scheduleEntries={form.venue_bookings[activeRequirementsVenue]?.schedule_entries ?? []}");
     expect(fields).toContain('Field fieldKey="digital_standee_note" label="Digital Standee — notes"');
     expect(fields).toContain('Field fieldKey="car_display_note" label="Car Display — notes"');
     expect(eventForm).toContain("RequirementsFields");

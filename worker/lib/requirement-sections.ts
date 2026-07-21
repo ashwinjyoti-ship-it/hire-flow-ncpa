@@ -1,4 +1,9 @@
 import { CATERING_MEAL_TYPES, cateringMealPaxKey, cateringMealRequiredKey } from "./catering-meals";
+import {
+  isSitDownMealsRequired,
+  isTheatreCanteenRequired,
+  normalizeCateringRequirements,
+} from "./theatre-canteen";
 
 /** Checklist rows — one per event form Requirements card. */
 export const EXECUTION_SECTIONS = [
@@ -52,6 +57,7 @@ function hasMealCaptured(reqs: Record<string, unknown>): boolean {
 
 /** True when the form carries real content for this section (not placeholder defaults alone). */
 export function isExecutionSectionCaptured(fieldKey: ExecutionSectionFieldKey, reqs: Record<string, unknown>): boolean {
+  const values = normalizeCateringRequirements(reqs);
   switch (fieldKey) {
     case "exec_sound_light":
       return hasMeaningfulText(reqs.sound)
@@ -76,12 +82,15 @@ export function isExecutionSectionCaptured(fieldKey: ExecutionSectionFieldKey, r
         || isAffirmative(reqs.liquor_licence)
         || hasMeaningfulText(reqs.liquor_licence_details);
     case "exec_catering_decorator":
-      return isAffirmative(reqs.catering_required)
-        || hasMeaningfulText(reqs.catering_provider)
-        || isAffirmative(reqs.interval)
-        || hasMealCaptured(reqs)
-        || isAffirmative(reqs.decorator_required)
-        || hasMeaningfulText(reqs.decorator_name);
+      return isTheatreCanteenRequired(values)
+        || isSitDownMealsRequired(values)
+        || hasMeaningfulText(values.canteen_before_show)
+        || hasMeaningfulText(values.canteen_in_interval)
+        || hasMeaningfulText(values.canteen_between_shows)
+        || hasMeaningfulText(values.catering_provider)
+        || hasMealCaptured(values)
+        || isAffirmative(values.decorator_required)
+        || hasMeaningfulText(values.decorator_name);
     case "exec_operations":
       return hasMeaningfulText(reqs.parking)
         || hasMeaningfulText(reqs.security)

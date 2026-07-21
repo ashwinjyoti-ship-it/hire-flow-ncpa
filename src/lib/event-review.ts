@@ -3,6 +3,13 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
+import {
+  CANTEEN_BEFORE_SHOW_KEY,
+  CANTEEN_BETWEEN_SHOWS_KEY,
+  CANTEEN_IN_INTERVAL_KEY,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+} from "../../worker/lib/theatre-canteen";
 import type { EventInputT } from "../../worker/lib/types";
 import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
 import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
@@ -108,6 +115,12 @@ function formatReviewLabel(key: string): string {
     signing_authority_address: "Signing Authority & Address",
     courier_address: "Courier Address",
     vendor_registration_form: "Vendor Registration Form",
+    [THEATRE_CANTEEN_REQUIRED_KEY]: "Theatre Canteen Required",
+    [CANTEEN_BEFORE_SHOW_KEY]: "Before Show",
+    [CANTEEN_IN_INTERVAL_KEY]: "In Interval",
+    [CANTEEN_BETWEEN_SHOWS_KEY]: "Between Shows",
+    [SIT_DOWN_MEALS_REQUIRED_KEY]: "Sit-down Meals",
+    catering_provider: "Sit-down Caterer",
   };
   for (const meal of CATERING_MEAL_TYPES) {
     explicitLabels[cateringMealRequiredKey(meal.key)] = meal.label;

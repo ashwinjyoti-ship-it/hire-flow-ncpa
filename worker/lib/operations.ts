@@ -1,6 +1,7 @@
 import type { AuthUser } from "../env";
 import { eventActivity } from "./audit";
 import { isCateringMealPaxKey } from "./catering-meals";
+import { isSitDownMealsRequired } from "./theatre-canteen";
 import {
   deriveExecutionSectionStatus,
   EXECUTION_SECTIONS,
@@ -1282,7 +1283,7 @@ export async function syncAdditionalRequirementsChecklist(db: D1Database, eventI
     { fieldKey: "no_of_crew_cards", fieldType: "number", value: str(reqs.crew_cards) },
     { fieldKey: "licenses_status", fieldType: "dropdown", value: str(reqs.licenses_status) },
     { fieldKey: "licenses", fieldType: "textarea", value: str(reqs.licenses) },
-    { fieldKey: "caterer_name", fieldType: "text", value: str(reqs.catering_provider) },
+    { fieldKey: "caterer_name", fieldType: "text", value: isSitDownMealsRequired(reqs) ? str(reqs.catering_provider) : null },
     { fieldKey: "decorator_name", fieldType: "text", value: str(reqs.decorator_name) },
   ];
 
@@ -1663,6 +1664,7 @@ export async function reconcileReadinessTasksForEvent(db: D1Database, eventId: s
 
   const { results: venueRows } = await db.prepare(VENUE_BOOKINGS_FOR_READINESS_SQL).bind(eventId).all<{
     venue: string | null;
+    number_of_shows: number | null;
     schedule_json: unknown;
   }>();
   const readiness = calculateEventFormReadiness(event.requirements, parseVenueBookingsForReadiness(venueRows));

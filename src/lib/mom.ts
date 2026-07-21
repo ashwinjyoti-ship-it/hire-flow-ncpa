@@ -12,6 +12,16 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
+import {
+  formatCanteenTimingSummary,
+  isBetweenShowsCanteenApplicable,
+  isSitDownMealsRequired,
+  isTheatreCanteenRequired,
+  normalizeCateringRequirements,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_LABEL,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+} from "../../worker/lib/theatre-canteen";
 import { buildPrintablePageHtml } from "../../shared/printable-html";
 import { deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { escapeHtml } from "./export";
@@ -189,9 +199,15 @@ function yesNoLine(label: string, value: unknown, note?: unknown): string | null
 }
 
 export function getMomMissingFields(input: MomEventInput): MomMissingField[] {
-  const reqs = aggregateMomRequirements(input);
+  const reqs = normalizeCateringRequirements(aggregateMomRequirements(input));
   const bookings = input.venue_bookings ?? [];
   const entries = bookings.flatMap((b) => b.schedule_entries ?? []);
+  const betweenShowsApplicable = isBetweenShowsCanteenApplicable(
+    bookings.map((booking) => ({
+      schedule_entries: booking.schedule_entries ?? [],
+      number_of_shows: booking.number_of_shows ?? null,
+    })),
+  );
   const missing: MomMissingField[] = [];
 
   const push = (key: string, label: string, ok: boolean) => {
@@ -212,9 +228,18 @@ export function getMomMissingFields(input: MomEventInput): MomMissingField[] {
   push("stage_setup", "Stage Setup", filled(reqs.stage_setup));
   push("foyer_setup", "Foyer Setup", filled(reqs.foyer_setup));
 
-  if (isYes(reqs.catering_required, "Yes")) {
-    push("catering_provider", "Caterer", filled(reqs.catering_provider));
-    push("interval", "Interval", filled(reqs.interval));
+  push(THEATRE_CANTEEN_REQUIRED_KEY, "Theatre canteen", filled(reqs[THEATRE_CANTEEN_REQUIRED_KEY]));
+  if (isTheatreCanteenRequired(reqs)) {
+    push("canteen_before_show", "Before show", filled(reqs.canteen_before_show));
+    push("canteen_in_interval", "In interval", filled(reqs.canteen_in_interval));
+    if (betweenShowsApplicable) {
+      push("canteen_between_shows", "Between shows", filled(reqs.canteen_between_shows));
+    }
+  }
+
+  push(SIT_DOWN_MEALS_REQUIRED_KEY, "Sit-down meals", filled(reqs[SIT_DOWN_MEALS_REQUIRED_KEY]));
+  if (isSitDownMealsRequired(reqs)) {
+    push("catering_provider", "Sit-down caterer", filled(reqs.catering_provider));
     for (const meal of CATERING_MEAL_TYPES) {
       const requiredKey = cateringMealRequiredKey(meal.key);
       if (isYes(reqs[requiredKey], "Yes")) {
@@ -303,6 +328,7 @@ function buildGuestLines(bookings: MomVenueBooking[], eventReqs: Record<string, 
 }
 
 function buildGuestLinesForReqs(bookings: MomVenueBooking[], reqs: Record<string, unknown>): string[] {
+  const normalized = normalizeCateringRequirements(reqs);
   const lines: string[] = [];
   const totalShows = bookings.reduce(
     (sum, booking) => sum + deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows),
@@ -332,11 +358,17 @@ function buildGuestLinesForReqs(bookings: MomVenueBooking[], reqs: Record<string
     lines.push(`Ushers – ${TBC}`);
   }
 
-  const interval = text(reqs.interval);
-  if (interval) {
-    lines.push(`Interval – ${interval}`);
-  } else if (isYes(reqs.catering_required, "Yes")) {
-    lines.push(`Interval – ${TBC}`);
+  const canteenSummary = formatCanteenTimingSummary(
+    normalized,
+    isBetweenShowsCanteenApplicable(bookings.map((booking) => ({
+      schedule_entries: booking.schedule_entries ?? [],
+      number_of_shows: booking.number_of_shows ?? null,
+    }))),
+  );
+  if (canteenSummary) {
+    lines.push(`Theatre canteen – ${canteenSummary}`);
+  } else if (isTheatreCanteenRequired(normalized)) {
+    lines.push(`Theatre canteen – ${TBC}`);
   }
 
   return lines.length > 0 ? lines : [TBC];
@@ -345,12 +377,12 @@ function buildGuestLinesForReqs(bookings: MomVenueBooking[], reqs: Record<string
 function buildVendorLines(bookings: MomVenueBooking[], eventReqs: Record<string, unknown>): string[] {
   if (bookings.length <= 1) {
     const reqs = bookings[0] ? resolveVenueRequirements(bookings[0], eventReqs) : eventReqs;
-    return buildVendorLinesForReqs(reqs);
+    return buildVendorLinesForReqs(reqs, bookings);
   }
   const lines: string[] = [];
   for (const booking of bookings) {
     const reqs = resolveVenueRequirements(booking, eventReqs);
-    lines.push(...withVenuePrefix(booking.venue, buildVendorLinesForReqs(reqs)), "");
+    lines.push(...withVenuePrefix(booking.venue, buildVendorLinesForReqs(reqs, [booking])), "");
   }
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return lines.length > 0 ? lines : [TBC];
@@ -366,21 +398,29 @@ function formatCateringMealPaxSummary(reqs: Record<string, unknown>): string | n
   return parts.length > 0 ? parts.join("; ") : null;
 }
 
-function buildVendorLinesForReqs(reqs: Record<string, unknown>): string[] {
+function buildVendorLinesForReqs(reqs: Record<string, unknown>, bookings: MomVenueBooking[] = []): string[] {
+  const normalized = normalizeCateringRequirements(reqs);
   const lines: string[] = [];
+  const betweenShowsApplicable = isBetweenShowsCanteenApplicable(
+    bookings.map((booking) => ({
+      schedule_entries: booking.schedule_entries ?? [],
+      number_of_shows: booking.number_of_shows ?? null,
+    })),
+  );
 
-  if (isYes(reqs.catering_required, "Yes")) {
-    const caterer = text(reqs.catering_provider) ?? TBC;
-    const mealPax = formatCateringMealPaxSummary(reqs);
-    const interval = text(reqs.interval);
-    let catererLine = `Caterer - ${caterer}`;
-    if (mealPax) catererLine += ` (${mealPax})`;
-    if (interval) catererLine += `. Interval: ${interval}`;
-    lines.push(catererLine);
-  } else if (filled(reqs.catering_required)) {
-    lines.push("Caterer - Not required");
-  } else {
-    lines.push(`Caterer - ${TBC}`);
+  if (isTheatreCanteenRequired(normalized)) {
+    const canteenSummary = formatCanteenTimingSummary(normalized, betweenShowsApplicable);
+    lines.push(`Theatre canteen - ${THEATRE_CANTEEN_LABEL}${canteenSummary ? ` (${canteenSummary})` : ""}`);
+  }
+
+  if (isSitDownMealsRequired(normalized)) {
+    const caterer = text(normalized.catering_provider) ?? TBC;
+    const mealPax = formatCateringMealPaxSummary(normalized);
+    lines.push(mealPax ? `Sit-down caterer - ${caterer} (${mealPax})` : `Sit-down caterer - ${caterer}`);
+  } else if (filled(normalized[SIT_DOWN_MEALS_REQUIRED_KEY])) {
+    lines.push("Sit-down caterer - Not required");
+  } else if (!isTheatreCanteenRequired(normalized)) {
+    lines.push(`Catering - ${TBC}`);
   }
 
   const light = text(reqs.light);
