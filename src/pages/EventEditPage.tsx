@@ -24,7 +24,7 @@ import {
 import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { formatHoursTotal, sumTimingMinutesFromVenueBookings } from "../../worker/lib/timing-sync";
-import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
+import { countScheduledShowsByDate, deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES, formatActivityType } from "../../worker/lib/types";
@@ -684,6 +684,8 @@ export function EventEditPage() {
           {form.venue_bookings.map((vb, vIdx) => {
             const scheduleGroups = groupScheduleEntriesByDate(vb.schedule_entries);
             const showsByDate = countScheduledShowsByDate(vb.schedule_entries);
+            const totalShows = deriveVenueShowCount(vb.schedule_entries, vb.number_of_shows);
+            const usesLegacyShowTotal = vb.schedule_entries.length === 0 && vb.number_of_shows > 0;
             return (
             <div key={vb.id ?? `venue-${vIdx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
               <div className="mb-3 flex items-center justify-between">
@@ -692,7 +694,7 @@ export function EventEditPage() {
                   <button type="button" onClick={() => removeVenue(vIdx)} className="text-xs text-status-cancelled hover:underline">Remove</button>
                 )}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <Field label="Venue">
                   <select value={vb.venue} onChange={(e) => updateVenue(vIdx, { venue: e.target.value })} className="carved input">
                     <option value="">Select…</option>
@@ -705,6 +707,22 @@ export function EventEditPage() {
                     <option value="confirmed">Confirmed</option>
                   </select>
                 </Field>
+                <div>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Total Shows</span>
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    aria-label={`${totalShows} total shows. ${usesLegacyShowTotal ? "Legacy total preserved until schedule details are added." : "Auto-calculated from Schedule Details."}`}
+                    className="carved flex min-h-[42px] items-center justify-between gap-3 rounded-xl border border-ink-muted/15 bg-marble-highlight/45 px-4 py-2"
+                  >
+                    <output className="text-lg font-semibold text-ink-primary etched-deep">{totalShows}</output>
+                    <span className="text-right text-[10px] font-medium leading-tight text-ink-muted etched">
+                      {usesLegacyShowTotal
+                        ? "Legacy total — add schedule details to auto-calculate"
+                        : "Auto-calculated from Schedule Details"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Schedule entries — each carries With-AC and Without-AC windows (auto-durations). */}

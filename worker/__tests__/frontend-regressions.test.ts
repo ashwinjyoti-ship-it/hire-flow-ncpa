@@ -43,6 +43,9 @@ describe("frontend regression guards", () => {
     const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
     expect(source).not.toContain('<Field label="Number of Shows">');
+    expect(source).toContain("Total Shows");
+    expect(source).toContain("Auto-calculated from Schedule Details");
+    expect(source).toContain("deriveVenueShowCount(vb.schedule_entries, vb.number_of_shows)");
     expect(source).toContain("Add one Show detail for each performance");
     expect(source).toContain("+ Add activity on this date");
     expect(source).not.toContain("+ Add another show");
