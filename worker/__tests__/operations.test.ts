@@ -876,8 +876,7 @@ describe("event completion rollups", () => {
               results: [
                 { module: "accounts", status: "not_started", due_date: null, field_key: "final_file_received", value: "No", is_computed: 0, visibility_rule: null },
                 { module: "accounts", status: "not_started", due_date: null, field_key: "payment_advice", value: "Awaiting", is_computed: 0, visibility_rule: null },
-                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
-                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "box_office_collection_refund", value: "N/A", is_computed: 0, visibility_rule: null },
                 { module: "accounts", status: "completed", due_date: null, field_key: "tax_invoice_sent", value: "Sent", is_computed: 0, visibility_rule: null },
                 { module: "operations", status: "not_applicable", due_date: null, field_key: "emailer_asked_client", value: null, is_computed: 0, visibility_rule: "onlyWhen(emailer == Yes)" },
                 { module: "operations", status: "completed", due_date: null, field_key: "costing_email", value: "Yes", is_computed: 0, visibility_rule: null },
@@ -912,8 +911,8 @@ describe("event completion rollups", () => {
           async all() {
             return {
               results: [
-                { module: "accounts", status: "not_applicable", due_date: null, field_key: "security_deposit_refund", value: "N/A", is_computed: 0, visibility_rule: null },
                 { module: "accounts", status: "not_applicable", due_date: null, field_key: "box_office_collection_refund", value: "N/A", is_computed: 0, visibility_rule: null },
+                { module: "accounts", status: "not_applicable", due_date: null, field_key: "payment_ledger", value: "N/A", is_computed: 0, visibility_rule: null },
                 { module: "accounts", status: "not_applicable", due_date: null, field_key: "tds_certificate_from_client", value: "N.A.", is_computed: 0, visibility_rule: null },
                 { module: "accounts", status: "not_applicable", due_date: null, field_key: "tds_received_from_client_date", value: null, is_computed: 0, visibility_rule: "onlyWhen(tds_certificate_from_client == Received)" },
                 { module: "accounts", status: "not_started", due_date: null, field_key: "payment_advice", value: "Awaiting", is_computed: 0, visibility_rule: null },

@@ -123,11 +123,9 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "accounts", section: "File Tracking", field_key: "final_file_received", label: "Final File Received — Date", field_type: "date" },
 
   // A2. TO ACCOUNTS — PAYMENTS AND REFUNDS
-  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "security_deposit_refund", label: "Security Deposit Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
-  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "box_office_collection_refund", label: "Box Office Collection Refund", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
-  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_advice", label: "Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
-  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "tds_certificate_refund_and_payment_advice", label: "TDS Certificate Refund & Payment Advice", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
-  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_ledger", label: "Payment Ledger", field_type: "dropdown", options: ["Requested", "Received"], default_value: "Requested" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "box_office_collection_refund", label: "Box Office Statement", field_type: "dropdown", options: ["N/A", "Applicable"], default_value: "N/A" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_advice", label: "Payment Advice from Accounts", field_type: "dropdown", options: ["Awaiting", "Received"], default_value: "Awaiting" },
+  { module: "accounts", section: "To Accounts-payments and refunds", field_key: "payment_ledger", label: "Payment Ledger", field_type: "dropdown", options: ["N/A", "Requested", "Received"], default_value: "Requested" },
 
   // B. TO CLIENT (outbound documents)
   { module: "accounts", section: "To Client", field_key: "tax_invoice_sent", label: "Tax Invoice — Sent?", field_type: "dropdown", options: ["Not Sent", "Sent"], default_value: "Not Sent" },

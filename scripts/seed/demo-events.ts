@@ -214,10 +214,8 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "file_received_back_edit_2": return null;
     case "file_sent_back_after_edit_2": return null;
     case "final_file_received": return null;
-    case "security_deposit_refund": return event.eventType === "VFH" ? "Applicable" : "N/A";
     case "box_office_collection_refund": return event.eventType === "FR" ? "Applicable" : "N/A";
     case "payment_advice": return "Awaiting";
-    case "tds_certificate_refund_and_payment_advice": return "Awaiting";
     case "payment_ledger": return "Requested";
     case "tax_invoice_sent": return "Not Sent";
     case "box_office_statement_sent": return "Not Sent";
