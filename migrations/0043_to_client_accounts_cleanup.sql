@@ -5,16 +5,14 @@
 
 -- 1. Payment advice: rename field, relabel, and switch to outbound vocabulary.
 UPDATE checklist_definitions
-   SET id = 'cd_accounts_payment_advice_sent_to_client',
-       field_key = 'payment_advice_sent_to_client',
+   SET field_key = 'payment_advice_sent_to_client',
        label = 'Payment Advice — Sent to Client?',
        options = '["Not Sent","Sent"]',
        default_value = 'Not Sent'
  WHERE field_key = 'payment_advice_received_from_client';
 
 UPDATE checklist_items
-   SET definition_id = 'cd_accounts_payment_advice_sent_to_client',
-       field_key = 'payment_advice_sent_to_client',
+   SET field_key = 'payment_advice_sent_to_client',
        label = 'Payment Advice — Sent to Client?',
        value = CASE
          WHEN lower(trim(value)) = 'yes' THEN 'Sent'
