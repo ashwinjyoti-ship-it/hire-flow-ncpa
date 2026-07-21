@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -565,6 +565,62 @@ describe("checklist task date synchronization", () => {
     expect(taskWrite?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
     expect(taskWrite?.binds).toContain("2026-06-09");
   });
+
+  it("completes technical meeting tasks when the meeting date is filled", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const item = {
+      id: "cli_technical",
+      event_id: "ev_foundation_day",
+      definition_id: "def_technical",
+      module: "operations",
+      section: "Technical Meeting & Minutes",
+      field_key: "technical_meeting_date",
+      label: "Technical Meeting Date",
+      status: "pending",
+      value: null,
+      due_date: null,
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "date",
+      options: null,
+      is_computed: 0,
+      triggers_task: JSON.stringify({ rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0 }),
+      visibility_rule: null,
+      sort_order: 0,
+    } satisfies ChecklistItemRow;
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("JOIN checklist_definitions")) return item;
+            if (sql.includes("SELECT event_start_date")) return { event_start_date: "2026-06-01", event_end_date: "2026-06-10" };
+            if (sql.includes("SELECT event_owner_id")) return { event_owner_id: null };
+            if (sql.includes("SELECT requirements FROM events")) return null;
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 1 } }; },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await updateChecklistItem({
+      db,
+      itemId: "cli_technical",
+      value: "2026-06-09",
+      user: { id: "user_1", email: "ops@example.test", name: "Ops", permissions: [], organisation: null },
+    });
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("source_rule = ?"));
+    expect(completion?.binds).toContain("ev_foundation_day");
+    expect(completion?.binds).toContain("technical_meeting");
+  });
+
 });
 
 describe("accounts file ping-pong tasks", () => {

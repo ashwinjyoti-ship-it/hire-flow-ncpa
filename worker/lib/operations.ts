@@ -1849,6 +1849,7 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
     onstage_required: { rule: "onstage", complete: v === "not required" },
     onstage_received_from_client: { rule: "onstage", complete: Boolean(v) },
     feedback_received: { rule: "feedback", complete: Boolean(v) },
+    technical_meeting_date: { rule: "technical_meeting", complete: Boolean(v) },
     minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },
     file_sent_to_accounts: { rule: "send_file_to_accounts", complete: Boolean(v) },
     tds_certificate_sent_to_accounts: { rule: "tds_send_to_accounts", complete: Boolean(v) },
