@@ -24,13 +24,11 @@ export function useChecklistUpdate(eventId: string | undefined) {
       item: ChecklistUpdateItem;
       value: string | null;
       status?: string;
-      correctionReason?: string | null;
     }) => {
       if (!eventId) throw new Error("Event not found");
       return apiPatch<{ item: ChecklistCacheItem }>(`/events/${eventId}/checklist/${args.item.id}`, {
         value: args.value,
         status: args.status,
-        correction_reason: args.correctionReason,
       });
     },
     onMutate: (args) => {

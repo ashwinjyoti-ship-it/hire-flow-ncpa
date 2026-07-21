@@ -736,7 +736,6 @@ eventRoutes.get("/:id/checklist", requireUser, async (c) => {
 const ChecklistUpdateInput = z.object({
   value: z.string().nullish(),
   status: z.enum(["not_started", "in_progress", "completed", "not_applicable", "blocked"]).optional(),
-  correction_reason: z.string().nullish(),
 });
 
 const EventArchiveInput = z.object({
@@ -801,7 +800,6 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
       eventId: c.req.param("id"),
       value: parsed.data.value ?? null,
       status: parsed.data.status,
-      correctionReason: parsed.data.correction_reason,
       user: c.get("user")!,
     });
     return c.json({

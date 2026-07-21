@@ -634,7 +634,7 @@ export function EventDetailPage() {
                 finalShowDate={e.event_end_date ?? e.event_start_date}
                 showGoToTop
                 onGoToTop={clearFocusedField}
-                onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+                onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
               />
             </div>
           </div>
@@ -660,7 +660,7 @@ export function EventDetailPage() {
               finalShowDate={e.event_end_date ?? e.event_start_date}
               showGoToTop
               onGoToTop={clearFocusedField}
-              onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+              onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
             />
           </div>
         )}
@@ -858,7 +858,7 @@ export function EventDetailPage() {
           fileClosed={fileClosed}
           fileClosedItem={fileClosedItem}
           checklistPending={checklistUpdate.isPending}
-          onUpdate={(item, value, status, correctionReason) => checklistUpdate.mutate({ item, value, status, correctionReason })}
+          onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
           onCloseFile={closeFile}
           onGoToTop={clearFocusedField}
         />
@@ -1302,7 +1302,7 @@ function ChecklistModuleView({
   pocCompletion?: PocCompletionStatus;
   showGoToTop?: boolean;
   onGoToTop?: () => void;
-  onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
+  onUpdate: (item: ChecklistItem, value: string | null, status?: string) => void;
 }) {
   const entries = Object.entries(sections);
   if (!entries.length) {
@@ -1375,7 +1375,7 @@ function FieldSavingSpinner() {
   );
 }
 
-function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; saving?: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
+function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; saving?: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-80" : "");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -1385,14 +1385,6 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
     const warning = getPostShowDateWarning(item.field_key, next, finalShowDate);
     if (warning) {
       setValidationError(warning);
-      return;
-    }
-    // Couriered is an operational milestone that may need correcting directly.
-    // Other established checklist dates retain the correction audit prompt.
-    if (item.field_key !== "confirmation_couriered" && item.value && next) {
-      const correctionReason = window.prompt("Reason for changing this date?");
-      if (!correctionReason?.trim()) return;
-      onUpdate(item, next, undefined, correctionReason);
       return;
     }
     onUpdate(item, next);
@@ -1585,7 +1577,7 @@ function AccountsView({
   fileClosed: boolean;
   fileClosedItem: ChecklistItem | undefined;
   checklistPending: boolean;
-  onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void;
+  onUpdate: (item: ChecklistItem, value: string | null, status?: string) => void;
   onCloseFile: () => void;
   onGoToTop: () => void;
 }) {

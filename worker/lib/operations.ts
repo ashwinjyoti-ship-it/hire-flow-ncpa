@@ -552,7 +552,6 @@ export async function updateChecklistItem(args: {
   eventId?: string;
   value?: string | null;
   status?: string;
-  correctionReason?: string | null;
   user: AuthUser;
 }): Promise<ChecklistItemRow> {
   const { db, itemId, user } = args;
@@ -569,11 +568,6 @@ export async function updateChecklistItem(args: {
   const now = new Date().toISOString();
   const value = args.value === undefined ? current.value : args.value;
   const status = args.status ?? itemStatusForValue({ field_type: current.field_type, value, is_computed: current.is_computed });
-  const dateChanged = current.field_type === "date" && current.value && value && current.value !== value;
-  const requiresCorrectionReason = dateChanged && current.field_key !== "confirmation_couriered";
-  if (requiresCorrectionReason && !args.correctionReason?.trim()) {
-    throw new Error("A correction reason is required to change an existing date");
-  }
 
   // Financial sequence: Proforma Sent requires Costing Email = Yes.
   if (current.field_key === "proforma_invoice" && isProformaMarkedSent(value)) {
@@ -664,13 +658,6 @@ export async function updateChecklistItem(args: {
     || current.field_key === "confirmation_couriered"
   ) {
     await reconcileConfirmationLetterDeliveryChain(db, current.event_id);
-  }
-
-  if (requiresCorrectionReason) {
-    await db.prepare(
-      `INSERT INTO checklist_corrections (id, checklist_item_id, old_value, new_value, corrected_by, corrected_at, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(makeId("corr"), itemId, current.value, value, user.id, now, args.correctionReason).run();
   }
 
   await syncEventFieldsFromChecklist(db, current.event_id, current.field_key, value);
