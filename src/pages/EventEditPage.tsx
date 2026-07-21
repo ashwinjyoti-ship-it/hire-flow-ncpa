@@ -1005,6 +1005,8 @@ export function EventEditPage() {
                 value={(form.venue_bookings[activeRequirementsVenue]?.requirements ?? {}) as Record<string, unknown>}
                 onChange={(next) => updateVenueRequirements(activeRequirementsVenue, next)}
                 focusedFieldKey={focusedRequirementField}
+                scheduleEntries={form.venue_bookings[activeRequirementsVenue]?.schedule_entries ?? []}
+                legacyShowCount={form.venue_bookings[activeRequirementsVenue]?.number_of_shows ?? null}
               />
             </>
           )}

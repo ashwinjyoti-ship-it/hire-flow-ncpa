@@ -9,6 +9,20 @@ import {
   type VenueBookingReadinessInput,
 } from "./venue-schedule-readiness";
 import {
+  activeCanteenTimingKeys,
+  CANTEEN_BEFORE_SHOW_KEY,
+  CANTEEN_BETWEEN_SHOWS_KEY,
+  CANTEEN_IN_INTERVAL_KEY,
+  isCateringSectionNotApplicable,
+  isSitDownMealsRequired,
+  isTheatreCanteenRequired,
+  normalizeCateringRequirements,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+  theatreCanteenTimingsFilledForVenues,
+  type VenueScheduleLike,
+} from "./theatre-canteen";
+import {
   optionalDetailFilled,
   optionalGroupDetailsFilled,
   optionalGroupNotApplicable,
@@ -51,18 +65,25 @@ type SectionDefinition = {
   key: string;
   label: string;
   formSection: string;
-  fields: (values: RequirementValues) => FieldRequirement[];
+  fields: (values: RequirementValues, venueBookings: VenueBookingReadinessInput[]) => FieldRequirement[];
   /** Validated only when they fail — not counted when satisfied (N/A or complete). */
-  gaps?: (values: RequirementValues) => FieldRequirement[];
+  gaps?: (values: RequirementValues, venueBookings: VenueBookingReadinessInput[]) => FieldRequirement[];
   notApplicable?: (values: RequirementValues) => boolean;
 };
 
 const ROLLUP = {
   cateringMeals: "catering_meals",
+  canteenTimings: "canteen_timings",
   staffingOptions: "staffing_facilities_options",
   recordingOptions: "recording_special_options",
   additionalOptions: "additional_options",
 } as const;
+
+const CANTEEN_TIMING_LABELS: Record<string, string> = {
+  [CANTEEN_BEFORE_SHOW_KEY]: "Before show",
+  [CANTEEN_IN_INTERVAL_KEY]: "In interval",
+  [CANTEEN_BETWEEN_SHOWS_KEY]: "Between shows",
+};
 
 const STAFFING_TOGGLES = [
   "green_rooms_required",
@@ -128,6 +149,17 @@ function additionalOptionsFilled(values: RequirementValues): boolean {
   ]);
 }
 
+function toVenueSchedules(bookings: VenueBookingReadinessInput[]): VenueScheduleLike[] {
+  return bookings.map((booking) => ({
+    schedule_entries: booking.schedule_entries ?? [],
+    number_of_shows: booking.number_of_shows ?? null,
+  }));
+}
+
+function normalized(values: RequirementValues): RequirementValues {
+  return normalizeCateringRequirements(values);
+}
+
 const SECTIONS: SectionDefinition[] = [
   {
     key: "technical_sound",
@@ -166,18 +198,38 @@ const SECTIONS: SectionDefinition[] = [
     key: "catering",
     label: "Catering",
     formSection: "catering",
-    fields: (values) => {
-      const fields: FieldRequirement[] = [decision("catering_required", "Catering decision")];
-      if (!isYes(values.catering_required)) return fields;
-      fields.push(decision("catering_provider", "Caterer"), decision("interval", "Interval decision"));
+    fields: (values, venueBookings) => {
+      const reqs = normalized(values);
+      const fields: FieldRequirement[] = [
+        decision(THEATRE_CANTEEN_REQUIRED_KEY, "Theatre canteen decision"),
+        decision(SIT_DOWN_MEALS_REQUIRED_KEY, "Sit-down meals decision"),
+      ];
+      if (isTheatreCanteenRequired(reqs)) {
+        for (const key of activeCanteenTimingKeys(reqs, toVenueSchedules(venueBookings))) {
+          fields.push(decision(key, `${CANTEEN_TIMING_LABELS[key]} decision`));
+        }
+      }
+      if (isSitDownMealsRequired(reqs)) {
+        fields.push(decision("catering_provider", "Sit-down caterer"));
+      }
       return fields;
     },
-    gaps: (values) => {
-      if (!isYes(values.catering_required)) return [];
-      if (cateringMealsFilled(values)) return [];
-      return [rollup(ROLLUP.cateringMeals, "Are meals filled?", cateringMealsFilled)];
+    gaps: (values, venueBookings) => {
+      const reqs = normalized(values);
+      const gaps: FieldRequirement[] = [];
+      if (isTheatreCanteenRequired(reqs) && !theatreCanteenTimingsFilledForVenues(reqs, toVenueSchedules(venueBookings))) {
+        gaps.push(rollup(
+          ROLLUP.canteenTimings,
+          "Are theatre canteen timings filled?",
+          (v) => theatreCanteenTimingsFilledForVenues(normalized(v), toVenueSchedules(venueBookings)),
+        ));
+      }
+      if (isSitDownMealsRequired(reqs) && !cateringMealsFilled(reqs)) {
+        gaps.push(rollup(ROLLUP.cateringMeals, "Are meals filled?", cateringMealsFilled));
+      }
+      return gaps;
     },
-    notApplicable: (values) => isNo(values.catering_required),
+    notApplicable: (values) => isCateringSectionNotApplicable(normalized(values)),
   },
   {
     key: "decorator",
@@ -244,8 +296,8 @@ export function calculateEventFormReadiness(
   const values = parseRequirementValues(raw);
   const venueSection = calculateVenueScheduleReadinessSection(venueBookings);
   const requirementSections = SECTIONS.map((definition): ReadinessSection => {
-    const baseFields = definition.fields(values);
-    const gapFields = definition.gaps?.(values) ?? [];
+    const baseFields = definition.fields(values, venueBookings);
+    const gapFields = definition.gaps?.(values, venueBookings) ?? [];
     const baseMissing = baseFields.filter((field) => isFieldMissing(field, values));
     const gapMissing = gapFields.filter((field) => isFieldMissing(field, values));
     const missing = [...baseMissing, ...gapMissing];

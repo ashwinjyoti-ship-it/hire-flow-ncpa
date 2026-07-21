@@ -8,6 +8,13 @@ import {
   cateringMealPaxKey,
   cateringMealRequiredKey,
 } from "../../worker/lib/catering-meals";
+import {
+  CANTEEN_BEFORE_SHOW_KEY,
+  CANTEEN_BETWEEN_SHOWS_KEY,
+  CANTEEN_IN_INTERVAL_KEY,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+} from "../../worker/lib/theatre-canteen";
 import { buildPrintablePageHtml } from "../../shared/printable-html";
 import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
 import { escapeHtml } from "./export";
@@ -93,10 +100,13 @@ const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
   { key: "piano_tuning_time", label: "Piano Tuning Time" },
   { key: "liquor_licence", label: "Liquor Licence" },
   { key: "liquor_licence_details", label: "Liquor Licence Details" },
-  { key: "catering_required", label: "Catering Required" },
-  { key: "catering_provider", label: "Caterer" },
+  { key: THEATRE_CANTEEN_REQUIRED_KEY, label: "Theatre Canteen Required" },
+  { key: CANTEEN_BEFORE_SHOW_KEY, label: "Before Show" },
+  { key: CANTEEN_IN_INTERVAL_KEY, label: "In Interval" },
+  { key: CANTEEN_BETWEEN_SHOWS_KEY, label: "Between Shows" },
+  { key: SIT_DOWN_MEALS_REQUIRED_KEY, label: "Sit-down Meals" },
+  { key: "catering_provider", label: "Sit-down Caterer" },
   ...CATERING_MEAL_FIELDS,
-  { key: "interval", label: "Interval" },
   { key: "decorator_required", label: "Decorator" },
   { key: "decorator_name", label: "Decorator Name" },
   { key: "parking", label: "Parking Requirements" },

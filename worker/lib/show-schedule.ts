@@ -33,3 +33,12 @@ export function deriveVenueShowCount(
   if (schedule.length === 0) return Math.max(0, Number(legacyCount) || 0);
   return countScheduledShows(schedule);
 }
+
+/** Highest number of shows scheduled on any single day (undated rows excluded). */
+export function maxScheduledShowsOnAnyDay(
+  entries: readonly ShowScheduleEntryLike[] | null | undefined,
+): number {
+  const counts = countScheduledShowsByDate(entries);
+  if (counts.size === 0) return 0;
+  return Math.max(...counts.values());
+}

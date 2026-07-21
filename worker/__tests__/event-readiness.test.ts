@@ -5,6 +5,11 @@ import {
   readinessTaskCopy,
   readinessTaskRule,
 } from "../lib/event-readiness";
+import {
+  CANTEEN_IN_INTERVAL_KEY,
+  SIT_DOWN_MEALS_REQUIRED_KEY,
+  THEATRE_CANTEEN_REQUIRED_KEY,
+} from "../lib/theatre-canteen";
 
 describe("event form readiness", () => {
   it("starts red without treating silent defaults as progress", () => {
@@ -18,7 +23,8 @@ describe("event form readiness", () => {
 
   it("marks explicit negative applicability decisions grey", () => {
     const readiness = calculateEventFormReadiness({
-      catering_required: "No",
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "No",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "No",
       decorator_required: "No",
       green_rooms_required: "Not Required",
       ushers_required: "Not Required",
@@ -36,9 +42,9 @@ describe("event form readiness", () => {
 
   it("uses a general meals rollup instead of per-meal task labels", () => {
     const readiness = calculateEventFormReadiness({
-      catering_required: "Yes",
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "No",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "Yes",
       catering_provider: "NCPA caterer",
-      interval: "No",
       catering_hi_tea_required: "Yes",
     });
     const catering = readiness.sections.find((section) => section.key === "catering");
@@ -50,23 +56,36 @@ describe("event form readiness", () => {
     expect(task.title).not.toContain("Hi-Tea");
   });
 
-  it("does not mention meals when all meal rows are N/A", () => {
+  it("requires theatre canteen timings when canteen is yes", () => {
     const readiness = calculateEventFormReadiness({
-      catering_required: "Yes",
-      catering_provider: "NCPA caterer",
-      interval: "No",
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "Yes",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "No",
+      canteen_before_show: "No",
+      [CANTEEN_IN_INTERVAL_KEY]: "No",
+    });
+    const catering = readiness.sections.find((section) => section.key === "catering");
+    expect(catering?.state).toBe("almost");
+    expect(catering?.missingLabels).toContain("Are theatre canteen timings filled?");
+  });
+
+  it("does not mention meals when sit-down is no", () => {
+    const readiness = calculateEventFormReadiness({
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "Yes",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "No",
+      canteen_before_show: "Yes",
+      [CANTEEN_IN_INTERVAL_KEY]: "No",
     });
     const catering = readiness.sections.find((section) => section.key === "catering");
     expect(catering?.state).toBe("complete");
     expect(catering?.missingLabels).toEqual([]);
-    expect(catering?.total).toBe(3);
+    expect(catering?.total).toBe(4);
   });
 
   it("treats legacy No on a meal the same as N/A", () => {
     const readiness = calculateEventFormReadiness({
-      catering_required: "Yes",
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "No",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "Yes",
       catering_provider: "NCPA caterer",
-      interval: "No",
       catering_dinner_required: "No",
     });
     expect(readiness.sections.find((section) => section.key === "catering")?.state).toBe("complete");
@@ -74,13 +93,47 @@ describe("event form readiness", () => {
 
   it("completes catering when only one meal is required and pax is filled", () => {
     const readiness = calculateEventFormReadiness({
-      catering_required: "Yes",
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "No",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "Yes",
       catering_provider: "NCPA caterer",
-      interval: "No",
       catering_dinner_required: "Yes",
       catering_dinner_pax: "120",
     });
     expect(readiness.sections.find((section) => section.key === "catering")?.state).toBe("complete");
+  });
+
+  it("omits between-shows timing when only one show is scheduled that day", () => {
+    const readiness = calculateEventFormReadiness({
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "Yes",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "No",
+      canteen_before_show: "Yes",
+      [CANTEEN_IN_INTERVAL_KEY]: "No",
+    }, [
+      { venue: "TET", schedule_entries: [{ activity_type: "show", activity_date: "2026-08-28" }] },
+    ]);
+    const catering = readiness.sections.find((section) => section.key === "catering");
+    expect(catering?.missingKeys).not.toContain("canteen_between_shows");
+    expect(catering?.total).toBe(4);
+  });
+
+  it("includes between-shows timing when multiple shows share a day", () => {
+    const readiness = calculateEventFormReadiness({
+      [THEATRE_CANTEEN_REQUIRED_KEY]: "Yes",
+      [SIT_DOWN_MEALS_REQUIRED_KEY]: "No",
+      canteen_before_show: "Yes",
+      [CANTEEN_IN_INTERVAL_KEY]: "No",
+    }, [
+      {
+        venue: "TET",
+        schedule_entries: [
+          { activity_type: "show", activity_date: "2026-08-28" },
+          { activity_type: "show", activity_date: "2026-08-28" },
+        ],
+      },
+    ]);
+    const catering = readiness.sections.find((section) => section.key === "catering");
+    expect(catering?.missingKeys).toContain("canteen_between_shows");
+    expect(catering?.total).toBe(5);
   });
 
   it("uses staffing rollup when an option is affirmative but details are missing", () => {
@@ -129,4 +182,3 @@ describe("event form readiness", () => {
     expect(readiness.missingCount).toBeGreaterThan(0);
   });
 });
-
