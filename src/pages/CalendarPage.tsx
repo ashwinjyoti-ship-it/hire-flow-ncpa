@@ -53,6 +53,8 @@ type LifecycleEntry = {
   milestone_date: string;
   event_id: string;
   event_code: string | null;
+  event_start_date: string | null;
+  event_end_date: string | null;
   title: string;
   status: EventStatus;
   event_type: string | null;
@@ -681,6 +683,14 @@ function lifecycleDot(type: LifecycleType): string {
   return LIFECYCLE_TONE[type] ?? "bg-ink-muted";
 }
 
+function formatScheduledShowDate(start: string | null | undefined, end: string | null | undefined): string | null {
+  if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  if (end && end !== start && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    return `${formatDate(start)} to ${formatDate(end)}`;
+  }
+  return formatDate(start);
+}
+
 function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date; onOpenOverflow: (overflow: LifecycleOverflowState) => void }) {
   const cells = calendarCellsForMonth(cursor);
   return (
@@ -819,6 +829,9 @@ function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOver
               {entry.organisation_name && entry.organisation_name !== entry.title && (
                 <div className="mt-1 text-sm text-neutral-700">{entry.title}</div>
               )}
+              <div className="mt-2 text-xs text-neutral-600">
+                {formatScheduledShowDate(entry.event_start_date, entry.event_end_date) ?? "Show date not set"}
+              </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-600">
                 {entry.event_code && <span>{entry.event_code}</span>}
                 {entry.venues && <span>{entry.venues}</span>}
