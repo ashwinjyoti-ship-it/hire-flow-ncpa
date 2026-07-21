@@ -16,8 +16,13 @@ import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-ma
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
-import { STATUS_LABELS, requiresOverride } from "../../worker/lib/state-machine";
-import type { EventStatus } from "../../worker/lib/state-machine";
+import {
+  CLOSE_OUT_REASON_LABELS,
+  closeOutReasonsForEventType,
+  requiresStructuredCloseOutReason,
+  type CloseOutReasonCode,
+} from "../../worker/lib/close-out-reasons";
+import { STATUS_LABELS, requiresOverride, type EventStatus } from "../../worker/lib/state-machine";
 import { DOCUMENT_CATEGORIES, MAX_DOCUMENT_BYTES } from "../../worker/lib/documents";
 import { BLOCKER_TARGETS, resolveBlockerWorkHref } from "../lib/lifecycle-blocker-targets";
 import { selectBlockedForwardAction, selectNextLifecycleBlocker } from "../lib/lifecycle-milestone";
@@ -187,6 +192,9 @@ export function EventDetailPage() {
   const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "tasks");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
+  const [closeOutCode, setCloseOutCode] = useState<CloseOutReasonCode | "">("");
+  const [closeOutOtherText, setCloseOutOtherText] = useState("");
+  const [closeOutNote, setCloseOutNote] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [deleteModal, setDeleteModal] = useState(false);
   const [momOpen, setMomOpen] = useState(false);
@@ -305,6 +313,9 @@ export function EventDetailPage() {
     onSuccess: (fresh) => {
       setStatusModal(null);
       setReason("");
+      setCloseOutCode("");
+      setCloseOutOtherText("");
+      setCloseOutNote("");
       applyFreshEventState(fresh);
       scrollEventToTop();
     },
@@ -631,6 +642,9 @@ export function EventDetailPage() {
               onChoose={(status) => {
                 setStatusModal(status);
                 setReason("");
+                setCloseOutCode("");
+                setCloseOutOtherText("");
+                setCloseOutNote("");
               }}
               completion={{
                 operations: e.ops_completion,
@@ -936,22 +950,81 @@ export function EventDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setStatusModal(null)}>
           <div className="carved-card w-full max-w-md rounded-2xl bg-marble-highlight p-6" onClick={(ev) => ev.stopPropagation()}>
             <h3 className="mb-2 text-sm font-semibold text-ink-primary etched-deep">Change status to {statusLabel(statusModal)}</h3>
-            <p className="mb-4 text-xs text-ink-muted etched">
-              {requiresReason(e.status, statusModal) ? "Please record the reason for this lifecycle decision." : "Optional note for this lifecycle decision."}
-            </p>
-            <textarea
-              value={reason}
-              onChange={(ev) => setReason(ev.target.value)}
-              placeholder="Reason / note..."
-              className="carved mb-4 w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-              rows={3}
-            />
+            {requiresStructuredCloseOutReason(statusModal) ? (
+              <>
+                <p className="mb-4 text-xs text-ink-muted etched">
+                  Select why this event is being {statusModal === "regret" ? "declined" : "cancelled"}. This helps management review lost business.
+                </p>
+                <label className="mb-4 block">
+                  <span className="mb-1.5 block text-xs font-medium text-ink-secondary etched">Reason</span>
+                  <select
+                    value={closeOutCode}
+                    onChange={(ev) => {
+                      const next = ev.target.value as CloseOutReasonCode | "";
+                      setCloseOutCode(next);
+                      if (next !== "other") setCloseOutOtherText("");
+                    }}
+                    className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                  >
+                    <option value="">Select a reason…</option>
+                    {closeOutReasonsForEventType(e.event_type).map((code) => (
+                      <option key={code} value={code}>{CLOSE_OUT_REASON_LABELS[code]}</option>
+                    ))}
+                  </select>
+                </label>
+                {closeOutCode === "other" && (
+                  <label className="mb-4 block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-secondary etched">Describe the reason</span>
+                    <textarea
+                      value={closeOutOtherText}
+                      onChange={(ev) => setCloseOutOtherText(ev.target.value)}
+                      placeholder="Required when selecting Other…"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      rows={3}
+                    />
+                  </label>
+                )}
+                {closeOutCode && closeOutCode !== "other" && (
+                  <label className="mb-4 block">
+                    <span className="mb-1.5 block text-xs font-medium text-ink-secondary etched">Additional note (optional)</span>
+                    <textarea
+                      value={closeOutNote}
+                      onChange={(ev) => setCloseOutNote(ev.target.value)}
+                      placeholder="Add context for management review…"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      rows={2}
+                    />
+                  </label>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="mb-4 text-xs text-ink-muted etched">
+                  {requiresReason(e.status, statusModal) ? "Please record the reason for this lifecycle decision." : "Optional note for this lifecycle decision."}
+                </p>
+                <textarea
+                  value={reason}
+                  onChange={(ev) => setReason(ev.target.value)}
+                  placeholder="Reason / note..."
+                  className="carved mb-4 w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                  rows={3}
+                />
+              </>
+            )}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setStatusModal(null)} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">Cancel</button>
               <button
                 type="button"
-                disabled={transition.isPending || (requiresReason(e.status, statusModal) && !reason.trim())}
+                disabled={transition.isPending || !canSubmitStatusModal(e.status, statusModal, reason, closeOutCode, closeOutOtherText)}
                 onClick={() => {
+                  if (requiresStructuredCloseOutReason(statusModal)) {
+                    transition.mutate({
+                      to: statusModal,
+                      reason: closeOutCode,
+                      note: closeOutCode === "other" ? closeOutOtherText.trim() : closeOutNote.trim() || null,
+                    });
+                    return;
+                  }
                   const trimmed = reason.trim();
                   transition.mutate({
                     to: statusModal,
@@ -2313,7 +2386,24 @@ function prettyState(value: string | null | undefined): string {
 }
 
 function requiresReason(from: EventStatus, to: EventStatus): boolean {
-  return to === "cancelled" || to === "regret" || requiresOverride(from, to);
+  if (requiresStructuredCloseOutReason(to)) return false;
+  return requiresOverride(from, to);
+}
+
+function canSubmitStatusModal(
+  from: EventStatus,
+  to: EventStatus,
+  reason: string,
+  closeOutCode: CloseOutReasonCode | "",
+  closeOutOtherText: string,
+): boolean {
+  if (requiresStructuredCloseOutReason(to)) {
+    if (!closeOutCode) return false;
+    if (closeOutCode === "other") return Boolean(closeOutOtherText.trim());
+    return true;
+  }
+  if (requiresReason(from, to)) return Boolean(reason.trim());
+  return true;
 }
 
 function statusClass(status: string): string {
