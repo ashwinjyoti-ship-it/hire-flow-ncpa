@@ -35,6 +35,10 @@ import {
   WORKFLOW_PHASE_LABELS,
 } from "../../worker/lib/lifecycle-workflow-phase";
 import {
+  blockersForFileClose,
+  formatFileCloseBlockedMessage,
+} from "../../worker/lib/file-close";
+import {
   buildMomDocument,
   buildMomDocumentHtml,
   buildMomHtml,
@@ -193,6 +197,7 @@ export function EventDetailPage() {
   const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
   const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
+  const [fileActionError, setFileActionError] = useState<string | null>(null);
   // Only auto-scroll to a deep-linked field once; checklist refetches must not yank the viewport back.
   const scrolledToFieldRef = useRef<string | null>(null);
 
@@ -372,6 +377,10 @@ export function EventDetailPage() {
   const visibleTab: VisibleEventDetailTab =
     tab === "venues" || tab === "documents" || tab === "tasks" || tab === "accounts" ? tab : "tasks";
   const accountsPendingCount = countPendingChecklistItems(postEventSections) + countPendingChecklistItems(accountsSections);
+  const fileCloseBlockers = blockersForFileClose([
+    ...Object.values(postEventSections).flat(),
+    ...Object.values(accountsSections).flat(),
+  ]);
   const allEventTasks = (taskData?.tasks ?? []) as Array<Record<string, unknown> & {
     status?: string;
     task_type?: string;
@@ -541,8 +550,19 @@ export function EventDetailPage() {
 
   function closeFile() {
     if (!fileClosedItem || !canUpdateChecklist) return;
+    if (fileCloseBlockers.length) {
+      setFileActionError(formatFileCloseBlockedMessage(fileCloseBlockers));
+      return;
+    }
+    setFileActionError(null);
     const today = new Date().toISOString().slice(0, 10);
     checklistUpdate.mutate({ item: fileClosedItem, value: today, status: "completed" });
+  }
+
+  function reopenFile() {
+    if (!fileClosedItem || !canUpdateChecklist) return;
+    setFileActionError(null);
+    checklistUpdate.mutate({ item: fileClosedItem, value: null, status: "not_started" });
   }
 
   return (
@@ -857,9 +877,11 @@ export function EventDetailPage() {
           finalShowDate={e.event_end_date ?? e.event_start_date}
           fileClosed={fileClosed}
           fileClosedItem={fileClosedItem}
+          fileActionError={fileActionError}
           checklistPending={checklistUpdate.isPending}
           onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
           onCloseFile={closeFile}
+          onReopenFile={reopenFile}
           onGoToTop={clearFocusedField}
         />
       )}
@@ -1563,9 +1585,11 @@ function AccountsView({
   finalShowDate,
   fileClosed,
   fileClosedItem,
+  fileActionError,
   checklistPending,
   onUpdate,
   onCloseFile,
+  onReopenFile,
   onGoToTop,
 }: {
   postEventSections: Record<string, ChecklistItem[]>;
@@ -1576,9 +1600,11 @@ function AccountsView({
   finalShowDate: string | null;
   fileClosed: boolean;
   fileClosedItem: ChecklistItem | undefined;
+  fileActionError: string | null;
   checklistPending: boolean;
   onUpdate: (item: ChecklistItem, value: string | null, status?: string) => void;
   onCloseFile: () => void;
+  onReopenFile: () => void;
   onGoToTop: () => void;
 }) {
   return (
@@ -1623,6 +1649,9 @@ function AccountsView({
           <p className="mt-1 text-xs text-ink-muted etched">
             Mark the venue hire file closed when accounts and post-event work are finished.
           </p>
+          {fileActionError && (
+            <p role="alert" className="mt-3 text-sm text-status-cancelled etched">{fileActionError}</p>
+          )}
           <button
             type="button"
             disabled={checklistPending}
@@ -1634,8 +1663,20 @@ function AccountsView({
         </div>
       )}
       {fileClosed && (
-        <div className="rounded-2xl bg-status-confirmed/10 px-4 py-3 text-sm text-sage-text etched">
-          File closed{fileClosedItem?.value ? ` on ${formatDate(fileClosedItem.value)}` : ""}.
+        <div className="carved-card rounded-2xl bg-status-confirmed/10 px-4 py-3 text-sm text-sage-text etched">
+          <p>
+            File closed{fileClosedItem?.value ? ` on ${formatDate(fileClosedItem.value)}` : ""}.
+          </p>
+          {canUpdateChecklist && fileClosedItem && (
+            <button
+              type="button"
+              disabled={checklistPending}
+              onClick={onReopenFile}
+              className="carved-btn mt-3 rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+            >
+              {checklistPending ? "Reopening..." : "Reopen file"}
+            </button>
+          )}
         </div>
       )}
     </section>
