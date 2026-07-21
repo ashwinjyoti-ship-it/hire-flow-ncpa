@@ -25,6 +25,14 @@ body {
   color: #726f68; /* text-tertiary */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* Keep the standalone app clear of iPhone notches and the home indicator. */
+@supports (padding: max(0px)) {
+  body {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
 }
 
 /* ---- Etched text shadows (mandatory — without these text reads flat) ---- */

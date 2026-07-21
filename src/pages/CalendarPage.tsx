@@ -403,12 +403,18 @@ export function CalendarPage() {
         lifecycleLoading ? (
           <div className="text-sm text-ink-muted">Loading…</div>
         ) : (
-          <LifecycleMonthGrid byDate={lifecycleByDate} today={today} cursor={cursor} onOpenOverflow={setLifecycleOverflow} />
+          <>
+            <MobileLifecycleAgenda byDate={lifecycleByDate} cursor={cursor} />
+            <LifecycleMonthGrid byDate={lifecycleByDate} today={today} cursor={cursor} onOpenOverflow={setLifecycleOverflow} />
+          </>
         )
       ) : isLoading ? (
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (
-        <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} onOpenOverflow={setShowOverflow} />
+        <>
+          <MobileShowAgenda byDate={byDate} cursor={cursor} onPick={setSideEvent} />
+          <MonthGrid byDate={byDate} today={today} cursor={cursor} onPick={setSideEvent} onOpenOverflow={setShowOverflow} />
+        </>
       )}
 
       {sideEvent && <ShowCalendarDetailPanel entry={sideEvent} onClose={() => setSideEvent(null)} />}
@@ -434,7 +440,7 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
   const reqs = Object.keys(venueReqs).length > 0 ? { ...eventReqs, ...venueReqs } : eventReqs;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-detail-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-detail-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim bg-white/90 p-4 text-neutral-950 shadow-2xl backdrop-blur-xl sm:rounded-l-2xl sm:border-l sm:border-white/70 sm:bg-white/72 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View show details</div>
@@ -443,12 +449,12 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
               {entry.organisation_name ?? "No organisation"}{entry.event_code ? ` · ${entry.event_code}` : ""}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link to={getEventOperationsLink(entry.event_id)} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Link to={getEventOperationsLink(entry.event_id)} className="rounded-full border border-neutral-300/70 bg-white/65 px-2.5 py-2 text-[11px] font-semibold text-neutral-900 shadow-sm hover:bg-white sm:px-4 sm:text-xs">
               Edit Checklist
             </Link>
-            <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:bg-white">
-              Edit Event Data
+            <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-2.5 py-2 text-[11px] font-semibold text-neutral-900 shadow-sm hover:bg-white sm:px-4 sm:text-xs">
+              <span className="sm:hidden">Edit</span><span className="hidden sm:inline">Edit Event Data</span>
             </Link>
             <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
           </div>
@@ -612,7 +618,7 @@ function lifecycleDot(type: LifecycleType): string {
 function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate: Record<string, LifecycleEntry[]>; today: string; cursor: Date; onOpenOverflow: (overflow: LifecycleOverflowState) => void }) {
   const cells = calendarCellsForMonth(cursor);
   return (
-    <div>
+    <div className="hidden sm:block">
       <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
@@ -785,10 +791,111 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
   );
 }
 
+/**
+ * A seven-column month is useful once each day has enough physical space. On a
+ * phone it turns into a wall of tiny, truncated labels, so the same data is
+ * presented as a chronological agenda below the shared month controls.
+ */
+function MobileShowAgenda({ byDate, cursor, onPick }: { byDate: Record<string, CalEntry[]>; cursor: Date; onPick: (entry: CalEntry) => void }) {
+  const days = monthEntries(byDate, cursor).map(([date, entries]) => {
+    const byEvent = new Map<string, CalEntry>();
+    for (const entry of entries) {
+      const existing = byEvent.get(entry.event_id);
+      if (!existing || STATUS_RANK[entry.status] < STATUS_RANK[existing.status]) byEvent.set(entry.event_id, entry);
+    }
+    return [date, Array.from(byEvent.values())] as const;
+  });
+
+  return (
+    <MobileAgendaShell count={days.reduce((total, [, entries]) => total + entries.length, 0)}>
+      {days.map(([date, entries]) => (
+        <section key={date} className="relative pl-14">
+          <MobileAgendaDate date={date} />
+          <div className="space-y-2">
+            {entries.map((entry) => {
+              const surface = getEventStatusSurface(entry.status);
+              return (
+                <button key={entry.event_id} type="button" onClick={() => onPick(entry)} className="carved-card block w-full rounded-xl bg-marble-highlight/65 p-3 text-left active:bg-marble-shadow/50">
+                  <div className="flex items-center gap-2">
+                    <span className={"h-2 w-2 shrink-0 rounded-full " + surface.dot} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{STATUS_LABELS[entry.status] ?? entry.status}</span>
+                    <span className="ml-auto text-[11px] text-ink-muted">{entry.venue}</span>
+                  </div>
+                  <div className="mt-1.5 truncate text-sm font-semibold text-ink-primary etched-deep">{entry.organisation_name ?? entry.title}</div>
+                  {entry.organisation_name && entry.organisation_name !== entry.title && <div className="mt-0.5 truncate text-xs text-ink-secondary">{entry.title}</div>}
+                  <div className="mt-2 text-xs text-ink-muted">{formatRange(entry.start_time, entry.end_time)}</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </MobileAgendaShell>
+  );
+}
+
+function MobileLifecycleAgenda({ byDate, cursor }: { byDate: Record<string, LifecycleEntry[]>; cursor: Date }) {
+  const days = monthEntries(byDate, cursor);
+  return (
+    <MobileAgendaShell count={days.reduce((total, [, entries]) => total + entries.length, 0)}>
+      {days.map(([date, entries]) => (
+        <section key={date} className="relative pl-14">
+          <MobileAgendaDate date={date} />
+          <div className="space-y-2">
+            {entries.map((entry) => (
+              <Link key={entry.id} to={`/events/${entry.event_id}`} className="carved-card block rounded-xl bg-marble-highlight/65 p-3 active:bg-marble-shadow/50">
+                <div className="flex items-center gap-2">
+                  <span className={"h-2 w-2 shrink-0 rounded-full " + lifecycleDot(entry.milestone_type)} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{LIFECYCLE_LABELS[entry.milestone_type]}</span>
+                  {entry.poc_complete === false && <span className="ml-auto rounded-full bg-status-awaitingApproval/15 px-1.5 py-0.5 text-[9px] font-bold text-status-awaitingApproval">POC</span>}
+                </div>
+                <div className="mt-1.5 truncate text-sm font-semibold text-ink-primary etched-deep">{entry.organisation_name ?? entry.title}</div>
+                {entry.organisation_name && entry.organisation_name !== entry.title && <div className="mt-0.5 truncate text-xs text-ink-secondary">{entry.title}</div>}
+                <div className="mt-2 truncate text-xs text-ink-muted">{entry.venues ?? "No venue assigned"}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+    </MobileAgendaShell>
+  );
+}
+
+function monthEntries<T>(byDate: Record<string, T[]>, cursor: Date): Array<[string, T[]]> {
+  const month = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+  return Object.entries(byDate).filter(([date, entries]) => date.startsWith(month) && entries.length > 0).sort(([a], [b]) => a.localeCompare(b));
+}
+
+function MobileAgendaShell({ count, children }: { count: number; children: React.ReactNode }) {
+  return (
+    <div className="sm:hidden">
+      <div className="mb-3 flex items-center justify-between px-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-dayHeader etched">Month agenda</span>
+        <span className="text-[11px] text-ink-muted etched">{count} record{count === 1 ? "" : "s"}</span>
+      </div>
+      {count === 0 ? (
+        <div className="carved-card rounded-2xl bg-marble-highlight/55 px-5 py-10 text-center text-sm text-ink-muted etched">Nothing scheduled this month.</div>
+      ) : (
+        <div className="space-y-4">{children}</div>
+      )}
+    </div>
+  );
+}
+
+function MobileAgendaDate({ date }: { date: string }) {
+  const value = new Date(`${date}T00:00:00`);
+  return (
+    <div className="absolute left-0 top-0 flex w-11 flex-col items-center rounded-xl bg-marble-shadow/55 px-1 py-2 text-center">
+      <span className="text-lg font-semibold leading-none text-ink-primary etched-deep">{value.getDate()}</span>
+      <span className="mt-1 text-[9px] font-bold uppercase tracking-wider text-ink-muted">{value.toLocaleDateString("en-IN", { weekday: "short" })}</span>
+    </div>
+  );
+}
+
 function MonthGrid({ byDate, today, cursor, onPick, onOpenOverflow }: { byDate: Record<string, CalEntry[]>; today: string; cursor: Date; onPick: (e: CalEntry) => void; onOpenOverflow: (overflow: ShowOverflowState) => void }) {
   const cells = calendarCellsForMonth(cursor);
   return (
-    <div>
+    <div className="hidden sm:block">
       <div className="mb-2 grid grid-cols-7 gap-1.5 sm:mb-3 sm:gap-2 lg:gap-3">
         {WEEKDAYS.map((d) => (
           <div key={d} className="text-center text-[11px] font-bold uppercase tracking-wider text-ink-dayHeader etched">{d}</div>
