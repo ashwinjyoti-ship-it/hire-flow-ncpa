@@ -1330,8 +1330,7 @@ describe("accounts TDS certificate processing", () => {
     expect(byKey.tds_received_from_client_date?.triggers_task?.rule).toBe("tds_send_to_accounts");
     expect(byKey.tds_certificate_sent_to_accounts?.visibility_rule).toBe("onlyWhen(tds_certificate_from_client == Received)");
     expect(byKey.tds_accounts_refund_or_action?.options).toEqual(["Awaiting", "Refunded", "Payment Processed", "N/A"]);
-    expect(byKey.tds_payment_and_advice_sent?.section).toBe("TDS Certificate Processing");
-    expect(byKey.tds_payment_and_advice_sent?.visibility_rule).toBe("onlyWhen(tds_certificate_from_client == Received)");
+    expect(byKey.tds_payment_and_advice_sent).toBeUndefined();
     expect(byKey.tds_proof_sent_to_client?.options).toEqual(["Not Sent", "Sent"]);
     expect(byKey.payment_advice_sent_to_client?.label).toBe("Payment Advice — Sent to Client?");
     expect(byKey.payment_advice_sent_to_client?.options).toEqual(["Not Sent", "Sent"]);
@@ -1385,7 +1384,6 @@ describe("accounts TDS certificate processing", () => {
                   { id: "cli_date", value: null, field_type: "date", is_computed: 0 },
                   { id: "cli_sent", value: "2026-07-01", field_type: "date", is_computed: 0 },
                   { id: "cli_refund", value: "Awaiting", field_type: "dropdown", is_computed: 0 },
-                  { id: "cli_tds_pay", value: "Awaiting", field_type: "dropdown", is_computed: 0 },
                   { id: "cli_proof", value: "Sent", field_type: "dropdown", is_computed: 0 },
                 ],
               };
@@ -1403,12 +1401,11 @@ describe("accounts TDS certificate processing", () => {
 
     await syncTdsDependentChecklist(db, "ev_1", "Received");
 
-    expect(updates).toHaveLength(5);
+    expect(updates).toHaveLength(4);
     const byId = Object.fromEntries(updates.map((u) => [u.binds[u.binds.length - 1], u.binds[0]]));
     expect(byId.cli_date).toBe("not_started");
     expect(byId.cli_sent).toBe("completed");
     expect(byId.cli_refund).toBe("not_started");
-    expect(byId.cli_tds_pay).toBe("not_started");
     expect(byId.cli_proof).toBe("completed");
   });
 
