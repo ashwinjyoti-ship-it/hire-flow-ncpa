@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
@@ -59,7 +60,7 @@ type TasksResponse = {
 const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_letter"]);
 const DASHBOARD_VISIBLE_EVENTS = 5;
 const DASHBOARD_LIST_MAX_HEIGHT = `${DASHBOARD_VISIBLE_EVENTS * 6.75 + (DASHBOARD_VISIBLE_EVENTS - 1) * 0.5}rem`;
-const DASHBOARD_LIST_STYLE = { maxHeight: DASHBOARD_LIST_MAX_HEIGHT } as const;
+const DASHBOARD_LIST_STYLE = { "--dashboard-list-height": DASHBOARD_LIST_MAX_HEIGHT } as CSSProperties;
 
 export function DashboardPage() {
   const today = new Date();
@@ -143,7 +144,7 @@ export function DashboardPage() {
             <p className="text-sm text-ink-muted etched">No enquiry, tentative, or approved events need a pipeline decision.</p>
           ) : (
             <ul
-              className="space-y-2 overflow-y-auto scroll-slim pr-1"
+              className="dashboard-list space-y-2 overflow-y-auto scroll-slim"
               style={DASHBOARD_LIST_STYLE}
               aria-label={`${pipelineDecisionGroups.length} pipeline decision events`}
             >
@@ -201,7 +202,7 @@ export function DashboardPage() {
             <p className="text-sm text-ink-muted etched">No open actions.</p>
           ) : (
             <ul
-              className="space-y-2 overflow-y-auto scroll-slim pr-1"
+              className="dashboard-list space-y-2 overflow-y-auto scroll-slim"
               style={DASHBOARD_LIST_STYLE}
               aria-label={`${actionGroups.length} next-action events`}
             >

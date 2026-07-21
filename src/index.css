@@ -16,6 +16,7 @@ html,
 body,
 #root {
   height: 100%;
+  max-width: 100%;
 }
 
 body {
@@ -25,7 +26,8 @@ body {
   color: #726f68; /* text-tertiary */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+  overflow-x: clip;
 }
 
 /* Keep the standalone app clear of iPhone notches and the home indicator. */
@@ -158,6 +160,21 @@ body {
 }
 .evt-dot {
   box-shadow: 0 1px 1px rgba(90, 88, 82, 0.18);
+}
+
+/* A single document scroll surface on phones/tablets prevents iOS scroll
+   chaining from the dashboard action lists into the visual viewport. */
+.dashboard-list {
+  overflow-y: visible;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-list {
+    max-height: var(--dashboard-list-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.25rem;
+  }
 }
 
 /* Decorative botanical continuation below the persistent navigation. */
