@@ -1378,6 +1378,22 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-80" : "");
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const commitDate = (next: string | null) => {
+    if (next === (item.value ?? null)) return;
+    const warning = getPostShowDateWarning(item.field_key, next, finalShowDate);
+    if (warning) {
+      setValidationError(warning);
+      return;
+    }
+    if (item.value && next) {
+      const correctionReason = window.prompt("Reason for changing this date?");
+      if (!correctionReason?.trim()) return;
+      onUpdate(item, next, undefined, correctionReason);
+      return;
+    }
+    onUpdate(item, next);
+  };
+
   return (
     <label
       id={`checklist-${item.field_key}`}
@@ -1431,33 +1447,30 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
           onChange={(ev) => onUpdate(item, ev.target.checked ? "true" : null, ev.target.checked ? "completed" : "not_started")}
           className="mt-3 h-4 w-4 accent-terracotta"
         />
-      ) : (
+      ) : item.field_type === "date" ? (
         <input
           disabled={disabled}
-          type={item.field_type === "date" ? "date" : item.field_type === "number" ? "number" : "text"}
-          lang={item.field_type === "date" ? "en-GB" : undefined}
+          type="date"
+          lang="en-GB"
           value={item.value ?? ""}
           aria-busy={saving || undefined}
           aria-invalid={Boolean(validationError)}
           aria-describedby={validationError ? `checklist-error-${item.id}` : undefined}
-          onChange={() => validationError && setValidationError(null)}
+          onChange={(ev) => {
+            if (validationError) setValidationError(null);
+            commitDate(ev.target.value || null);
+          }}
+          className={baseClass}
+        />
+      ) : (
+        <input
+          disabled={disabled}
+          type={item.field_type === "number" ? "number" : "text"}
+          value={item.value ?? ""}
+          aria-busy={saving || undefined}
           onBlur={(ev) => {
             const next = ev.currentTarget.value || null;
-            if (next === (item.value ?? null)) return;
-            const warning = item.field_type === "date" ? getPostShowDateWarning(item.field_key, next, finalShowDate) : null;
-            if (warning) {
-              setValidationError(warning);
-              return;
-            }
-            if (item.field_type === "date" && item.value && next) {
-              const correctionReason = window.prompt("Reason for changing this date?");
-              if (!correctionReason?.trim()) {
-                return;
-              }
-              onUpdate(item, next, undefined, correctionReason);
-              return;
-            }
-            onUpdate(item, next);
+            if (next !== (item.value ?? null)) onUpdate(item, next);
           }}
           className={baseClass}
         />

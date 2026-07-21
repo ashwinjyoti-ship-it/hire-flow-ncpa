@@ -213,6 +213,15 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain('item.status === "completed" ? "Reopen"');
   });
 
+  it("saves checklist date fields on change so the controlled picker keeps the selection", () => {
+    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(source).toContain('item.field_type === "date" ? (');
+    expect(source).toContain("commitDate(ev.target.value || null)");
+    expect(source).toContain('type="date"\n          lang="en-GB"');
+    expect(source).not.toContain('type={item.field_type === "date" ? "date"');
+  });
+
   it("shows event type on the detail page with normalized fallback formatting", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
