@@ -219,17 +219,14 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "payment_ledger": return "Requested";
     case "tax_invoice_sent": return "Not Sent";
     case "box_office_statement_sent": return "Not Sent";
-    case "payment_advice_received_from_client": return "No";
+    case "payment_advice_sent_to_client": return "Not Sent";
     case "tds_certificate_from_client": return "N.A.";
     case "tds_received_from_client_date": return null;
     case "tds_certificate_sent_to_accounts": return null;
     case "tds_accounts_refund_or_action": return "Awaiting";
-    case "tds_proof_sent_to_client": return "Not Sent";
     case "tds_payment_and_advice_sent": return "Awaiting";
+    case "tds_proof_sent_to_client": return "Not Sent";
     case "payment_ledger_sent": return "Requested";
-    case "accounts_file_status": return "Open";
-    case "outstanding_to_client": return "Pending";
-    case "notifications_triggered": return "2";
     default: return def.default_value;
   }
 }
