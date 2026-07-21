@@ -11,6 +11,7 @@ import {
 } from "../components/LifecycleWorkflowStack";
 import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
+import { EVENT_CLOSE_OUT_COPY } from "../lib/event-close-out-copy";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
 import { scrollAppMainToElement, scrollAppMainToTop } from "../lib/scroll-app-main";
 import { formatDate, formatDateTime, formatDuration, formatTimeRange } from "../lib/use-lookups";
@@ -591,16 +592,19 @@ export function EventDetailPage() {
               </Link>
             )}
             {can(user?.permissions, "event.archive") && (
-              <button
-                type="button"
-                onClick={() => {
-                  setKeepOrgDetails(true);
-                  setDeleteModal(true);
-                }}
-                className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-medium text-status-cancelled etched"
-              >
-                Delete Record
-              </button>
+              <div className="flex max-w-[12rem] flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKeepOrgDetails(true);
+                    setDeleteModal(true);
+                  }}
+                  className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-medium text-status-cancelled etched"
+                >
+                  Delete Record
+                </button>
+                <p className="text-right text-[10px] leading-snug text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.delete}</p>
+              </div>
             )}
           </>
         }
@@ -723,6 +727,20 @@ export function EventDetailPage() {
           </div>
         )}
       />
+
+      {e.status === "confirmed" && canChangeStatus && (
+        <ConfirmedCloseOutSection
+          cancelAction={actions.find((action) => action.status === "cancelled") ?? null}
+          canOverride={can(user?.permissions, "conflict.override")}
+          onChoose={(status) => {
+            setStatusModal(status);
+            setReason("");
+            setCloseOutCode("");
+            setCloseOutOtherText("");
+            setCloseOutNote("");
+          }}
+        />
+      )}
 
       {momOpen && (
         <MomPanel
@@ -1172,6 +1190,43 @@ function MomPanel({
   );
 }
 
+function ConfirmedCloseOutSection({
+  cancelAction,
+  canOverride,
+  onChoose,
+}: {
+  cancelAction: LifecycleAction | null;
+  canOverride: boolean;
+  onChoose: (status: EventStatus) => void;
+}) {
+  if (!cancelAction) return null;
+
+  return (
+    <section id="event-close-out" className="carved-card mb-5 scroll-mt-2 rounded-2xl bg-marble-highlight/50 p-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Close out</h2>
+      <div className="mt-3 max-w-md">
+        <button
+          type="button"
+          disabled={!cancelAction.allowed || !canOverride}
+          title={
+            !canOverride
+              ? "Cancelling a confirmed booking requires Admin or Venue Manager permission"
+              : cancelAction.blockers.join(" ")
+          }
+          onClick={() => onChoose(cancelAction.status)}
+          className="rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 carved-btn bg-status-cancelled/10 text-status-cancelled"
+        >
+          {lifecycleActionLabel(cancelAction.status)}
+        </button>
+        <p className="mt-1.5 text-xs text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.cancel}</p>
+        {!canOverride && (
+          <p className="mt-1 text-xs text-status-awaitingApproval etched">You need Admin or Venue Manager permission to cancel a confirmed booking.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function LifecyclePanel({
   event,
   actions,
@@ -1208,7 +1263,7 @@ function LifecyclePanel({
     const preferred: EventStatus[] = ["approved", "confirmed", "tentative", "regret", "cancelled"];
     return [...actions].sort((a, b) => preferred.indexOf(a.status) - preferred.indexOf(b.status));
   }, [actions]);
-  const closeOutActions = visibleActions.filter((action) => action.status === "regret" || action.status === "cancelled");
+  const regretAction = visibleActions.find((action) => action.status === "regret") ?? null;
   // Surface the milestone the user is actively progressing: once the
   // confirmation-letter thread is underway (Made/Couriered), highlight
   // `confirmed`'s next sub-step rather than defaulting back to approval.
@@ -1317,9 +1372,9 @@ function LifecyclePanel({
               {nextAction ? "Advance to" : "Continue to"} {milestoneLabel(displayedForwardAction.status)}
             </button>
           )}
-          {canChangeStatus && !canShowStatusActions && (nextAction || closeOutActions.length > 0) && (
+          {canChangeStatus && !canShowStatusActions && event.status !== "confirmed" && (nextAction || regretAction) && (
             <span className="rounded-full bg-marble-shadow/50 px-3 py-1.5 text-xs font-medium text-ink-muted etched">
-              Status changes are available while Confirm is the active workflow
+              Milestone changes are available while Confirm is the active workflow
             </span>
           )}
         </div>
@@ -1349,27 +1404,20 @@ function LifecyclePanel({
           </div>
         )}
 
-        {canChangeStatus && canShowStatusActions && closeOutActions.length > 0 && (
+        {canChangeStatus && canShowStatusActions && regretAction && (
           <div className="mt-4 border-t border-ink-muted/10 pt-3">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Close out</h3>
-            <div className="flex flex-wrap gap-2">
-              {closeOutActions.map((action) => (
-                <button
-                  key={action.status}
-                  type="button"
-                  disabled={!action.allowed}
-                  title={action.blockers.join(" ")}
-                  onClick={() => onChoose(action.status)}
-                  className={
-                    "rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 " +
-                    (action.status === "cancelled"
-                      ? "carved-btn bg-status-cancelled/10 text-status-cancelled"
-                      : "carved-btn bg-status-regret/10 text-status-regret")
-                  }
-                >
-                  {lifecycleActionLabel(action.status)}
-                </button>
-              ))}
+            <div className="max-w-md">
+              <button
+                type="button"
+                disabled={!regretAction.allowed}
+                title={regretAction.blockers.join(" ")}
+                onClick={() => onChoose(regretAction.status)}
+                className="rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 carved-btn bg-status-regret/10 text-status-regret"
+              >
+                {lifecycleActionLabel(regretAction.status)}
+              </button>
+              <p className="mt-1.5 text-xs text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.regret}</p>
             </div>
           </div>
         )}
