@@ -812,7 +812,7 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
     const message = (err as Error).message;
     const status = message.includes("not found")
       ? 404
-      : message.includes("reason") || message.includes("cannot be marked") || message.includes("cannot be set")
+      : message.includes("reason") || message.includes("cannot be marked") || message.includes("cannot be set") || message.includes("Cannot close file")
         ? 422
         : 400;
     return c.json({ error: message }, status);

@@ -35,6 +35,12 @@ import {
   PAYMENT_REQUIRES_PROFORMA_MESSAGE,
   PROFORMA_SENT_REQUIRES_COSTING_MESSAGE,
 } from "./financial-sequence";
+import {
+  blockersForFileClose,
+  FILE_CLOSE_CANCEL_NOTE,
+  formatFileCloseBlockedMessage,
+  type FileCloseGateItem,
+} from "./file-close";
 import { makeId } from "./id";
 import {
   accountsStartDate,
@@ -42,6 +48,7 @@ import {
   finalShowDate,
   getActiveWorkflowPhase,
   isFileClosedValue,
+  POST_EVENT_CHECKLIST_SECTION,
   type LifecycleWorkflowPhase,
   WORKFLOW_PHASE_LABELS,
   workflowPhaseForTaskRule,
@@ -628,6 +635,13 @@ export async function updateChecklistItem(args: {
     if (warning) throw new Error(warning);
   }
 
+  const closingFile = current.field_key === "file_closed" && isFileClosedValue(value);
+  const reopeningFile = current.field_key === "file_closed" && isFileClosedValue(current.value) && !isFileClosedValue(value);
+  if (closingFile) {
+    const blockers = await getFileCloseBlockers(db, current.event_id);
+    if (blockers.length) throw new Error(formatFileCloseBlockedMessage(blockers));
+  }
+
   await db.prepare(
     `UPDATE checklist_items
      SET value = ?, status = ?, due_date = ?, completed_at = ?, completed_by = ?,
@@ -673,13 +687,19 @@ export async function updateChecklistItem(args: {
   if (current.field_key === "file_closed" || current.field_key === "feedback_sent" || current.module === "accounts") {
     await reconcileWorkflowPhaseTasksForEvent(db, current.event_id);
   }
-  if (current.field_key === "file_closed" && isFileClosedValue(value)) {
+  if (closingFile) {
     const closedNow = new Date().toISOString();
     await db.prepare(
       `UPDATE tasks
        SET status = 'cancelled', completion_note = ?, updated_at = ?
        WHERE event_id = ? AND task_type = 'automatic' AND status IN ('open','in_progress')`
-    ).bind("Cancelled automatically because the file was closed.", closedNow, current.event_id).run();
+    ).bind(FILE_CLOSE_CANCEL_NOTE, closedNow, current.event_id).run();
+    await eventActivity(db, current.event_id, "closed", user.id, { closed_on: value });
+  }
+  if (reopeningFile) {
+    await reopenTasksCancelledByFileClose(db, current.event_id);
+    await rescheduleAutomaticTasksForEvent(db, current.event_id, user.id);
+    await eventActivity(db, current.event_id, "closed", user.id, { reopened: true });
   }
   await recalculateEventCompletion(db, current.event_id);
   await eventActivity(db, current.event_id, "checklist_updated", user.id, {
@@ -2342,6 +2362,45 @@ export function buildLifecycleReadiness(event: EventLifecycleRow): LifecycleRead
     nextAction,
     actions,
   };
+}
+
+export async function getFileCloseBlockers(db: D1Database, eventId: string): Promise<string[]> {
+  const { results } = await db.prepare(
+    `SELECT ci.module, ci.section, ci.field_key, ci.label, ci.status, ci.value, cd.is_computed, cd.visibility_rule
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ?
+       AND (ci.module = 'accounts' OR ci.section = ?)`
+  ).bind(eventId, POST_EVENT_CHECKLIST_SECTION).all<FileCloseGateItem>();
+  return blockersForFileClose(results ?? []);
+}
+
+async function reopenTasksCancelledByFileClose(db: D1Database, eventId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db.prepare(
+    `UPDATE tasks
+     SET status = 'open', completion_note = NULL, updated_at = ?
+     WHERE event_id = ? AND task_type = 'automatic' AND status = 'cancelled'
+       AND completion_note = ?`
+  ).bind(now, eventId, FILE_CLOSE_CANCEL_NOTE).run();
+}
+
+export async function rescheduleAutomaticTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string,
+): Promise<void> {
+  const { results } = await db.prepare(
+    `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
+     FROM checklist_items ci
+     JOIN checklist_definitions cd ON cd.id = ci.definition_id
+     WHERE ci.event_id = ? AND ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`
+  ).bind(eventId).all<ChecklistItemRow>();
+  for (const item of results ?? []) {
+    await maybeCreateTaskForChecklistItem(db, item, userId);
+  }
+  await reconcileFileToAccountsReminderForEvent(db, eventId);
+  await reconcileWorkflowPhaseTasksForEvent(db, eventId);
 }
 
 export function blockersForTransition(event: EventLifecycleRow, to: EventStatus): string[] {
