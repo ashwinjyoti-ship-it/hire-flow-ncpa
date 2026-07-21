@@ -58,6 +58,7 @@ import {
   shouldUseTwoColumnSchedule,
   venuesAndScheduleTabLabel,
 } from "../lib/venue-schedule-view";
+import { countScheduledShowsByDate, deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { VENUES_SCHEDULE_ANCHOR_ID, VENUES_SCHEDULE_READINESS_KEY } from "../../worker/lib/venue-schedule-readiness";
 
 type DetailResponse = {
@@ -1886,6 +1887,8 @@ function VenueBookingPanel({
   const entries = (booking.schedule_entries as ScheduleEntryView[]) ?? [];
   const venueName = (booking.venue as string) || "Untitled venue";
   const scheduleSummary = formatScheduleSummary(entries);
+  const showCount = deriveVenueShowCount(entries, booking.number_of_shows);
+  const showDateCount = countScheduledShowsByDate(entries).size;
 
   return (
     <section className="carved-card overflow-hidden rounded-2xl bg-marble-highlight/50">
@@ -1900,7 +1903,9 @@ function VenueBookingPanel({
             {String(booking.booking_status ?? "—")}
           </span>
           <span className="rounded-full bg-marble-shadow/40 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-ink-secondary etched">
-            {Number(booking.number_of_shows ?? 1)} {Number(booking.number_of_shows ?? 1) === 1 ? "show" : "shows"}
+            {showCount === 0
+              ? "No shows scheduled"
+              : `${showCount} ${showCount === 1 ? "show" : "shows"}${showDateCount > 1 ? ` across ${showDateCount} days` : ""}`}
           </span>
           {collapsible && (
             <button

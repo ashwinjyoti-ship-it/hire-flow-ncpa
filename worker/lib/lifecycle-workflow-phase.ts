@@ -131,6 +131,7 @@ export function workflowPhaseForTaskRule(sourceRule: string | null | undefined):
   if (sourceRule === "approval_followup") return "confirm";
   if (sourceRule === "confirmation_letter") return "confirm";
   if (sourceRule === "instalment") return "confirm";
+  if (sourceRule === "venue_booking_payment_followup") return "confirm";
   if (sourceRule.startsWith("event_form_readiness:")) return "event";
   if (sourceRule === "onstage") return "event";
   if (sourceRule === "technical_meeting") return "event";
@@ -144,14 +145,14 @@ export function workflowPhaseForTaskRule(sourceRule: string | null | undefined):
 
 /**
  * Whether an automatic task rule may be created for the event's active phase.
- * Instalment follow-ups stay allowed through the show (confirm / event / duringEvent).
+ * Payment follow-ups stay allowed through the show (confirm / event / duringEvent).
  */
 export function canGenerateTaskForPhase(
   sourceRule: string | null | undefined,
   activePhase: LifecycleWorkflowPhase,
 ): boolean {
   if (activePhase === "terminal" || activePhase === "complete") return false;
-  if (sourceRule === "instalment") {
+  if (sourceRule === "instalment" || sourceRule === "venue_booking_payment_followup") {
     return activePhase === "confirm" || activePhase === "event" || activePhase === "duringEvent";
   }
   const rulePhase = workflowPhaseForTaskRule(sourceRule);

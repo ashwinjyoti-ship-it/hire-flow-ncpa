@@ -594,6 +594,7 @@ describe("API regressions", () => {
         expect(sql).toContain("se.without_ac_end");
         expect(sql).toContain("se.notes AS schedule_notes");
         expect(sql).toContain("vb.number_of_shows");
+        expect(sql).toContain("AS shows_on_date");
         expect(sql).toContain("e.requirements AS event_requirements");
         expect(sql).toContain("vb.requirements");
         expect(sql).toContain("vb.notes AS venue_notes");

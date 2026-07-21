@@ -111,6 +111,7 @@ describe("lifecycle workflow phase", () => {
     expect(canGenerateTaskForPhase("feedback", "accounts")).toBe(true);
     expect(canGenerateTaskForPhase("event_form_readiness:venues", "confirm")).toBe(false);
     expect(canGenerateTaskForPhase("instalment", "duringEvent")).toBe(true);
+    expect(canGenerateTaskForPhase("venue_booking_payment_followup", "duringEvent")).toBe(true);
     expect(canGenerateTaskForPhase("poc_incomplete", "complete")).toBe(false);
   });
 

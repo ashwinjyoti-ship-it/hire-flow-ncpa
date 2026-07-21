@@ -41,6 +41,7 @@ type CalEntry = {
   venue: string;
   booking_status: string | null;
   number_of_shows: number | null;
+  shows_on_date: number | null;
   requirements: string | null;
   venue_notes: string | null;
 };
@@ -520,7 +521,7 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           <SummaryPill label="Activity" value={entry.activity_type.replace(/_/g, " ")} />
           <SummaryPill label="Date" value={formatDate(entry.activity_date)} />
           <SummaryPill label="Time" value={formatRange(entry.start_time, entry.end_time)} />
-          <SummaryPill label="Shows" value={String(entry.number_of_shows ?? 1)} />
+          <SummaryPill label="Shows this date" value={String(entry.shows_on_date ?? entry.number_of_shows ?? 0)} />
           <SummaryPill label="Booking" value={entry.booking_status ?? "-"} />
           <SummaryPill label="Owner" value={entry.event_owner ?? "-"} />
           <SummaryPill label="Owner contact" value={entry.event_owner_email ?? "-"} preserveCase />

@@ -21,6 +21,7 @@ import { canConfirm, canTransition, requiresOverride, STATUS_LABELS } from "../l
 import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
+import { deriveVenueShowCount } from "../lib/show-schedule";
 import { can } from "../lib/rbac";
 import {
   blockersForTransition,
@@ -38,6 +39,7 @@ import {
   syncEventReferenceChecklist,
   syncPocChecklist,
   reconcilePocTaskForEvent,
+  reconcileTentativeVenuePaymentTasksForEvent,
   reconcileReadinessTasksForEvent,
   mergePocRequirementsForRead,
   updateChecklistItem,
@@ -71,6 +73,7 @@ async function venueBookingSyncStatements(db: D1Database, eventId: string, booki
   for (const [bookingIndex, booking] of bookings.entries()) {
     if (booking.id && !existingBookingIds.has(booking.id)) throw new Error("Venue booking does not belong to this event");
     const bookingId = booking.id ?? makeId("vb");
+    const numberOfShows = deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows);
     keptBookingIds.add(bookingId);
 
     if (booking.id) {
@@ -79,7 +82,7 @@ async function venueBookingSyncStatements(db: D1Database, eventId: string, booki
          SET venue = ?, booking_status = ?, number_of_shows = ?, requirements = ?, notes = ?, sort_order = ?, updated_at = ?
          WHERE id = ? AND event_id = ?`
       ).bind(
-        booking.venue, booking.booking_status, booking.number_of_shows,
+        booking.venue, booking.booking_status, numberOfShows,
         booking.requirements ? JSON.stringify(booking.requirements) : null,
         booking.notes ?? null, bookingIndex + 1, now, bookingId, eventId
       ));
@@ -89,7 +92,7 @@ async function venueBookingSyncStatements(db: D1Database, eventId: string, booki
            requirements, notes, sort_order, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
-        bookingId, eventId, booking.venue, booking.booking_status, booking.number_of_shows,
+        bookingId, eventId, booking.venue, booking.booking_status, numberOfShows,
         booking.requirements ? JSON.stringify(booking.requirements) : null,
         booking.notes ?? null, bookingIndex + 1, now, now
       ));
@@ -481,6 +484,7 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
+  await reconcileTentativeVenuePaymentTasksForEvent(db, id);
   await reconcileReadinessTasksForEvent(db, id);
   return c.json({ id }, 201);
 });
@@ -579,6 +583,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   await syncAdditionalRequirementsChecklist(db, id);
   await syncPocChecklist(db, id);
   await reconcilePocTaskForEvent(db, id);
+  await reconcileTentativeVenuePaymentTasksForEvent(db, id);
   await reconcileReadinessTasksForEvent(db, id);
   return c.json({ ok: true });
 });
@@ -679,6 +684,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   ).bind(makeId("sh"), id, from, to, user.id, now, lifecycleReason, lifecycleNote).run();
 
   await reconcileTasksForLifecycleTransition(db, id, from, to, user.id);
+  await reconcileTentativeVenuePaymentTasksForEvent(db, id);
   await reconcileReadinessTasksForEvent(db, id);
   await reconcileFileToAccountsReminderForEvent(db, id);
   await reconcileWorkflowPhaseTasksForEvent(db, id);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -1638,5 +1638,65 @@ describe("reconcilePocTaskForEvent", () => {
     expect(insert!.binds).toContain("Complete Point of Contact");
     expect(insert!.binds).toContain("poc_incomplete");
     expect(insert!.sql).toContain("'high'");
+  });
+});
+
+describe("reconcileTentativeVenuePaymentTasksForEvent", () => {
+  function buildDb(bookingStatus: "tentative" | "confirmed") {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT id, status, event_owner_id, is_archived")) {
+              return { id: "ev_1", status: "tentative", event_owner_id: "user_owner", is_archived: 0 };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM venue_bookings")) {
+              return { results: [{ id: "vb_1", venue: "JBT", booking_status: bookingStatus }] };
+            }
+            if (sql.includes("FROM tasks")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    return { db, writes };
+  }
+
+  it("creates one owner-assigned payment follow-up for a tentative venue", async () => {
+    const { db, writes } = buildDb("tentative");
+
+    await reconcileTentativeVenuePaymentTasksForEvent(db, "ev_1", "2026-07-21");
+
+    const insert = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
+    expect(insert).toBeDefined();
+    expect(insert?.binds).toContain("Follow up with client for payment — JBT");
+    expect(insert?.binds).toContain("vb_1");
+    expect(insert?.binds).toContain("user_owner");
+    expect(insert?.binds).toContain("2026-07-21");
+    expect(insert?.binds).toContain(TENTATIVE_VENUE_PAYMENT_TASK_RULE);
+    expect(insert?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
+  });
+
+  it("completes the follow-up when the venue is confirmed", async () => {
+    const { db, writes } = buildDb("confirmed");
+
+    await reconcileTentativeVenuePaymentTasksForEvent(db, "ev_1", "2026-07-21");
+
+    const update = writes.find((write) => write.sql.includes("UPDATE tasks"));
+    expect(update).toBeDefined();
+    expect(update?.binds).toContain("completed");
+    expect(update?.binds).toContain("venue-booking:vb_1:payment-follow-up");
+    expect(update?.binds).toContain("Completed automatically because the venue booking was confirmed.");
   });
 });

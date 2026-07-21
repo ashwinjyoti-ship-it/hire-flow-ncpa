@@ -24,6 +24,7 @@ import {
 import { buildReviewItems } from "../lib/event-review";
 import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
 import { formatHoursTotal, sumTimingMinutesFromVenueBookings } from "../../worker/lib/timing-sync";
+import { countScheduledShowsByDate } from "../../worker/lib/show-schedule";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleEntryInputT } from "../../worker/lib/types";
 import { ACTIVITY_TYPES, formatActivityType } from "../../worker/lib/types";
@@ -124,6 +125,17 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
   if (mins === 0) return 0;
   return mins;
 }
+
+function groupScheduleEntriesByDate(entries: ScheduleEntryInputT[]) {
+  const groups = new Map<string, Array<{ entry: ScheduleEntryInputT; index: number }>>();
+  entries.forEach((entry, index) => {
+    const key = entry.activity_date || "";
+    const group = groups.get(key) ?? [];
+    group.push({ entry, index });
+    groups.set(key, group);
+  });
+  return Array.from(groups, ([date, groupedEntries]) => ({ date, entries: groupedEntries }));
+}
 // (formatDuration is imported from lib/use-lookups for consistent hh/d rendering)
 
 export function EventEditPage() {
@@ -156,7 +168,7 @@ export function EventEditPage() {
     venue_bookings: [{
       venue: "",
       booking_status: "tentative",
-      number_of_shows: 1,
+      number_of_shows: 0,
       requirements: createDefaultVenueRequirements(),
       notes: null,
       schedule_entries: [],
@@ -207,7 +219,7 @@ export function EventEditPage() {
             notes: se.notes,
           })),
         }))
-      : [{ venue: "", booking_status: "tentative", number_of_shows: 1, requirements: createDefaultVenueRequirements(), notes: null, schedule_entries: [] }];
+      : [{ venue: "", booking_status: "tentative", number_of_shows: 0, requirements: createDefaultVenueRequirements(), notes: null, schedule_entries: [] }];
     // Legacy events stored requirements only on the event — seed each empty venue booking.
     const bookings = hydrateVenueRequirements(bookingsRaw, eventReqs).map((booking) => ({
       ...booking,
@@ -380,7 +392,7 @@ export function EventEditPage() {
       venue_bookings: [...f.venue_bookings, {
         venue: "",
         booking_status: "tentative",
-        number_of_shows: 1,
+        number_of_shows: 0,
         requirements: createDefaultVenueRequirements(),
         notes: null,
         schedule_entries: [],
@@ -391,7 +403,7 @@ export function EventEditPage() {
   const updateVenue = (idx: number, patch: Partial<VenueBookingInputT>) =>
     setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.map((vb, i) => (i === idx ? { ...vb, ...patch } : vb)) }));
 
-  const addScheduleEntry = (vIdx: number) =>
+  const addScheduleEntry = (vIdx: number, defaults: Partial<ScheduleEntryInputT> = {}) =>
     setForm((f) => ({
       ...f,
       venue_bookings: f.venue_bookings.map((vb, i) => {
@@ -410,6 +422,7 @@ export function EventEditPage() {
             without_ac_end: null,
             without_ac_minutes: null,
             notes: null,
+            ...defaults,
           }],
         };
       }),
@@ -668,15 +681,18 @@ export function EventEditPage() {
               </div>
             </div>
           )}
-          {form.venue_bookings.map((vb, vIdx) => (
-            <div key={vIdx} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
+          {form.venue_bookings.map((vb, vIdx) => {
+            const scheduleGroups = groupScheduleEntriesByDate(vb.schedule_entries);
+            const showsByDate = countScheduledShowsByDate(vb.schedule_entries);
+            return (
+            <div key={vb.id ?? `venue-${vIdx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-ink-primary etched-deep">Venue Booking {vIdx + 1}</h3>
                 {form.venue_bookings.length > 1 && (
                   <button type="button" onClick={() => removeVenue(vIdx)} className="text-xs text-status-cancelled hover:underline">Remove</button>
                 )}
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Venue">
                   <select value={vb.venue} onChange={(e) => updateVenue(vIdx, { venue: e.target.value })} className="carved input">
                     <option value="">Select…</option>
@@ -689,9 +705,6 @@ export function EventEditPage() {
                     <option value="confirmed">Confirmed</option>
                   </select>
                 </Field>
-                <Field label="Number of Shows">
-                  <input type="number" min={1} value={vb.number_of_shows} onChange={(e) => updateVenue(vIdx, { number_of_shows: Number(e.target.value) })} className="carved input" />
-                </Field>
               </div>
 
               {/* Schedule entries — each carries With-AC and Without-AC windows (auto-durations). */}
@@ -700,13 +713,38 @@ export function EventEditPage() {
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Schedule Details</span>
                   <button type="button" onClick={() => addScheduleEntry(vIdx)} className="text-xs text-sage-text hover:underline">+ Add details</button>
                 </div>
-                <div className="space-y-3">
-                  {vb.schedule_entries.map((se, sIdx) => {
+                <p className="mb-3 text-xs text-ink-muted etched">
+                  Add one Show detail for each performance so every show can have its own date and timings.
+                </p>
+                <div className="space-y-4">
+                  {scheduleGroups.map((group) => {
+                    const dailyShowCount = group.date ? (showsByDate.get(group.date) ?? 0) : 0;
+                    return (
+                    <section key={group.date || "undated"} className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-marble-shadow/30 pb-2">
+                        <span className="text-xs font-semibold text-ink-secondary etched">
+                          {group.date ? formatDate(group.date) : "Date not selected"}
+                        </span>
+                        {dailyShowCount > 0 && (
+                          <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-semibold text-sage-text etched">
+                            {dailyShowCount} {dailyShowCount === 1 ? "show" : "shows"} this date
+                          </span>
+                        )}
+                      </div>
+                      {group.entries.map(({ entry: se, index: sIdx }, groupIndex) => {
                     const withMin = se.with_ac_minutes ?? diffMinutes(se.with_ac_start, se.with_ac_end);
                     const withoutMin = se.without_ac_minutes ?? diffMinutes(se.without_ac_start, se.without_ac_end);
                     const total = (withMin ?? 0) + (withoutMin ?? 0);
+                    const showNumber = se.activity_type === "show"
+                      ? group.entries.slice(0, groupIndex + 1).filter(({ entry }) => entry.activity_type === "show").length
+                      : null;
                     return (
                       <div key={sIdx} className="rounded-xl bg-marble-shadow/30 p-3">
+                        {showNumber != null && (
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-terracotta-text etched">
+                            Show {showNumber} of {dailyShowCount || 1}
+                          </div>
+                        )}
                         <div className="mb-2 grid grid-cols-2 items-end gap-2 md:grid-cols-4">
                           <Field label="Activity">
                             <select value={se.activity_type} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_type: e.target.value as ScheduleEntryInputT["activity_type"] })} className="carved input">
@@ -741,18 +779,33 @@ export function EventEditPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-ink-muted etched">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-muted etched">
                           <span>Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{formatDuration(total)}</strong></span>
-                          <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
+                          <span className="flex items-center gap-3">
+                            {se.activity_type === "show" && (
+                              <button
+                                type="button"
+                                onClick={() => addScheduleEntry(vIdx, { activity_type: "show", activity_date: se.activity_date })}
+                                className="font-semibold text-sage-text hover:underline"
+                              >
+                                + Add another show
+                              </button>
+                            )}
+                            <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
+                          </span>
                         </div>
                       </div>
+                    );
+                      })}
+                    </section>
                     );
                   })}
                   {vb.schedule_entries.length === 0 && <p className="text-xs text-ink-muted etched">No details yet. Add setup, rehearsal, show, dismantling, or zero show with their AC timings.</p>}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
           <button type="button" onClick={addVenue} className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">+ Add venue</button>
         </div>
       )}
