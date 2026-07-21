@@ -224,7 +224,6 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "tds_received_from_client_date": return null;
     case "tds_certificate_sent_to_accounts": return null;
     case "tds_accounts_refund_or_action": return "Awaiting";
-    case "tds_payment_and_advice_sent": return "Awaiting";
     case "tds_proof_sent_to_client": return "Not Sent";
     case "payment_ledger_sent": return "Requested";
     default: return def.default_value;
