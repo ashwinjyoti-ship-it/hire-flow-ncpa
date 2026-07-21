@@ -73,6 +73,28 @@ describe("applyOptimisticChecklistUpdate", () => {
     expect(items.find((i) => i.field_key === "tds_certificate_from_client")?.status).toBe("completed");
     expect(items.find((i) => i.field_key === "tds_received_from_client_date")?.status).toBe("not_started");
   });
+
+  it("keeps payment_status on Completed optimistically for controlled selects", () => {
+    const data: ChecklistCacheResponse = {
+      ...sampleChecklist(),
+      checklist: {
+        ...sampleChecklist().checklist,
+        operations: {
+          Financials: [
+            { id: "pay", module: "operations", section: "Financials", field_key: "payment_status", label: "Payment Status", status: "not_started", value: "Incomplete", due_date: null, field_type: "dropdown", options: ["Incomplete", "Completed"], is_computed: 0 },
+          ],
+        },
+      },
+    };
+    const next = applyOptimisticChecklistUpdate(
+      data,
+      { id: "pay", field_key: "payment_status", field_type: "dropdown" },
+      "Completed",
+    );
+    const payment = next.checklist.operations.Financials!.find((i) => i.field_key === "payment_status");
+    expect(payment?.value).toBe("Completed");
+    expect(payment?.status).toBe("completed");
+  });
 });
 
 describe("visibility gate audit", () => {

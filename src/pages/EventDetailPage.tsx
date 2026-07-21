@@ -1331,10 +1331,11 @@ function ChecklistModuleView({
                   )}
                   <div className={isFullWidthChecklistField(item.field_key) ? "md:col-span-2" : undefined}>
                     <ChecklistField
-                      key={`${item.id}:${item.value ?? ""}:${item.status}`}
+                      key={item.id}
                       item={item}
                       focused={focusedFieldKey === item.field_key}
-                      canEdit={canEdit && savingItemId !== item.id}
+                      canEdit={canEdit}
+                      saving={savingItemId === item.id}
                       finalShowDate={finalShowDate}
                       onUpdate={onUpdate}
                     />
@@ -1349,9 +1350,9 @@ function ChecklistModuleView({
   );
 }
 
-function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
+function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdate }: { item: ChecklistItem; focused: boolean; canEdit: boolean; saving?: boolean; finalShowDate: string | null; onUpdate: (item: ChecklistItem, value: string | null, status?: string, correctionReason?: string | null) => void }) {
   const disabled = !canEdit || Boolean(item.is_computed);
-  const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60";
+  const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-70" : "");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   return (
@@ -1375,7 +1376,8 @@ function ChecklistField({ item, focused, canEdit, finalShowDate, onUpdate }: { i
       {item.field_type === "dropdown" || item.field_type === "status" ? (
         <select
           disabled={disabled}
-          defaultValue={item.value ?? ""}
+          value={item.value ?? ""}
+          aria-busy={saving || undefined}
           onChange={(ev) => onUpdate(item, ev.target.value || null)}
           className={baseClass}
         >
