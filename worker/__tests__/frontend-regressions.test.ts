@@ -73,7 +73,9 @@ describe("frontend regression guards", () => {
     expect(source).toContain("useSearchParams");
     expect(source).toContain("parseEventDetailTab");
     expect(source).toContain("canShowStatusActions={activeWorkflowPhase === \"confirm\"}");
-    expect(source).toContain("Status changes are available while Confirm is the active workflow");
+    expect(source).toContain("Milestone changes are available while Confirm is the active workflow");
+    expect(source).toContain("ConfirmedCloseOutSection");
+    expect(source).toContain("EVENT_CLOSE_OUT_COPY");
     expect(source).toContain("forwardMilestoneButtonClass");
     // Blocked forward milestones use awaiting-approval amber, not confirmed-green.
     expect(source).toContain("bg-status-awaitingApproval/15");
