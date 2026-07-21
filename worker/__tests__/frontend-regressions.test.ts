@@ -487,6 +487,14 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("entries.slice(CALENDAR_VISIBLE_EVENTS_PER_DAY)");
   });
 
+  it("shows scheduled show dates on lifecycle overflow cards", () => {
+    const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
+
+    expect(calendar).toContain("formatScheduledShowDate(entry.event_start_date, entry.event_end_date)");
+    expect(calendar).toContain("Show date not set");
+    expect(calendar).not.toContain("formatDate(entry.milestone_date)");
+  });
+
   it("caps show-calendar day cells and exposes every hidden event", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
