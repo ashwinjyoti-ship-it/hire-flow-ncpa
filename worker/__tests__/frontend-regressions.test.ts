@@ -285,11 +285,15 @@ describe("frontend regression guards", () => {
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
     expect(hook).toContain("applyOptimisticChecklistUpdate");
+    expect(hook).toContain("mergeChecklistItem");
     expect(hook).toContain("onMutate:");
     expect(hook).not.toContain("fetchFreshEventState");
     expect(detail).toContain("useChecklistUpdate");
     expect(detail).toContain("savingItemId={savingChecklistItemId}");
     expect(detail).not.toMatch(/checklistUpdate[\s\S]*fetchFreshEventState/);
+    // Dropdowns stay enabled while saving so optimistic value + controlled select stick.
+    expect(detail).toContain('value={item.value ?? ""}');
+    expect(detail).not.toContain("savingItemId !== item.id");
   });
 
   it("wires the topbar global search to organisations and events", () => {

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPatch } from "./api";
-import { applyOptimisticChecklistUpdate, type ChecklistCacheItem, type ChecklistCacheResponse } from "./checklist-cache";
+import { applyOptimisticChecklistUpdate, mergeChecklistItem, type ChecklistCacheItem, type ChecklistCacheResponse } from "./checklist-cache";
 
 export type ChecklistUpdateItem = ChecklistCacheItem;
 
@@ -17,7 +17,7 @@ export function useChecklistUpdate(eventId: string | undefined) {
       correctionReason?: string | null;
     }) => {
       if (!eventId) throw new Error("Event not found");
-      await apiPatch(`/events/${eventId}/checklist/${args.item.id}`, {
+      return apiPatch<{ item: ChecklistCacheItem }>(`/events/${eventId}/checklist/${args.item.id}`, {
         value: args.value,
         status: args.status,
         correction_reason: args.correctionReason,
@@ -36,9 +36,15 @@ export function useChecklistUpdate(eventId: string | undefined) {
       }
       return { previous };
     },
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       if (!eventId) return;
       const queryKey = ["event", eventId, "checklist"] as const;
+      if (response?.item) {
+        const current = qc.getQueryData<ChecklistUpdateResponse>(queryKey);
+        if (current) {
+          qc.setQueryData(queryKey, mergeChecklistItem(current, response.item));
+        }
+      }
       const freshChecklist = await apiGet<ChecklistUpdateResponse>(`/events/${eventId}/checklist`);
       qc.setQueryData(queryKey, freshChecklist);
       qc.invalidateQueries({ queryKey: ["event", eventId] });
