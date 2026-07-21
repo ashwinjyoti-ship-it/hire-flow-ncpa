@@ -385,7 +385,10 @@ describe("frontend regression guards", () => {
 
     expect(source).toContain("const onCalendar = location.pathname === \"/calendar\"");
     expect(source).toContain("const view = onCalendar ? calendarView : \"lifecycle\"");
-    expect(source).toContain('navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`)');
+    expect(source).toContain("function calendarUrlForSearch");
+    expect(source).toContain('params.set("from", event.event_start_date)');
+    expect(source).toContain("calendarViewForEvent(firstEvent, view)");
+    expect(source).toContain("to={calendarUrlForSearch(event.title, calendarViewForEvent(event, calendarView), event)}");
     expect(source).toContain('View on ${calendarLabel}');
     expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
   });

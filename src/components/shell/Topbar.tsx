@@ -34,6 +34,16 @@ type SearchEvent = {
   venues: string | null;
 };
 
+function calendarViewForEvent(event: SearchEvent | undefined, fallback: "show" | "lifecycle"): "show" | "lifecycle" {
+  return event?.status === "confirmed" ? "show" : fallback;
+}
+
+function calendarUrlForSearch(term: string, view: "show" | "lifecycle", event?: SearchEvent): string {
+  const params = new URLSearchParams({ view, q: term });
+  if (event?.event_start_date) params.set("from", event.event_start_date);
+  return `/calendar?${params.toString()}`;
+}
+
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -304,19 +314,19 @@ function GlobalSearch() {
         apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}${statusQuery}`),
       ]);
       const firstEvent = eventRes.events[0];
+      const targetView = onCalendar ? view : calendarViewForEvent(firstEvent, view);
       if (firstEvent?.event_start_date) {
-        const from = `${firstEvent.event_start_date.slice(0, 7)}-01`;
-        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}&from=${from}`);
+        navigate(calendarUrlForSearch(term, targetView, firstEvent));
       } else if (onCalendar) {
         // Stay on the active calendar even if only an org name matched.
-        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+        navigate(calendarUrlForSearch(term, targetView));
       } else if (orgRes.organisations.length > 0) {
         navigate(`/organisations?q=${encodeURIComponent(term)}`);
       } else {
-        navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+        navigate(calendarUrlForSearch(term, view));
       }
     } catch {
-      navigate(`/calendar?view=${view}&q=${encodeURIComponent(term)}`);
+      navigate(calendarUrlForSearch(term, view));
     }
     setOpen(false);
   }
@@ -366,7 +376,7 @@ function GlobalSearch() {
                             type="button"
                             onClick={() => {
                               if (onCalendar) {
-                                navigate(`/calendar?view=${calendarView}&q=${encodeURIComponent(org.name)}`);
+                                navigate(calendarUrlForSearch(org.name, calendarView));
                               } else {
                                 navigate(`/organisations?q=${encodeURIComponent(org.name)}`);
                               }
@@ -391,7 +401,7 @@ function GlobalSearch() {
                       {events.map((event) => (
                         <li key={event.id}>
                           <Link
-                            to={`/events/${event.id}`}
+                            to={calendarUrlForSearch(event.title, calendarViewForEvent(event, calendarView), event)}
                             onClick={() => setOpen(false)}
                             className="block rounded-xl px-3 py-2 hover:bg-marble-shadow/40"
                           >
@@ -413,7 +423,7 @@ function GlobalSearch() {
               <button
                 type="button"
                 onClick={() => {
-                  navigate(`/organisations?q=${encodeURIComponent(debounced)}`);
+                  navigate(`/organisations?q=${encodeURIComponent(query.trim())}`);
                   setOpen(false);
                 }}
                 className="rounded-full px-3 py-1 text-[11px] font-medium text-sage-text hover:bg-sage/10"
