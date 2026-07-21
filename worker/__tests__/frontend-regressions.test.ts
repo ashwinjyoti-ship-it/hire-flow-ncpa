@@ -225,10 +225,15 @@ describe("frontend regression guards", () => {
     expect(source).not.toContain('type={item.field_type === "date" ? "date"');
   });
 
-  it("allows the confirmation courier date to change without a correction prompt", () => {
-    const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+  it("allows every checklist date to change without a correction prompt", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const updateHook = readFileSync(resolve(root, "src/lib/use-checklist-update.ts"), "utf8");
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
 
-    expect(source).toContain('item.field_key !== "confirmation_couriered" && item.value && next');
+    expect(detail).not.toContain("Reason for changing this date?");
+    expect(detail).not.toContain("correctionReason");
+    expect(updateHook).not.toContain("correction_reason");
+    expect(operations).not.toContain("A correction reason is required");
   });
 
   it("shows event type on the detail page with normalized fallback formatting", () => {
