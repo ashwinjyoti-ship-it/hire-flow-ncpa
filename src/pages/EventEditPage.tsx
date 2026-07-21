@@ -725,11 +725,20 @@ export function EventEditPage() {
                         <span className="text-xs font-semibold text-ink-secondary etched">
                           {group.date ? formatDate(group.date) : "Date not selected"}
                         </span>
-                        {dailyShowCount > 0 && (
-                          <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-semibold text-sage-text etched">
-                            {dailyShowCount} {dailyShowCount === 1 ? "show" : "shows"} this date
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-3">
+                          {dailyShowCount > 0 && (
+                            <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-semibold text-sage-text etched">
+                              {dailyShowCount} {dailyShowCount === 1 ? "show" : "shows"} this date
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => addScheduleEntry(vIdx, { activity_type: "show", activity_date: group.date })}
+                            className="text-[11px] font-semibold text-sage-text hover:underline"
+                          >
+                            {group.date ? "+ Add activity on this date" : "+ Add activity"}
+                          </button>
+                        </div>
                       </div>
                       {group.entries.map(({ entry: se, index: sIdx }, groupIndex) => {
                     const withMin = se.with_ac_minutes ?? diffMinutes(se.with_ac_start, se.with_ac_end);
@@ -781,18 +790,7 @@ export function EventEditPage() {
                         </div>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-muted etched">
                           <span>Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{formatDuration(total)}</strong></span>
-                          <span className="flex items-center gap-3">
-                            {se.activity_type === "show" && (
-                              <button
-                                type="button"
-                                onClick={() => addScheduleEntry(vIdx, { activity_type: "show", activity_date: se.activity_date })}
-                                className="font-semibold text-sage-text hover:underline"
-                              >
-                                + Add another show
-                              </button>
-                            )}
-                            <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
-                          </span>
+                          <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
                         </div>
                       </div>
                     );

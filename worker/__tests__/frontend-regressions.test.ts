@@ -44,7 +44,8 @@ describe("frontend regression guards", () => {
 
     expect(source).not.toContain('<Field label="Number of Shows">');
     expect(source).toContain("Add one Show detail for each performance");
-    expect(source).toContain("+ Add another show");
+    expect(source).toContain("+ Add activity on this date");
+    expect(source).not.toContain("+ Add another show");
     expect(source).toContain("dailyShowCount");
   });
 
