@@ -107,6 +107,7 @@ describe("lifecycle workflow phase", () => {
     expect(workflowPhaseForTaskRule("poc_incomplete")).toBe("confirm");
     expect(workflowPhaseForTaskRule("event_form_readiness:venues")).toBe("event");
     expect(workflowPhaseForTaskRule("feedback")).toBe("accounts");
+    expect(workflowPhaseForTaskRule("confirmed_cancellation_refund")).toBe("accounts");
     expect(canGenerateTaskForPhase("feedback", "event")).toBe(false);
     expect(canGenerateTaskForPhase("feedback", "accounts")).toBe(true);
     expect(canGenerateTaskForPhase("event_form_readiness:venues", "confirm")).toBe(false);

@@ -140,6 +140,7 @@ export function workflowPhaseForTaskRule(sourceRule: string | null | undefined):
   if (sourceRule === "accounts_file") return "accounts";
   if (sourceRule === "accounts_file_send_back") return "accounts";
   if (sourceRule === "tds_send_to_accounts") return "accounts";
+  if (sourceRule === "confirmed_cancellation_refund") return "accounts";
   return null;
 }
 
