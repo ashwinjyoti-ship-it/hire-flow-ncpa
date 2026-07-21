@@ -1387,7 +1387,9 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
       setValidationError(warning);
       return;
     }
-    if (item.value && next) {
+    // Couriered is an operational milestone that may need correcting directly.
+    // Other established checklist dates retain the correction audit prompt.
+    if (item.field_key !== "confirmation_couriered" && item.value && next) {
       const correctionReason = window.prompt("Reason for changing this date?");
       if (!correctionReason?.trim()) return;
       onUpdate(item, next, undefined, correctionReason);

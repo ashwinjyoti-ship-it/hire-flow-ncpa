@@ -570,7 +570,8 @@ export async function updateChecklistItem(args: {
   const value = args.value === undefined ? current.value : args.value;
   const status = args.status ?? itemStatusForValue({ field_type: current.field_type, value, is_computed: current.is_computed });
   const dateChanged = current.field_type === "date" && current.value && value && current.value !== value;
-  if (dateChanged && !args.correctionReason?.trim()) {
+  const requiresCorrectionReason = dateChanged && current.field_key !== "confirmation_couriered";
+  if (requiresCorrectionReason && !args.correctionReason?.trim()) {
     throw new Error("A correction reason is required to change an existing date");
   }
 
@@ -665,7 +666,7 @@ export async function updateChecklistItem(args: {
     await reconcileConfirmationLetterDeliveryChain(db, current.event_id);
   }
 
-  if (dateChanged) {
+  if (requiresCorrectionReason) {
     await db.prepare(
       `INSERT INTO checklist_corrections (id, checklist_item_id, old_value, new_value, corrected_by, corrected_at, reason)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
