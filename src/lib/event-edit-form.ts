@@ -1,5 +1,6 @@
 import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
 import { deriveVenueShowCount } from "../../worker/lib/show-schedule";
+import { applyScheduleDaysToEntries, deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
 import { getEventDateIssues } from "../../worker/lib/event-date-policy";
 
@@ -44,6 +45,9 @@ export function pruneEmptyVenueBookings(venueBookings: EventInputT["venue_bookin
 export function pruneIncompleteScheduleEntries(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
   return venueBookings.map((booking) => ({
     ...booking,
+    schedule_days: (booking.schedule_days ?? []).filter(
+      (day) => day.activity_date && /^\d{4}-\d{2}-\d{2}$/.test(day.activity_date),
+    ),
     schedule_entries: (booking.schedule_entries ?? []).filter(
       (entry) => entry.activity_date && /^\d{4}-\d{2}-\d{2}$/.test(entry.activity_date),
     ),
@@ -52,10 +56,19 @@ export function pruneIncompleteScheduleEntries(venueBookings: EventInputT["venue
 
 /** Venue bookings ready for API save: no empty venues, no undated schedule stubs. */
 export function prepareVenueBookingsForSave(venueBookings: EventInputT["venue_bookings"]): EventInputT["venue_bookings"] {
-  return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings)).map((booking) => ({
-    ...booking,
-    number_of_shows: deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows),
-  }));
+  return pruneEmptyVenueBookings(pruneIncompleteScheduleEntries(venueBookings)).map((booking) => {
+    const derivedDays = deriveScheduleDaysFromEntries(booking.schedule_entries);
+    const scheduleDays = booking.schedule_days?.length ? booking.schedule_days : derivedDays;
+    const usedDates = new Set(booking.schedule_entries.map((entry) => entry.activity_date));
+    const activeDays = scheduleDays.filter((day) => usedDates.has(day.activity_date));
+    const scheduleEntries = applyScheduleDaysToEntries(booking.schedule_entries, activeDays);
+    return {
+      ...booking,
+      schedule_days: activeDays,
+      schedule_entries: scheduleEntries,
+      number_of_shows: deriveVenueShowCount(scheduleEntries, booking.number_of_shows),
+    };
+  });
 }
 
 /** Requirement decisions intentionally start unknown. Readiness only advances

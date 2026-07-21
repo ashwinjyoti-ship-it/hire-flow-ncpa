@@ -5,6 +5,7 @@ import {
   formatHoursTotal,
   parseMinutesFromTimingsText,
   sumAcMinutes,
+  sumTimingMinutesFromVenueBookings,
   type ScheduleTimingRow,
 } from "../lib/timing-sync";
 
@@ -53,6 +54,20 @@ describe("timing-sync", () => {
   it("sums AC minutes across venues", () => {
     expect(sumAcMinutes(rows)).toBe(420);
     expect(formatHoursTotal(420)).toBe("7h");
+  });
+
+  it("counts a shared daily operating window once when a date has multiple shows", () => {
+    const { venue: _venue, ...dailyEntry } = rows[0]!;
+    void _venue;
+    const result = sumTimingMinutesFromVenueBookings([{
+      venue: "JBT",
+      schedule_entries: [
+        { ...dailyEntry, activity_type: "show" },
+        { ...dailyEntry, activity_type: "show", start_time: "20:00", end_time: "22:00" },
+      ],
+    }]);
+
+    expect(result).toEqual({ acMinutes: 240, withoutAcMinutes: 240 });
   });
 
   it("parses legacy manual ops timing text", () => {

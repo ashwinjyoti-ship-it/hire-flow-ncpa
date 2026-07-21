@@ -11,7 +11,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser, requirePermission, actorFrom, ipHint } from "../middleware/auth";
-import { EventInput, StatusTransitionInput, type VenueBookingInputT } from "../lib/types";
+import { EventInput, StatusTransitionInput, type ScheduleEntryInputT, type VenueBookingInputT } from "../lib/types";
 import { getEventDateIssues } from "../lib/event-date-policy";
 import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
@@ -22,6 +22,7 @@ import type { EventStatus } from "../lib/state-machine";
 import { audit, eventActivity } from "../lib/audit";
 import { makeId } from "../lib/id";
 import { deriveVenueShowCount } from "../lib/show-schedule";
+import { applyScheduleDaysToEntries, deriveScheduleDaysFromEntries } from "../lib/schedule-days";
 import { can } from "../lib/rbac";
 import {
   blockersForTransition,
@@ -73,7 +74,8 @@ async function venueBookingSyncStatements(db: D1Database, eventId: string, booki
   for (const [bookingIndex, booking] of bookings.entries()) {
     if (booking.id && !existingBookingIds.has(booking.id)) throw new Error("Venue booking does not belong to this event");
     const bookingId = booking.id ?? makeId("vb");
-    const numberOfShows = deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows);
+    const scheduleEntries = applyScheduleDaysToEntries(booking.schedule_entries, booking.schedule_days);
+    const numberOfShows = deriveVenueShowCount(scheduleEntries, booking.number_of_shows);
     keptBookingIds.add(bookingId);
 
     if (booking.id) {
@@ -104,7 +106,7 @@ async function venueBookingSyncStatements(db: D1Database, eventId: string, booki
     const existingScheduleIds = new Set(existingSchedules.map((row) => row.id));
     const keptScheduleIds = new Set<string>();
 
-    for (const [scheduleIndex, schedule] of booking.schedule_entries.entries()) {
+    for (const [scheduleIndex, schedule] of scheduleEntries.entries()) {
       if (schedule.id && !existingScheduleIds.has(schedule.id)) throw new Error("Schedule entry does not belong to this venue booking");
       const scheduleId = schedule.id ?? makeId("se");
       keptScheduleIds.add(scheduleId);
@@ -380,7 +382,11 @@ eventRoutes.get("/:id", requireUser, async (c) => {
     const schedule = parseScheduleJson(raw);
     const { schedule_json, ...rest } = vb as Record<string, unknown>;
     void schedule_json;
-    return { ...rest, schedule_entries: schedule };
+    return {
+      ...rest,
+      schedule_days: deriveScheduleDaysFromEntries(schedule as ScheduleEntryInputT[]),
+      schedule_entries: schedule,
+    };
   });
 
   const { results: activity } = await c.env.DB.prepare(

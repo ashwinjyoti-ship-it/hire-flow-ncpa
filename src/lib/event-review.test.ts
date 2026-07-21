@@ -79,15 +79,17 @@ describe("buildReviewItems", () => {
     expect(items.find((item) => item.label === "Venue 1")?.value).toBe("JBT");
     expect(items.find((item) => item.label === "Venue 1 Booking Status")?.value).toBe("Tentative");
     expect(items.find((item) => item.label === "Venue 1 Shows — 28/08/2026")?.value).toBe("2 shows");
-    expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("With AC 10:00 - 12:00");
-    expect(items.find((item) => item.label === "Schedule 1.1")?.value).toContain("Without AC 12:00 - 15:00");
+    expect(items.find((item) => item.label === "Venue 1 Schedule — 28/08/2026")?.value).toContain("With AC 10:00 - 12:00");
+    expect(items.find((item) => item.label === "Venue 1 Schedule — 28/08/2026")?.value).toContain("Without AC 12:00 - 15:00");
+    expect(items.find((item) => item.label === "Activity 1.1.1")?.value).toBe("Show");
+    expect(items.find((item) => item.label === "Activity 1.1.2")?.value).toContain("18:00 - 20:00");
 
     expect(items.find((item) => item.label === "Venue 2")?.value).toBe("TATA");
     expect(items.find((item) => item.label === "Venue 2 Booking Status")?.value).toBe("Confirmed");
     expect(items.some((item) => item.label.startsWith("Venue 2 Shows"))).toBe(false);
     expect(items.find((item) => item.label === "Venue 2 Notes")?.value).toBe("Piano tuned");
-    expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("Rehearsal");
-    expect(items.find((item) => item.label === "Schedule 2.1")?.value).toContain("With AC 09:00 - 11:00");
+    expect(items.find((item) => item.label === "Activity 2.1.1")?.value).toContain("Rehearsal");
+    expect(items.find((item) => item.label === "Venue 2 Schedule — 27/08/2026")?.value).toContain("With AC 09:00 - 11:00");
 
     // Regression: the old six-box summary only surfaced venue 1 aggregates.
     expect(items.some((item) => item.label === "Venue Booking Status")).toBe(false);
