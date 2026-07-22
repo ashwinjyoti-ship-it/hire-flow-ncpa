@@ -27,13 +27,14 @@ describe("frontend regression guards", () => {
   });
 
   it("persists venue and schedule edits instead of stripping them from the update payload", () => {
-    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const scheduleFields = readFileSync(resolve(root, "src/components/event-form/VenueScheduleFields.tsx"), "utf8");
     const routes = readFileSync(resolve(root, "worker/routes/events.ts"), "utf8");
 
-    expect(source).toContain("await apiPut(`/events/${id}`, payload)");
-    expect(source).not.toContain("venue_bookings: _vb");
-    expect(source).toContain("setForm((f) => ({");
-    expect(source).toContain("with_ac_minutes: diffMinutes");
+    expect(eventForm).toContain("await apiPut(`/events/${id}`, payload)");
+    expect(eventForm).not.toContain("venue_bookings: _vb");
+    expect(eventForm).toContain("updateVenueBookings={updateVenueBookings}");
+    expect(scheduleFields).toContain("with_ac_minutes: diffMinutes");
     expect(routes).toContain("venueBookingSyncStatements");
     expect(routes).toContain("db.batch([updateEvent, ...venueWrites])");
     expect(routes).toContain("UPDATE schedule_entries");
@@ -41,18 +42,20 @@ describe("frontend regression guards", () => {
   });
 
   it("captures each show as a dated schedule occurrence instead of a venue-level number", () => {
-    const source = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const scheduleFields = readFileSync(resolve(root, "src/components/event-form/VenueScheduleFields.tsx"), "utf8");
+    const source = `${eventForm}\n${scheduleFields}`;
 
     expect(source).not.toContain('<Field label="Number of Shows">');
     expect(source).toContain("Total Shows");
     expect(source).toContain("Auto-calculated from Schedule Details");
-    expect(source).toContain("deriveVenueShowCount(vb.schedule_entries, vb.number_of_shows)");
-    expect(source).toContain("one venue-day operating window");
+    expect(source).toContain("deriveVenueShowCount(booking.schedule_entries, booking.number_of_shows)");
+    expect(source).toContain("AC and non-AC operating window once for each date");
     expect(source).toContain("+ Add another date");
     expect(source).toContain("+ Add activity on this date");
     expect(source).not.toContain("+ Add another show");
     expect(source).toContain("dailyShowCount");
-    expect(source).not.toContain('<Field label="Date">\n                            <input type="date"');
+    expect((scheduleFields.match(/type="date"/g) ?? []).length).toBe(1);
   });
 
   it("loads persisted MFA status instead of hardcoding unenrolled", () => {
@@ -816,6 +819,38 @@ describe("frontend regression guards", () => {
 
     expect(dashboard).toContain('to="/events/new"');
     expect(dashboard).toContain("+ New Event");
+  });
+
+  it("provides a simple meeting form that saves into the event requirements", () => {
+    const app = readFileSync(resolve(root, "src/App.tsx"), "utf8");
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const meeting = readFileSync(resolve(root, "src/pages/MeetingFormPage.tsx"), "utf8");
+    const fields = readFileSync(resolve(root, "src/components/event-form/RequirementsFields.tsx"), "utf8");
+
+    expect(app).toContain('path="/events/:id/meeting"');
+    expect(detail).toContain('to={`/events/${id}/meeting`}');
+    expect(detail).toContain("Meeting Form");
+    expect(meeting).toContain("RequirementsFields");
+    expect(meeting).toContain("VenueScheduleFields");
+    expect(meeting).toContain("Existing event details are shown below");
+    expect(meeting).toContain("updateVenueBookings={updateVenueBookings}");
+    expect(meeting).toContain('layout="tabs"');
+    expect(meeting).toContain("Save Meeting Form");
+    expect(meeting).toContain('await apiPut(`/events/${id}`');
+    expect(meeting).toContain("venue_bookings: venueBookings");
+    expect(fields).toContain('fieldKey="fire_safety" label="Fire & Safety Requirements"');
+  });
+
+  it("uses venue tabs only in the meeting form schedule editor", () => {
+    const meeting = readFileSync(resolve(root, "src/pages/MeetingFormPage.tsx"), "utf8");
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const scheduleFields = readFileSync(resolve(root, "src/components/event-form/VenueScheduleFields.tsx"), "utf8");
+
+    expect(meeting).toContain('layout="tabs"');
+    expect(eventForm).not.toContain('layout="tabs"');
+    expect(scheduleFields).toContain('role="tablist"');
+    expect(scheduleFields).toContain('role="tab"');
+    expect(scheduleFields).toContain('role={layout === "tabs" ? "tabpanel" : undefined}');
   });
 
   it("exposes Generate MoM on the event lifecycle panel", () => {

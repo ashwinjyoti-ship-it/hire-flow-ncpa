@@ -9,6 +9,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { EventDetailPage } from "./pages/EventDetailPage";
 import { EventEditPage } from "./pages/EventEditPage";
+import { MeetingFormPage } from "./pages/MeetingFormPage";
 import { OrganisationsPage } from "./pages/OrganisationsPage";
 import { TasksPage } from "./pages/TasksPage";
 import { RegretsPage } from "./pages/RegretsPage";
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/events/new" element={<EventEditPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route path="/events/:id/edit" element={<EventEditPage />} />
+        <Route path="/events/:id/meeting" element={<MeetingFormPage />} />
         <Route path="/organisations" element={<OrganisationsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/reports" element={<ReportsPage />} />

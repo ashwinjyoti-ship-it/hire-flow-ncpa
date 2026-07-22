@@ -523,6 +523,9 @@ export function RequirementsFields({
           <Field fieldKey="security" label="Security Notes">
             <textarea value={(reqs.security as string) ?? ""} onChange={(e) => setReq("security", e.target.value || null)} className="carved input" rows={1} />
           </Field>
+          <Field fieldKey="fire_safety" label="Fire & Safety Requirements">
+            <textarea value={(reqs.fire_safety as string) ?? ""} onChange={(e) => setReq("fire_safety", e.target.value || null)} className="carved input" rows={1} />
+          </Field>
           <Field fieldKey="housekeeping" label="Housekeeping">
             <textarea value={(reqs.housekeeping as string) ?? ""} onChange={(e) => setReq("housekeeping", e.target.value || null)} className="carved input" rows={1} />
           </Field>

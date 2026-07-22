@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementsFields } from "../components/event-form/RequirementsFields";
 import { PocFields } from "../components/event-form/PocFields";
+import { VenueScheduleFields } from "../components/event-form/VenueScheduleFields";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { scrollAppMainToElement } from "../lib/scroll-app-main";
 import {
@@ -22,13 +23,10 @@ import {
   withDefaultVenueRequirements,
 } from "../lib/event-edit-form";
 import { buildReviewItems } from "../lib/event-review";
-import { useLookups, formatDate, formatDuration } from "../lib/use-lookups";
-import { formatHoursTotal, sumTimingMinutesFromVenueBookings } from "../../worker/lib/timing-sync";
-import { countScheduledShowsByDate, deriveVenueShowCount } from "../../worker/lib/show-schedule";
+import { useLookups, formatDate } from "../lib/use-lookups";
 import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import { ORG_TYPES } from "../components/orgs/types";
 import type { EventInputT, VenueBookingInputT, ScheduleDayInputT, ScheduleEntryInputT } from "../../worker/lib/types";
-import { ACTIVITY_TYPES, formatActivityType } from "../../worker/lib/types";
 
 const STEPS = ["Event & Client", "Venues & Schedule", "Requirements", "Documents", "Review"] as const;
 const STEP_SHORT_LABELS = ["Client", "Schedule", "Requirements", "Documents", "Review"] as const;
@@ -113,26 +111,6 @@ function normaliseEventType(value: unknown): EventInputT["event_type"] {
     default:
       return null;
   }
-}
-
-/** Compute minutes between two HH:MM times (end − start). Returns null if either missing or end<=start. */
-function diffMinutes(start: string | null | undefined, end: string | null | undefined): number | null {
-  if (!start || !end) return null;
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  if (sh == null || sm == null || eh == null || em == null) return null;
-  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
-  let mins = eh * 60 + em - (sh * 60 + sm);
-  if (mins < 0) mins += 24 * 60; // overnight wrap
-  if (mins === 0) return 0;
-  return mins;
-}
-
-function nextAvailableScheduleDate(startDate: string | null | undefined, usedDates: Set<string>): string {
-  const candidate = /^\d{4}-\d{2}-\d{2}$/.test(startDate ?? "") ? startDate! : new Date().toISOString().slice(0, 10);
-  const date = new Date(`${candidate}T00:00:00.000Z`);
-  while (usedDates.has(date.toISOString().slice(0, 10))) date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 function hydrateEventFormFromDetail(existing: EventDetailResponse): { form: EventInputT; singleDay: boolean } {
@@ -425,171 +403,17 @@ export function EventEditPage() {
     isVfh,
   }), [form, reviewOrganisationName, newOrganisationType, isVfh]);
 
-  // ---- Venue booking helpers ----
-  // Schedule helpers use functional setState so rapid AC time edits (and
-  // multi-venue updates) never overwrite each other via a stale form closure.
-  const addVenue = () => {
-    setForm((f) => ({
-      ...f,
-      venue_bookings: [...f.venue_bookings, {
-        venue: "",
-        booking_status: "tentative",
-        number_of_shows: 0,
-        requirements: createDefaultVenueRequirements(),
-        notes: null,
-        schedule_days: [],
-        schedule_entries: [],
-      }],
+  const updateVenueBookings = (updater: (current: VenueBookingInputT[]) => VenueBookingInputT[]) => {
+    setForm((current) => ({
+      ...current,
+      venue_bookings: updater(current.venue_bookings),
     }));
   };
-  const removeVenue = (idx: number) => setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.filter((_, i) => i !== idx) }));
-  const updateVenue = (idx: number, patch: Partial<VenueBookingInputT>) =>
-    setForm((f) => ({ ...f, venue_bookings: f.venue_bookings.map((vb, i) => (i === idx ? { ...vb, ...patch } : vb)) }));
-
-  const addScheduleDay = (vIdx: number) =>
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => {
-        if (i !== vIdx) return vb;
-        const days = vb.schedule_days?.length ? vb.schedule_days : deriveScheduleDaysFromEntries(vb.schedule_entries);
-        const activityDate = nextAvailableScheduleDate(f.event_start_date, new Set(days.map((day) => day.activity_date)));
-        const day: ScheduleDayInputT = {
-          activity_date: activityDate,
-          with_ac_start: null,
-          with_ac_end: null,
-          with_ac_minutes: null,
-          without_ac_start: null,
-          without_ac_end: null,
-          without_ac_minutes: null,
-        };
-        return {
-          ...vb,
-          schedule_days: [...days, day],
-          schedule_entries: [...(vb.schedule_entries ?? []), {
-            activity_type: "show" as const,
-            start_time: null,
-            end_time: null,
-            ...day,
-            notes: null,
-          }],
-        };
-      }),
-    }));
-  const addScheduleEntry = (vIdx: number, activityDate: string) =>
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => {
-        if (i !== vIdx) return vb;
-        const day = (vb.schedule_days ?? []).find((candidate) => candidate.activity_date === activityDate);
-        return {
-          ...vb,
-          schedule_entries: [...(vb.schedule_entries ?? []), {
-            activity_type: "show" as const,
-            activity_date: activityDate,
-            start_time: null,
-            end_time: null,
-            with_ac_start: day?.with_ac_start ?? null,
-            with_ac_end: day?.with_ac_end ?? null,
-            with_ac_minutes: day?.with_ac_minutes ?? null,
-            without_ac_start: day?.without_ac_start ?? null,
-            without_ac_end: day?.without_ac_end ?? null,
-            without_ac_minutes: day?.without_ac_minutes ?? null,
-            notes: null,
-          }],
-        };
-      }),
-    }));
-  const removeScheduleEntry = (vIdx: number, sIdx: number) =>
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => (
-        i === vIdx
-          ? (() => {
-            const removedDate = vb.schedule_entries[sIdx]?.activity_date;
-            const scheduleEntries = (vb.schedule_entries ?? []).filter((_, j) => j !== sIdx);
-            const dateStillUsed = scheduleEntries.some((entry) => entry.activity_date === removedDate);
-            return {
-              ...vb,
-              schedule_days: dateStillUsed ? vb.schedule_days : (vb.schedule_days ?? []).filter((day) => day.activity_date !== removedDate),
-              schedule_entries: scheduleEntries,
-            };
-          })()
-          : vb
-      )),
-    }));
-  const removeScheduleDay = (vIdx: number, activityDate: string) =>
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => i === vIdx ? {
-        ...vb,
-        schedule_days: (vb.schedule_days ?? []).filter((day) => day.activity_date !== activityDate),
-        schedule_entries: vb.schedule_entries.filter((entry) => entry.activity_date !== activityDate),
-      } : vb),
-    }));
-  const updateScheduleDay = (vIdx: number, dayIdx: number, patch: Partial<ScheduleDayInputT>) => {
-    const booking = form.venue_bookings[vIdx];
-    const currentDay = booking?.schedule_days?.[dayIdx];
-    if (!booking || !currentDay) return;
-    if (patch.activity_date && patch.activity_date !== currentDay.activity_date
-      && booking.schedule_days?.some((day, index) => index !== dayIdx && day.activity_date === patch.activity_date)) {
-      setError("That date already exists for this venue. Add activities under the existing date instead.");
-      return;
-    }
-    setError(null);
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => {
-        if (i !== vIdx) return vb;
-        const day = vb.schedule_days?.[dayIdx];
-        if (!day) return vb;
-        const merged = { ...day, ...patch };
-        const nextDay = {
-          ...merged,
-          with_ac_minutes: diffMinutes(merged.with_ac_start, merged.with_ac_end),
-          without_ac_minutes: diffMinutes(merged.without_ac_start, merged.without_ac_end),
-        };
-        return {
-          ...vb,
-          schedule_days: (vb.schedule_days ?? []).map((candidate, index) => index === dayIdx ? nextDay : candidate),
-          schedule_entries: vb.schedule_entries.map((entry) => entry.activity_date === day.activity_date ? {
-            ...entry,
-            activity_date: nextDay.activity_date,
-            with_ac_start: nextDay.with_ac_start,
-            with_ac_end: nextDay.with_ac_end,
-            with_ac_minutes: nextDay.with_ac_minutes,
-            without_ac_start: nextDay.without_ac_start,
-            without_ac_end: nextDay.without_ac_end,
-            without_ac_minutes: nextDay.without_ac_minutes,
-          } : entry),
-        };
-      }),
-    }));
-  };
-  const updateScheduleEntry = (vIdx: number, sIdx: number, patch: Partial<ScheduleEntryInputT>) =>
-    setForm((f) => ({
-      ...f,
-      venue_bookings: f.venue_bookings.map((vb, i) => {
-        if (i !== vIdx) return vb;
-        return {
-          ...vb,
-          schedule_entries: (vb.schedule_entries ?? []).map((se, j) => j === sIdx ? { ...se, ...patch } : se),
-        };
-      }),
-    }));
 
   // Event-level requirements only (program officer contact). Venue fields live on each booking.
   const reqs = withDefaultEventLevelRequirements(form.requirements as Record<string, unknown> | null);
   const setReq = (key: string, value: unknown) => update({ requirements: { ...reqs, [key]: value } });
   const venueCount = form.venue_bookings.length;
-  const timingTotals = useMemo(() => {
-    const prepared = prepareVenueBookingsForSave(form.venue_bookings);
-    const { acMinutes, withoutAcMinutes } = sumTimingMinutesFromVenueBookings(prepared);
-    return {
-      acHours: formatHoursTotal(acMinutes),
-      nonAcHours: formatHoursTotal(withoutAcMinutes),
-      hasData: acMinutes > 0 || withoutAcMinutes > 0,
-    };
-  }, [form.venue_bookings]);
   const activeRequirementsVenue = Math.min(requirementsVenueTab, Math.max(0, venueCount - 1));
   const updateVenueRequirements = (vIdx: number, next: Record<string, unknown>) => {
     setForm((f) => ({
@@ -788,183 +612,13 @@ export function EventEditPage() {
 
       {/* Step 2: Venues & Schedule — one venue-day operating window with activities beneath it. */}
       {step === 1 && (
-        <div className="space-y-4">
-          {timingTotals.hasData && (
-            <div className="carved-card rounded-2xl bg-sage/10 p-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-sage etched">Event timing totals</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Total AC hours</span>
-                  <p className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{timingTotals.acHours}</p>
-                </div>
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Total non-AC hours</span>
-                  <p className="mt-1 text-lg font-semibold text-ink-primary etched-deep">{timingTotals.nonAcHours}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {form.venue_bookings.map((vb, vIdx) => {
-            const scheduleDays = vb.schedule_days?.length ? vb.schedule_days : deriveScheduleDaysFromEntries(vb.schedule_entries);
-            const showsByDate = countScheduledShowsByDate(vb.schedule_entries);
-            const totalShows = deriveVenueShowCount(vb.schedule_entries, vb.number_of_shows);
-            const usesLegacyShowTotal = vb.schedule_entries.length === 0 && vb.number_of_shows > 0;
-            return (
-            <div key={vb.id ?? `venue-${vIdx}`} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-ink-primary etched-deep">Venue Booking {vIdx + 1}</h3>
-                {form.venue_bookings.length > 1 && (
-                  <button type="button" onClick={() => removeVenue(vIdx)} className="text-xs text-status-cancelled hover:underline">Remove</button>
-                )}
-              </div>
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Venue">
-                  <select value={vb.venue} onChange={(e) => updateVenue(vIdx, { venue: e.target.value })} className="carved input">
-                    <option value="">Select…</option>
-                    {venues.map((v) => <option key={v.value} value={v.value}>{v.value}</option>)}
-                  </select>
-                </Field>
-                <Field label="Booking Status">
-                  <select value={vb.booking_status} onChange={(e) => updateVenue(vIdx, { booking_status: e.target.value as VenueBookingInputT["booking_status"] })} className="carved input">
-                    <option value="tentative">Tentative</option>
-                    <option value="confirmed">Confirmed</option>
-                  </select>
-                </Field>
-                <div>
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Total Shows</span>
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    aria-label={`${totalShows} total shows. ${usesLegacyShowTotal ? "Legacy total preserved until schedule details are added." : "Auto-calculated from Schedule Details."}`}
-                    className="carved flex min-h-[42px] items-center justify-between gap-3 rounded-xl border border-ink-muted/15 bg-marble-highlight/45 px-4 py-2"
-                  >
-                    <output className="text-lg font-semibold text-ink-primary etched-deep">{totalShows}</output>
-                    <span className="text-right text-[10px] font-medium leading-tight text-ink-muted etched">
-                      {usesLegacyShowTotal
-                        ? "Legacy total — add schedule details to auto-calculate"
-                        : "Auto-calculated from Schedule Details"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* One operating window per date; individual activities sit underneath it. */}
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-sage etched">Schedule Details</span>
-                  <button type="button" onClick={() => addScheduleDay(vIdx)} className="text-xs text-sage-text hover:underline">
-                    {scheduleDays.length > 0 ? "+ Add another date" : "+ Add date"}
-                  </button>
-                </div>
-                <p className="mb-3 text-xs text-ink-muted etched">
-                  Set the venue's AC and non-AC operating window once for each date, then add every show or activity taking place within it.
-                </p>
-                <div className="space-y-4">
-                  {scheduleDays.map((day, dayIdx) => {
-                    const entries = vb.schedule_entries
-                      .map((entry, index) => ({ entry, index }))
-                      .filter(({ entry }) => entry.activity_date === day.activity_date);
-                    const dailyShowCount = showsByDate.get(day.activity_date) ?? 0;
-                    const withMin = day.with_ac_minutes ?? diffMinutes(day.with_ac_start, day.with_ac_end);
-                    const withoutMin = day.without_ac_minutes ?? diffMinutes(day.without_ac_start, day.without_ac_end);
-                    const total = (withMin ?? 0) + (withoutMin ?? 0);
-                    return (
-                    <section key={day.activity_date} className="rounded-xl border border-marble-shadow/30 bg-marble-shadow/15 p-3 sm:p-4">
-                      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-marble-shadow/30 pb-3">
-                        <div className="w-full sm:w-auto sm:min-w-48">
-                          <Field label="Date">
-                            <input
-                              type="date"
-                              lang="en-GB"
-                              value={day.activity_date}
-                              onChange={(e) => updateScheduleDay(vIdx, dayIdx, { activity_date: e.target.value })}
-                              className="carved input"
-                            />
-                          </Field>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {dailyShowCount > 0 && (
-                            <span className="rounded-full bg-sage/10 px-3 py-1 text-[11px] font-semibold text-sage-text etched">
-                              {dailyShowCount} {dailyShowCount === 1 ? "show" : "shows"}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => addScheduleEntry(vIdx, day.activity_date)}
-                            className="text-[11px] font-semibold text-sage-text hover:underline"
-                          >
-                            + Add activity on this date
-                          </button>
-                          <button type="button" onClick={() => removeScheduleDay(vIdx, day.activity_date)} className="text-[11px] text-status-cancelled hover:underline">Remove date</button>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-lg bg-marble-highlight/50 p-2">
-                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">With AC</div>
-                          <div className="grid grid-cols-3 items-end gap-2">
-                            <Field label="Start"><input type="time" lang="en-GB" value={day.with_ac_start ?? ""} onChange={(e) => updateScheduleDay(vIdx, dayIdx, { with_ac_start: e.target.value || null })} className="carved input" /></Field>
-                            <Field label="End"><input type="time" lang="en-GB" value={day.with_ac_end ?? ""} onChange={(e) => updateScheduleDay(vIdx, dayIdx, { with_ac_end: e.target.value || null })} className="carved input" /></Field>
-                            <Field label="Duration"><input readOnly value={formatDuration(withMin)} className="carved input bg-transparent" /></Field>
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-marble-highlight/50 p-2">
-                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-sage etched">Without AC</div>
-                          <div className="grid grid-cols-3 items-end gap-2">
-                            <Field label="Start"><input type="time" lang="en-GB" value={day.without_ac_start ?? ""} onChange={(e) => updateScheduleDay(vIdx, dayIdx, { without_ac_start: e.target.value || null })} className="carved input" /></Field>
-                            <Field label="End"><input type="time" lang="en-GB" value={day.without_ac_end ?? ""} onChange={(e) => updateScheduleDay(vIdx, dayIdx, { without_ac_end: e.target.value || null })} className="carved input" /></Field>
-                            <Field label="Duration"><input readOnly value={formatDuration(withoutMin)} className="carved input bg-transparent" /></Field>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="mt-2 text-[11px] text-ink-muted etched">
-                        Hall rental for this date = Without AC + With AC = <strong className="text-sage-text">{formatDuration(total)}</strong>
-                      </p>
-
-                      <div className="mt-4 space-y-2">
-                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Activities</h4>
-                        {entries.map(({ entry: se, index: sIdx }, groupIndex) => {
-                    const showNumber = se.activity_type === "show"
-                      ? entries.slice(0, groupIndex + 1).filter(({ entry }) => entry.activity_type === "show").length
-                      : null;
-                    return (
-                      <div key={se.id ?? `${day.activity_date}-${sIdx}`} className="rounded-xl bg-marble-shadow/30 p-3">
-                        {showNumber != null && (
-                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-terracotta-text etched">
-                            Show {showNumber} of {dailyShowCount || 1}
-                          </div>
-                        )}
-                        <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-3">
-                          <Field label="Activity">
-                            <select value={se.activity_type} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { activity_type: e.target.value as ScheduleEntryInputT["activity_type"] })} className="carved input">
-                              {ACTIVITY_TYPES.map((a) => <option key={a} value={a}>{formatActivityType(a)}</option>)}
-                            </select>
-                          </Field>
-                          <Field label="Activity Start">
-                            <input type="time" lang="en-GB" value={se.start_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { start_time: e.target.value || null })} className="carved input" />
-                          </Field>
-                          <Field label="Activity End">
-                            <input type="time" lang="en-GB" value={se.end_time ?? ""} onChange={(e) => updateScheduleEntry(vIdx, sIdx, { end_time: e.target.value || null })} className="carved input" />
-                          </Field>
-                        </div>
-                        <div className="mt-2 flex justify-end text-[11px] etched">
-                          <button type="button" onClick={() => removeScheduleEntry(vIdx, sIdx)} className="text-status-cancelled hover:underline">Remove</button>
-                        </div>
-                      </div>
-                    );
-                      })}
-                      </div>
-                    </section>
-                    );
-                  })}
-                  {scheduleDays.length === 0 && <p className="text-xs text-ink-muted etched">No dates yet. Add a date, set its venue operating window, then add setup, rehearsal, show, dismantling, or zero show activities.</p>}
-                </div>
-              </div>
-            </div>
-            );
-          })}
-          <button type="button" onClick={addVenue} className="carved-btn-sage rounded-full bg-sage-btn px-5 py-2 text-sm font-semibold text-sage-text etched">+ Add venue</button>
-        </div>
+        <VenueScheduleFields
+          eventStartDate={form.event_start_date}
+          venueBookings={form.venue_bookings}
+          venueOptions={venues}
+          updateVenueBookings={updateVenueBookings}
+          onError={setError}
+        />
       )}
 
       {/* Step 3: Requirements — one form per venue booking */}

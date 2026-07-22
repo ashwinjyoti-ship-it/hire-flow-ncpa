@@ -111,6 +111,7 @@ const REQUIREMENT_FIELDS: Array<{ key: string; label: string }> = [
   { key: "decorator_name", label: "Decorator Name" },
   { key: "parking", label: "Parking Requirements" },
   { key: "security", label: "Security Notes" },
+  { key: "fire_safety", label: "Fire & Safety Requirements" },
   { key: "housekeeping", label: "Housekeeping" },
   { key: "crew_cards", label: "No. of Crew Cards" },
   { key: "licenses_status", label: "Licences — Required" },
