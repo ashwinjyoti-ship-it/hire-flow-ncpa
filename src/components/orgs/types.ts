@@ -19,7 +19,7 @@ export type OrgsResponse = {
 };
 
 /** Organisation type chips used by filters and new-event organisation capture. */
-export const ORG_TYPES = ["School", "Foundation", "Production", "Cooperative", "Corporate"] as const;
+export const ORG_TYPES = ["School", "Foundation", "Production", "Cooperative", "Corporate", "Individual"] as const;
 export type OrgType = (typeof ORG_TYPES)[number];
 
 /** The three event-count buckets the slider offers. */
