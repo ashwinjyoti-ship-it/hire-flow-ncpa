@@ -704,7 +704,7 @@ export function EventEditPage() {
                 <p className="mt-1 text-xs font-medium etched">Saving is disabled until you change the event details or open the existing record.</p>
                 <div className="mt-3 space-y-2">
                   {duplicates.map((duplicate) => (
-                    <div key={duplicate.id} className="rounded-lg bg-white/55 px-3 py-2 text-xs text-ink-primary">
+                    <div key={duplicate.id} className="rounded-lg bg-marble-highlight/55 px-3 py-2 text-xs text-ink-primary">
                       <Link to={`/events/${duplicate.id}`} className="font-semibold text-ink-primary underline">
                         {duplicate.title}
                       </Link>
@@ -1226,7 +1226,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function ReviewItem({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="flex min-h-24 h-full flex-col items-center justify-center rounded-xl border border-ink-muted/10 bg-white/35 px-4 py-3 text-center">
+    <div className="flex min-h-24 h-full flex-col items-center justify-center rounded-xl border border-ink-muted/10 bg-marble-highlight/35 px-4 py-3 text-center">
       <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{label}</dt>
       <dd className="mt-2 w-full max-w-full whitespace-normal break-words text-center font-medium leading-relaxed text-ink-primary etched-deep">{String(value ?? "—")}</dd>
     </div>

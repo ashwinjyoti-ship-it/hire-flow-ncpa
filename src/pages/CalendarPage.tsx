@@ -418,7 +418,7 @@ export function CalendarPage() {
               <summary className={"carved-btn-terracotta flex cursor-pointer list-none items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold etched marker:hidden " + (activeFilterCount ? "bg-terracotta-btn text-terracotta-text" : "bg-marble-shadow/40 text-ink-secondary hover:text-ink-primary")}>
                 Filter
                 {activeFilterCount > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/70 px-1 text-[10px] text-terracotta-text">
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-marble-highlight/70 px-1 text-[10px] text-terracotta-text">
                     {activeFilterCount}
                   </span>
                 )}
@@ -504,23 +504,23 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
   const reqs = Object.keys(venueReqs).length > 0 ? { ...eventReqs, ...venueReqs } : eventReqs;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-detail-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim bg-white/90 p-4 text-neutral-950 shadow-2xl backdrop-blur-xl sm:rounded-l-2xl sm:border-l sm:border-white/70 sm:bg-white/72 sm:p-6" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-detail-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim bg-marble-highlight/95 p-4 text-ink-primary shadow-2xl backdrop-blur-xl sm:rounded-l-2xl sm:border-l sm:border-ink-muted/20 sm:bg-marble-highlight/90 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View show details</div>
-            <h3 id="show-calendar-detail-title" className="text-xl font-semibold text-neutral-950">{entry.title}</h3>
-            <p className="mt-1 text-xs text-neutral-600">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">View show details</div>
+            <h3 id="show-calendar-detail-title" className="text-xl font-semibold text-ink-primary etched-deep">{entry.title}</h3>
+            <p className="mt-1 text-xs text-ink-secondary etched">
               {entry.organisation_name ?? "No organisation"}{entry.event_code ? ` · ${entry.event_code}` : ""}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link to={getEventOperationsLink(entry.event_id)} className="rounded-full border border-neutral-300/70 bg-white/65 px-2.5 py-2 text-[11px] font-semibold text-neutral-900 shadow-sm hover:bg-white sm:px-4 sm:text-xs">
+            <Link to={getEventOperationsLink(entry.event_id)} className="carved-btn rounded-full border border-ink-muted/20 bg-neutral-btn px-2.5 py-2 text-[11px] font-semibold text-ink-primary hover:bg-neutral-btn-hover sm:px-4 sm:text-xs">
               Edit Checklist
             </Link>
-            <Link to={`/events/${entry.event_id}/edit`} className="rounded-full border border-neutral-300/70 bg-white/65 px-2.5 py-2 text-[11px] font-semibold text-neutral-900 shadow-sm hover:bg-white sm:px-4 sm:text-xs">
+            <Link to={`/events/${entry.event_id}/edit`} className="carved-btn rounded-full border border-ink-muted/20 bg-neutral-btn px-2.5 py-2 text-[11px] font-semibold text-ink-primary hover:bg-neutral-btn-hover sm:px-4 sm:text-xs">
               <span className="sm:hidden">Edit</span><span className="hidden sm:inline">Edit Event Data</span>
             </Link>
-            <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+            <button type="button" onClick={onClose} className="carved-btn flex h-9 w-9 items-center justify-center rounded-full border border-ink-muted/20 bg-neutral-btn text-ink-muted hover:bg-neutral-btn-hover hover:text-ink-primary" aria-label="Close">x</button>
           </div>
         </div>
 
@@ -536,8 +536,8 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
           <SummaryPill label="Type" value={entry.event_type ?? "-"} />
         </section>
 
-        <section className="mb-4 rounded-xl border border-white/65 bg-white/46 p-4">
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Timings</h4>
+        <section className="mb-4 rounded-xl border border-ink-muted/15 bg-marble-shadow/45 p-4">
+          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">Timings</h4>
           <dl className="space-y-2 text-sm">
             <DetailLine label="With AC" value={formatTimedDuration(entry.with_ac_start, entry.with_ac_end, entry.with_ac_minutes)} />
             <DetailLine label="Without AC" value={formatTimedDuration(entry.without_ac_start, entry.without_ac_end, entry.without_ac_minutes)} />
@@ -577,9 +577,9 @@ function ShowCalendarDetailPanel({ entry, onClose }: { entry: CalEntry; onClose:
 
 function SummaryPill({ label, value, preserveCase = false }: { label: string; value: string; preserveCase?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/65 bg-white/46 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
-      <div className={"mt-1 font-semibold text-neutral-950 " + (preserveCase ? "break-words" : "capitalize")}>{value}</div>
+    <div className="rounded-xl border border-ink-muted/15 bg-marble-shadow/45 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">{label}</div>
+      <div className={"mt-1 font-semibold text-ink-primary etched-deep " + (preserveCase ? "break-words" : "capitalize")}>{value}</div>
     </div>
   );
 }
@@ -587,16 +587,16 @@ function SummaryPill({ label, value, preserveCase = false }: { label: string; va
 function DetailLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[8rem_1fr]">
-      <dt className="text-neutral-500">{label}</dt>
-      <dd className="whitespace-pre-wrap break-words font-medium text-neutral-950">{value}</dd>
+      <dt className="text-ink-muted etched">{label}</dt>
+      <dd className="whitespace-pre-wrap break-words font-medium text-ink-primary etched-deep">{value}</dd>
     </div>
   );
 }
 
 function DetailGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-white/65 bg-white/46 p-4">
-      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{title}</h4>
+    <section className="rounded-xl border border-ink-muted/15 bg-marble-shadow/45 p-4">
+      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">{title}</h4>
       <dl className="space-y-2 text-sm">{children}</dl>
     </section>
   );
@@ -752,16 +752,16 @@ function LifecycleMonthGrid({ byDate, today, cursor, onOpenOverflow }: { byDate:
 function ShowCalendarOverflowPanel({ overflow, onClose, onPick }: { overflow: ShowOverflowState; onClose: () => void; onPick: (entry: CalEntry) => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="show-calendar-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-ink-muted/20 bg-marble-highlight/95 p-6 text-ink-primary shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View all show events</div>
-            <h3 id="show-calendar-overflow-title" className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
-            <p className="mt-1 text-xs text-neutral-600">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">View all show events</div>
+            <h3 id="show-calendar-overflow-title" className="text-xl font-semibold text-ink-primary etched-deep">{formatDate(overflow.date)}</h3>
+            <p className="mt-1 text-xs text-ink-secondary etched">
               {overflow.entries.length} event{overflow.entries.length === 1 ? "" : "s"}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+          <button type="button" onClick={onClose} className="carved-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ink-muted/20 bg-neutral-btn text-ink-muted hover:bg-neutral-btn-hover hover:text-ink-primary" aria-label="Close">x</button>
         </div>
 
         <div className="space-y-3">
@@ -772,21 +772,21 @@ function ShowCalendarOverflowPanel({ overflow, onClose, onPick }: { overflow: Sh
                 key={entry.event_id}
                 type="button"
                 onClick={() => onPick(entry)}
-                className="block w-full rounded-xl border border-white/65 bg-white/46 p-4 text-left hover:bg-white/65"
+                className="block w-full rounded-xl border border-ink-muted/15 bg-marble-shadow/45 p-4 text-left hover:bg-marble-shadow/70"
               >
                 <div className="flex items-center gap-2">
                   <span className={"h-2 w-2 shrink-0 rounded-full " + surface.dot} />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">
                     {STATUS_LABELS[entry.status] ?? entry.status}
                   </span>
                 </div>
-                <div className="mt-2 text-base font-semibold text-neutral-950">
+                <div className="mt-2 text-base font-semibold text-ink-primary etched-deep">
                   {entry.organisation_name ?? entry.title}
                 </div>
                 {entry.organisation_name && entry.organisation_name !== entry.title && (
-                  <div className="mt-1 text-sm text-neutral-700">{entry.title}</div>
+                  <div className="mt-1 text-sm text-ink-secondary etched">{entry.title}</div>
                 )}
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-600">
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-ink-secondary etched">
                   {entry.event_code && <span>{entry.event_code}</span>}
                   {entry.venue && <span>{entry.venue}</span>}
                   {entry.event_owner && <span>{entry.event_owner}</span>}
@@ -803,16 +803,16 @@ function ShowCalendarOverflowPanel({ overflow, onClose, onPick }: { overflow: Sh
 function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOverflowState; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-primary/15" onClick={onClose}>
-      <aside role="dialog" aria-modal="true" aria-labelledby="lifecycle-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-white/70 bg-white/72 p-6 text-neutral-950 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+      <aside role="dialog" aria-modal="true" aria-labelledby="lifecycle-overflow-title" className="h-full w-full max-w-2xl overflow-y-auto scroll-slim rounded-l-2xl border-l border-ink-muted/20 bg-marble-highlight/95 p-6 text-ink-primary shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">View all lifecycle records</div>
-            <h3 id="lifecycle-overflow-title" className="text-xl font-semibold text-neutral-950">{formatDate(overflow.date)}</h3>
-            <p className="mt-1 text-xs text-neutral-600">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">View all lifecycle records</div>
+            <h3 id="lifecycle-overflow-title" className="text-xl font-semibold text-ink-primary etched-deep">{formatDate(overflow.date)}</h3>
+            <p className="mt-1 text-xs text-ink-secondary etched">
               {overflow.entries.length} lifecycle record{overflow.entries.length === 1 ? "" : "s"}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-300/70 bg-white/50 text-neutral-500 hover:bg-white hover:text-neutral-900" aria-label="Close">x</button>
+          <button type="button" onClick={onClose} className="carved-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ink-muted/20 bg-neutral-btn text-ink-muted hover:bg-neutral-btn-hover hover:text-ink-primary" aria-label="Close">x</button>
         </div>
 
         <div className="space-y-3">
@@ -821,24 +821,24 @@ function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOver
               key={entry.id}
               to={`/events/${entry.event_id}`}
               onClick={onClose}
-              className="block rounded-xl border border-white/65 bg-white/46 p-4 hover:bg-white/65"
+              className="block rounded-xl border border-ink-muted/15 bg-marble-shadow/45 p-4 hover:bg-marble-shadow/70"
             >
               <div className="flex items-center gap-2">
                 <span className={"h-2 w-2 shrink-0 rounded-full " + lifecycleDot(entry.milestone_type)} />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted etched">
                   {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
                 </span>
               </div>
-              <div className="mt-2 text-base font-semibold text-neutral-950">
+              <div className="mt-2 text-base font-semibold text-ink-primary etched-deep">
                 {entry.organisation_name ?? entry.title}
               </div>
               {entry.organisation_name && entry.organisation_name !== entry.title && (
-                <div className="mt-1 text-sm text-neutral-700">{entry.title}</div>
+                <div className="mt-1 text-sm text-ink-secondary etched">{entry.title}</div>
               )}
-              <div className="mt-2 text-xs text-neutral-600">
+              <div className="mt-2 text-xs text-ink-secondary etched">
                 {formatScheduledShowDate(entry.event_start_date, entry.event_end_date) ?? "Show date not set"}
               </div>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-600">
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-ink-secondary etched">
                 {entry.event_code && <span>{entry.event_code}</span>}
                 {entry.venues && <span>{entry.venues}</span>}
                 {entry.event_owner && <span>{entry.event_owner}</span>}

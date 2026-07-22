@@ -17,19 +17,19 @@ export default {
       colors: {
         // Marble base tones
         marble: {
-          base: "#FAFAF8",
-          highlight: "#FEFEFE",
-          shadow: "#F4F4F2",
-          btnLight: "#FCFCFB",
-          btnDark: "#F1F1EF",
-          btnHoverLight: "#FFFFFF",
-          btnHoverDark: "#F5F5F3",
+          base: "rgb(var(--marble-base) / <alpha-value>)",
+          highlight: "rgb(var(--marble-highlight) / <alpha-value>)",
+          shadow: "rgb(var(--marble-shadow) / <alpha-value>)",
+          btnLight: "rgb(var(--marble-btn-light) / <alpha-value>)",
+          btnDark: "rgb(var(--marble-btn-dark) / <alpha-value>)",
+          btnHoverLight: "rgb(var(--marble-btn-hover-light) / <alpha-value>)",
+          btnHoverDark: "rgb(var(--marble-btn-hover-dark) / <alpha-value>)",
         },
         // Sage accent family (primary chromatic accent)
         sage: {
-          DEFAULT: "#9CAF88",
-          dark: "#8FA079",
-          text: "#5A6B45",
+          DEFAULT: "rgb(var(--sage) / <alpha-value>)",
+          dark: "rgb(var(--sage-dark) / <alpha-value>)",
+          text: "rgb(var(--sage-text) / <alpha-value>)",
           eventText: "#5D6A4A",
           label: "#9CAF88",
           upnext: "#93A17D",
@@ -42,9 +42,9 @@ export default {
         // CTAs, active/selected states, key icons, and small highlights.
         // Never for status or priority indicators (those keep `status.*`).
         terracotta: {
-          DEFAULT: "#B85C38",
-          dark: "#A64F2E",
-          text: "#96482B",
+          DEFAULT: "rgb(var(--terracotta) / <alpha-value>)",
+          dark: "rgb(var(--terracotta-dark) / <alpha-value>)",
+          text: "rgb(var(--terracotta-text) / <alpha-value>)",
           btnLight: "#F6E7DF",
           btnDark: "#EDD5C8",
           btnHoverLight: "#F9EDE7",
@@ -52,13 +52,13 @@ export default {
         },
         // Text hierarchy
         ink: {
-          primary: "#5C5850",
-          secondary: "#615D55",
-          tertiary: "#726F68",
-          muted: "#9A968E",
-          dayHeader: "#8C8880",
-          sidebarMuted: "#A5A199",
-          overflow: "#C3BFB6",
+          primary: "rgb(var(--ink-primary) / <alpha-value>)",
+          secondary: "rgb(var(--ink-secondary) / <alpha-value>)",
+          tertiary: "rgb(var(--ink-tertiary) / <alpha-value>)",
+          muted: "rgb(var(--ink-muted) / <alpha-value>)",
+          dayHeader: "rgb(var(--ink-day-header) / <alpha-value>)",
+          sidebarMuted: "rgb(var(--ink-sidebar-muted) / <alpha-value>)",
+          overflow: "rgb(var(--ink-overflow) / <alpha-value>)",
         },
         // Event dot palette (neutral categories)
         dot: {
