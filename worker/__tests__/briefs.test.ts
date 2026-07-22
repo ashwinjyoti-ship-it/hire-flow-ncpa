@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../app";
 import { SESSION_COOKIE } from "../lib/sessions";
-import { buildEveningBrief, buildMorningBrief, DEFAULT_BRIEF_SETTINGS } from "../lib/brief";
+import { buildEveningBrief, buildMorningBrief, DEFAULT_BRIEF_SETTINGS, mergeBriefSettings, normalizeBriefEmailRecipients, validateBriefSettings } from "../lib/brief";
 import { renderBriefEmail } from "../lib/brief-html";
 import { istNowHHMM, runBriefJobs } from "../lib/brief-job";
 
@@ -295,6 +295,21 @@ describe("brief email renderer", () => {
   });
 });
 
+describe("brief settings helpers", () => {
+  it("normalises recipient lists and defaults to the ops head", () => {
+    expect(normalizeBriefEmailRecipients(undefined)).toEqual(["nkotwal@ncpamumbai.com"]);
+    expect(normalizeBriefEmailRecipients(["  NKotwal@NCPAMumbai.com ", "ops@example.com", "ops@example.com", ""])).toEqual([
+      "nkotwal@ncpamumbai.com",
+      "ops@example.com",
+    ]);
+  });
+
+  it("rejects enabled digests with no recipients", () => {
+    expect(validateBriefSettings(mergeBriefSettings({ email_enabled: true, email_recipients: [] }))).toMatch(/recipient/i);
+    expect(validateBriefSettings(mergeBriefSettings({ email_enabled: false, email_recipients: [] }))).toBeNull();
+  });
+});
+
 describe("brief scheduler job", () => {
   it("computes IST clock time", () => {
     expect(istNowHHMM(new Date("2026-07-07T02:30:00Z"))).toBe("08:00");
@@ -337,5 +352,65 @@ describe("brief scheduler job", () => {
     expect(DEFAULT_BRIEF_SETTINGS.morning_time).toBe("07:30");
     expect(DEFAULT_BRIEF_SETTINGS.evening_time).toBe("18:30");
     expect(DEFAULT_BRIEF_SETTINGS.email_enabled).toBe(true);
+    expect(DEFAULT_BRIEF_SETTINGS.email_recipients).toEqual(["nkotwal@ncpamumbai.com"]);
+  });
+
+  it("emails configured recipients instead of every report.generate user", async () => {
+    const sent: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("api.resend.com")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { to?: string };
+        if (body.to) sent.push(body.to);
+        return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const inserts: string[] = [];
+      const db = {
+        prepare(sql: string) {
+          let binds: unknown[] = [];
+          return {
+            bind(...values: unknown[]) {
+              binds = values;
+              return this;
+            },
+            async first() {
+              if (sql.includes("FROM app_settings") && binds[0] === "brief_settings") {
+                return {
+                  value: JSON.stringify({
+                    email_enabled: true,
+                    email_recipients: ["nkotwal@ncpamumbai.com", "ops@example.com"],
+                  }),
+                };
+              }
+              // Resend key / mail_from come from env when settings rows are absent.
+              if (sql.includes("FROM app_settings")) return null;
+              if (sql.includes("generated_by IS NULL")) return null;
+              return null;
+            },
+            async all() {
+              return { results: [] };
+            },
+            async run() {
+              if (sql.includes("INSERT INTO daily_reports")) inserts.push(sql);
+              return { success: true };
+            },
+          };
+        },
+      } as unknown as D1Database;
+
+      const res = await runBriefJobs(
+        { DB: db, MAIL_FROM: "NCPA <noreply@example.com>", RESEND_API_KEY: "re_test_key_123456" },
+        new Date("2026-07-07T02:30:00Z")
+      );
+      expect(res.generated).toEqual(["morning"]);
+      expect(inserts).toHaveLength(1);
+      expect(sent).toEqual(["nkotwal@ncpamumbai.com", "ops@example.com"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

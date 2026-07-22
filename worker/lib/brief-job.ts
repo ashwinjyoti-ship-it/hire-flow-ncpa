@@ -4,8 +4,9 @@
  * The cron worker fires every 30 minutes; this job is catch-up-safe and
  * idempotent per (date, type): once IST time passes the configured send time
  * (07:30 / 18:30 by default), the first run that finds no auto-generated
- * snapshot for the day generates one, emails it to every active account
- * holding report.generate via Resend, and drops an in-app notification.
+ * snapshot for the day generates one, emails it via Resend to the addresses
+ * listed in brief_settings.email_recipients (Settings → Email), and drops an
+ * in-app notification for anyone holding report.generate.
  * Manual snapshots (generated_by set) never suppress the automatic one.
  */
 import type { Env } from "../env";
@@ -15,7 +16,6 @@ import { buildBriefContent, getBriefSettings, type BriefType } from "./brief";
 import { briefTitle, renderBriefEmail } from "./brief-html";
 import { sendHtmlEmail } from "./email";
 import { createNotification } from "./operations";
-import { permissionsFromRow } from "./rbac";
 
 type BriefEnv = Pick<Env, "DB" | "MAIL_FROM" | "RESEND_API_KEY"> & { APP_URL?: string };
 
@@ -24,7 +24,7 @@ export function istNowHHMM(now: Date = new Date()): string {
   return new Date(now.getTime() + IST_OFFSET_MINUTES * 60_000).toISOString().slice(11, 16);
 }
 
-// Briefs are addressed to whoever holds the manager capability.
+// In-app "brief ready" pings go to whoever holds the manager capability.
 const BRIEF_RECIPIENT_PERMISSION = "report.generate";
 
 export async function runBriefJobs(env: BriefEnv, now: Date = new Date()): Promise<{ generated: BriefType[] }> {
@@ -65,25 +65,24 @@ export async function runBriefJobs(env: BriefEnv, now: Date = new Date()): Promi
       body: `${briefTitle(content)} — open Reports to view it.`,
     });
 
-    // Email digest to every active account holding the manager permission.
+    // Email digest to the configured report recipients (not every manager login).
     let emailNote = "email disabled";
     if (settings.email_enabled) {
-      const { results: candidates } = await db.prepare(
-        `SELECT email, name, role, permissions FROM users
-         WHERE is_active = 1 AND email IS NOT NULL`
-      ).all<{ email: string; name: string; role: string | null; permissions: string | null }>();
-      const recipients = candidates.filter((u) =>
-        permissionsFromRow(u.permissions, u.role).includes(BRIEF_RECIPIENT_PERMISSION));
-      const html = renderBriefEmail(content, env.APP_URL ?? "");
-      const subject = `${type === "morning" ? "☀️" : "🌙"} ${briefTitle(content)} — NCPA Venue for Hire`;
-      let sent = 0;
-      let failed = 0;
-      for (const r of recipients) {
-        const res = await sendHtmlEmail(env, { to: r.email, subject, html });
-        if (res.ok) sent++;
-        else failed++;
+      const recipients = settings.email_recipients;
+      if (!recipients.length) {
+        emailNote = "email enabled but no recipients configured";
+      } else {
+        const html = renderBriefEmail(content, env.APP_URL ?? "");
+        const subject = `${type === "morning" ? "☀️" : "🌙"} ${briefTitle(content)} — NCPA Venue for Hire`;
+        let sent = 0;
+        let failed = 0;
+        for (const to of recipients) {
+          const res = await sendHtmlEmail(env, { to, subject, html });
+          if (res.ok) sent++;
+          else failed++;
+        }
+        emailNote = `emailed ${sent}/${recipients.length}${failed ? ` (${failed} failed)` : ""}`;
       }
-      emailNote = `emailed ${sent}/${recipients.length}${failed ? ` (${failed} failed)` : ""}`;
     }
 
     await db.prepare(

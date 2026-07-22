@@ -679,6 +679,10 @@ describe("frontend regression guards", () => {
     expect(settings).toContain("showDeactivated");
     expect(settings).toContain("Check List Intervals");
     expect(settings).toContain("ChecklistIntervalsSection");
+    expect(settings).toContain("Report emails (Morning / Evening briefs)");
+    expect(settings).toContain("What Resend sends today");
+    expect(settings).toContain("/api/settings/brief");
+    expect(settings).toContain("nkotwal@ncpamumbai.com");
   });
 
   it("keeps event form navigation at both top and bottom", () => {

@@ -142,12 +142,24 @@ Manual production deploy: Actions → **CI** → **Run workflow** (branch: `main
 
 ## Resend (email)
 
-Email notifications use [Resend](https://resend.com). Configure via either:
+Outbound mail uses [Resend](https://resend.com). Configure via either:
 
 - `RESEND_API_KEY` in `.dev.vars` (local) / Cloudflare secret (production), **or**
-- The admin **Settings → Email** UI, which stores the key and runs a configured-check.
+- The admin **Settings → Email** UI, which stores the key and runs a configured-check / test send.
 
-Until a key is present, email sending gracefully no-ops (delivery is logged). In-app notifications work regardless.
+Until a key is present, email sending gracefully no-ops. In-app notifications (bell) work regardless.
+
+### What Resend is used for today
+
+| Mail | When | Who |
+|---|---|---|
+| **Morning Brief / Evening Debrief** | Scheduler ~07:30 / 18:30 IST (configurable) | Addresses in **Settings → Report recipients** (default `nkotwal@ncpamumbai.com`) |
+| **Password reset** | User requests reset | That user's login email |
+| **Settings test** | Admin clicks “Send test” | Address entered in the test field |
+
+Task due / assignment alerts stay **in-app only** for now. An email notification queue exists in the scheduler but nothing creates `channel: email` rows yet — turning those on is a separate product decision.
+
+The from-address (`MAIL_FROM` / Settings) must use a domain verified in the Resend dashboard.
 
 ## Creating the first Admin
 

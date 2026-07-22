@@ -27,7 +27,15 @@ export interface BriefSettings {
   conflict_window_days: number;
   overdue_list_cap: number;
   email_enabled: boolean;
+  /**
+   * Explicit Resend destinations for Morning Brief / Evening Debrief digests.
+   * Not derived from user accounts — edit in Settings → Email.
+   */
+  email_recipients: string[];
 }
+
+/** Default operational head who receives the twice-daily briefs. */
+export const DEFAULT_BRIEF_EMAIL_RECIPIENTS = ["nkotwal@ncpamumbai.com"] as const;
 
 export const DEFAULT_BRIEF_SETTINGS: BriefSettings = {
   morning_time: "07:30",
@@ -38,19 +46,64 @@ export const DEFAULT_BRIEF_SETTINGS: BriefSettings = {
   conflict_window_days: 30,
   overdue_list_cap: 10,
   email_enabled: true,
+  email_recipients: [...DEFAULT_BRIEF_EMAIL_RECIPIENTS],
 };
 
 export const SETTING_BRIEF_SETTINGS = "brief_settings";
 
+const HHMM = /^\d{2}:\d{2}$/;
+
+/** Deduplicate, trim, and drop empty entries from a recipient list. */
+export function normalizeBriefEmailRecipients(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [...DEFAULT_BRIEF_EMAIL_RECIPIENTS];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") continue;
+    const email = entry.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+export function mergeBriefSettings(partial: Partial<BriefSettings> | null | undefined): BriefSettings {
+  const merged: BriefSettings = {
+    ...DEFAULT_BRIEF_SETTINGS,
+    ...(partial ?? {}),
+    email_recipients: normalizeBriefEmailRecipients(
+      partial?.email_recipients ?? DEFAULT_BRIEF_SETTINGS.email_recipients
+    ),
+  };
+  return merged;
+}
+
 export async function getBriefSettings(db: D1Database): Promise<BriefSettings> {
   const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?")
     .bind(SETTING_BRIEF_SETTINGS).first<{ value: string | null }>();
-  if (!row?.value) return { ...DEFAULT_BRIEF_SETTINGS };
+  if (!row?.value) return { ...DEFAULT_BRIEF_SETTINGS, email_recipients: [...DEFAULT_BRIEF_EMAIL_RECIPIENTS] };
   try {
-    return { ...DEFAULT_BRIEF_SETTINGS, ...(JSON.parse(row.value) as Partial<BriefSettings>) };
+    return mergeBriefSettings(JSON.parse(row.value) as Partial<BriefSettings>);
   } catch {
-    return { ...DEFAULT_BRIEF_SETTINGS };
+    return { ...DEFAULT_BRIEF_SETTINGS, email_recipients: [...DEFAULT_BRIEF_EMAIL_RECIPIENTS] };
   }
+}
+
+/** Validate HH:MM and recipient emails before persisting. Returns null when ok. */
+export function validateBriefSettings(settings: BriefSettings): string | null {
+  if (!HHMM.test(settings.morning_time) || !HHMM.test(settings.evening_time)) {
+    return "Send times must be HH:MM (24-hour IST)";
+  }
+  for (const email of settings.email_recipients) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return `Invalid recipient email: ${email}`;
+    }
+  }
+  if (settings.email_enabled && settings.email_recipients.length === 0) {
+    return "Add at least one report recipient, or turn off brief emails";
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- Shared bits

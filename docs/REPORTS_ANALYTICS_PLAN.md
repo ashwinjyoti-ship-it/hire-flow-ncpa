@@ -111,7 +111,7 @@ On the in-app brief view (not the email): inline **reassign**, **bump priority**
 | Setting | Default |
 |---|---|
 | Morning / evening send times | 07:30 / 18:30 IST |
-| Email recipients (head + optional cc) | Admin + Venue Managers |
+| Email recipients (configurable list) | `nkotwal@ncpamumbai.com` |
 | Stale-enquiry threshold | 3 days |
 | Readiness window / completion threshold | 7 days / 70% |
 | Overdue list cap before aging rollup | 10 rows |
