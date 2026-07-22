@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/can";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
+import { useTheme } from "../lib/theme";
 type Settings = {
   resend: { configured: boolean; keyHint: string | null; source: string };
   mailFrom: string;
@@ -128,6 +129,7 @@ function CollapsibleSection({
 
 export function SettingsPage() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const [apiKey, setApiKey] = useState("");
@@ -244,6 +246,31 @@ export function SettingsPage() {
         <div className="text-sm text-ink-muted">Loading…</div>
       ) : (
         <div className="space-y-6">
+          <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Appearance</h2>
+                <p className="mt-1 text-xs text-ink-muted etched">Use a darker, low-light interface on this device.</p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-3">
+                <span className="text-sm font-medium text-ink-secondary etched">Dark mode</span>
+                <span className="relative inline-flex">
+                  <input
+                    type="checkbox"
+                    checked={theme === "dark"}
+                    onChange={(event) => setTheme(event.target.checked ? "dark" : "light")}
+                    className="peer sr-only"
+                    aria-label="Enable dark mode"
+                  />
+                  <span className="carved h-6 w-11 rounded-full bg-marble-shadow/70 transition-colors peer-checked:bg-sage-dark" aria-hidden />
+                  <span className="pointer-events-none absolute left-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-marble-highlight text-[11px] text-ink-secondary transition-transform peer-checked:translate-x-5 peer-checked:bg-marble-btnLight" aria-hidden>
+                    {theme === "dark" ? "☾" : "☀"}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
+
           {/* Resend / email configuration */}
           <section className="carved-card rounded-2xl bg-marble-highlight/50 p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-ink-muted/10 pb-4">
