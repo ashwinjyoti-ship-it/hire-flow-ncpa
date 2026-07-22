@@ -587,6 +587,11 @@ export function EventDetailPage() {
             <StatusBadge status={e.status} size="md" />
             {showPocAlert && <PocStatusBadge complete={false} />}
             {can(user?.permissions, "event.edit") && (
+              <Link to={`/events/${id}/meeting`} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched">
+                Meeting Form
+              </Link>
+            )}
+            {can(user?.permissions, "event.edit") && (
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
               </Link>

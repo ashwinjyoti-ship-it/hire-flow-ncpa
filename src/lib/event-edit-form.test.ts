@@ -202,8 +202,8 @@ describe("per-venue requirements helpers", () => {
 
   it("aggregates venue requirements for the denormalised event payload", () => {
     const bookings = [
-      { venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "A", piano_required: "No", crew_cards: "2" }, notes: null, schedule_entries: [] },
-      { venue: "TATA", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "B", piano_required: "Yes", crew_cards: "5" }, notes: null, schedule_entries: [] },
+      { venue: "JBT", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "A", fire_safety: "Extinguishers", piano_required: "No", crew_cards: "2" }, notes: null, schedule_entries: [] },
+      { venue: "TATA", booking_status: "tentative", number_of_shows: 1, requirements: { sound: "B", fire_safety: "Fire marshal", piano_required: "Yes", crew_cards: "5" }, notes: null, schedule_entries: [] },
     ] as VenueBookingInputT[];
 
     expect(aggregateRequirements([
@@ -211,6 +211,7 @@ describe("per-venue requirements helpers", () => {
       bookings[1]!.requirements as Record<string, unknown>,
     ])).toEqual({
       sound: "A · B",
+      fire_safety: "Extinguishers · Fire marshal",
       piano_required: "Yes",
       crew_cards: "5",
     });
