@@ -6,6 +6,7 @@
  *   PUT  /settings/resend       — set the Resend API key (stored, never returned in full)
  *   POST /settings/resend/test  — send a test email to verify configuration
  *   DELETE /settings/resend     — clear the Resend API key
+ *   PUT  /settings/brief        — morning/evening times, email on/off, report recipients
  *   PUT  /settings/checklist-intervals — update checklist task due-after-days intervals
  */
 import { Hono } from "hono";
@@ -25,6 +26,14 @@ import {
   syncChecklistDefinitionIntervals,
   type ChecklistIntervals,
 } from "./checklist-intervals";
+import {
+  DEFAULT_BRIEF_SETTINGS,
+  SETTING_BRIEF_SETTINGS,
+  getBriefSettings,
+  mergeBriefSettings,
+  validateBriefSettings,
+  type BriefSettings,
+} from "./brief";
 import { rescheduleAllAutomaticTasks } from "./operations";
 
 export const settingsRoutes = new Hono<AuthEnv>();
@@ -51,6 +60,7 @@ settingsRoutes.get("/", requirePermission("settings.manage"), async (c) => {
   const apiKey = await getResendApiKey(db, c.env);
   const mailFrom = await getMailFrom(db, c.env);
   const checklistIntervals = await getChecklistIntervals(db);
+  const brief = await getBriefSettings(db);
   return c.json({
     resend: {
       configured: Boolean(apiKey),
@@ -59,6 +69,8 @@ settingsRoutes.get("/", requirePermission("settings.manage"), async (c) => {
       source: (await db.prepare("SELECT value FROM app_settings WHERE key = ?").bind(SETTING_RESEND_KEY).first()) ? "settings" : (c.env.RESEND_API_KEY ? "env" : "none"),
     },
     mailFrom,
+    brief,
+    briefDefaults: DEFAULT_BRIEF_SETTINGS,
     checklistIntervals,
     checklistIntervalMeta: CHECKLIST_INTERVAL_META,
     checklistIntervalDefaults: DEFAULT_CHECKLIST_INTERVALS,
@@ -129,6 +141,51 @@ settingsRoutes.put("/mail-from", requirePermission("settings.manage"), async (c)
   void makeId;
   await audit({ db, actor: actorFrom(user), action: "settings.mail_from_updated", detail: { mailFrom: parsed.data.mailFrom } });
   return c.json({ ok: true, mailFrom: parsed.data.mailFrom });
+});
+
+const BriefSettingsSchema = z.object({
+  morning_time: z.string().regex(/^\d{2}:\d{2}$/),
+  evening_time: z.string().regex(/^\d{2}:\d{2}$/),
+  email_enabled: z.boolean(),
+  email_recipients: z.array(z.string()),
+  stale_enquiry_days: z.number().int().min(1).max(90).optional(),
+  readiness_window_days: z.number().int().min(1).max(90).optional(),
+  readiness_threshold: z.number().min(0).max(1).optional(),
+  conflict_window_days: z.number().int().min(1).max(365).optional(),
+  overdue_list_cap: z.number().int().min(1).max(100).optional(),
+});
+
+settingsRoutes.put("/brief", requirePermission("settings.manage"), async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = BriefSettingsSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid brief settings", detail: parsed.error.flatten() }, 400);
+
+  const current = await getBriefSettings(c.env.DB);
+  const next = mergeBriefSettings({
+    ...current,
+    ...parsed.data,
+    email_recipients: parsed.data.email_recipients,
+  } as Partial<BriefSettings>);
+  const invalid = validateBriefSettings(next);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const db = c.env.DB;
+  const user = c.get("user")!;
+  await db.prepare(
+    "INSERT OR REPLACE INTO app_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)"
+  ).bind(SETTING_BRIEF_SETTINGS, JSON.stringify(next), new Date().toISOString(), user.id).run();
+  await audit({
+    db,
+    actor: actorFrom(user),
+    action: "settings.brief_updated",
+    detail: {
+      morning_time: next.morning_time,
+      evening_time: next.evening_time,
+      email_enabled: next.email_enabled,
+      email_recipients: next.email_recipients,
+    },
+  });
+  return c.json({ ok: true, brief: next });
 });
 
 const ChecklistIntervalsSchema = z.object(

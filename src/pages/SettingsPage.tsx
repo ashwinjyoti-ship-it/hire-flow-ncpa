@@ -8,9 +8,23 @@ import { useTheme } from "../lib/theme";
 type Settings = {
   resend: { configured: boolean; keyHint: string | null; source: string };
   mailFrom: string;
+  brief: BriefSettings;
+  briefDefaults: BriefSettings;
   checklistIntervals: ChecklistIntervals;
   checklistIntervalMeta: ChecklistIntervalMeta[];
   checklistIntervalDefaults: ChecklistIntervals;
+};
+
+type BriefSettings = {
+  morning_time: string;
+  evening_time: string;
+  email_enabled: boolean;
+  email_recipients: string[];
+  stale_enquiry_days: number;
+  readiness_window_days: number;
+  readiness_threshold: number;
+  conflict_window_days: number;
+  overdue_list_cap: number;
 };
 
 type ChecklistIntervals = {
@@ -135,6 +149,10 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [mailFrom, setMailFrom] = useState("");
   const [testEmail, setTestEmail] = useState("");
+  const [briefRecipientsText, setBriefRecipientsText] = useState("");
+  const [briefEmailEnabled, setBriefEmailEnabled] = useState(true);
+  const [morningTime, setMorningTime] = useState("07:30");
+  const [eveningTime, setEveningTime] = useState("18:30");
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resetEmail, setResetEmail] = useState("");
@@ -144,6 +162,14 @@ export function SettingsPage() {
   useEffect(() => {
     if (data?.mailFrom) setMailFrom(data.mailFrom);
   }, [data?.mailFrom]);
+
+  useEffect(() => {
+    if (!data?.brief) return;
+    setBriefRecipientsText(data.brief.email_recipients.join("\n"));
+    setBriefEmailEnabled(data.brief.email_enabled);
+    setMorningTime(data.brief.morning_time);
+    setEveningTime(data.brief.evening_time);
+  }, [data?.brief]);
 
   const saveKey = useMutation({
     mutationFn: async (key: string) => {
@@ -215,6 +241,34 @@ export function SettingsPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const saveBrief = useMutation({
+    mutationFn: async () => {
+      const recipients = briefRecipientsText
+        .split(/[\n,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const res = await fetch("/api/settings/brief", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          morning_time: morningTime,
+          evening_time: eveningTime,
+          email_enabled: briefEmailEnabled,
+          email_recipients: recipients,
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to save report email settings");
+    },
+    onSuccess: () => {
+      setMsg("Report email settings saved.");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const adminReset = useMutation({
     mutationFn: async (email: string) => apiPost<{ email: string; temporaryPassword: string }>("/auth/password/admin-reset", { email }),
     onSuccess: (data) => {
@@ -277,97 +331,185 @@ export function SettingsPage() {
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-sage etched">Email Configuration</h2>
                 <p className="mt-1 text-xs text-ink-muted etched">
-                  Configure the notification sender, Resend API key, and an optional test message.
+                  Resend delivers outbound mail. Configure the API key, sender, and who receives the twice-daily reports.
                 </p>
               </div>
               <ConfiguredBadge configured={data?.resend.configured ?? false} />
             </div>
 
             {isAdmin ? (
-              <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-                <div className="min-w-0">
-                  <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Resend API</h3>
-                  {data?.resend.configured && (
-                    <p className="mb-3 text-xs text-ink-secondary etched">
-                      Current key: <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">{data.resend.keyHint}</code>{" "}
-                      <span className="text-ink-muted">(source: {data.resend.source})</span>
-                    </p>
-                  )}
-                  <label className="mb-3 block">
-                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">API key</span>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="re_…"
-                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={saveKey.isPending || apiKey.length < 10}
-                      onClick={() => saveKey.mutate(apiKey)}
-                      className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
-                    >
-                      {saveKey.isPending ? "Saving…" : "Save key"}
-                    </button>
+              <div className="space-y-8">
+                <div className="rounded-xl bg-marble-shadow/25 px-4 py-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">What Resend sends today</h3>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-ink-secondary etched">
+                    <li>
+                      <span className="font-medium text-ink-primary">Morning Brief / Evening Debrief</span>
+                      {" "}— HTML digests at the times below, to the report recipients list (not every login).
+                    </li>
+                    <li>
+                      <span className="font-medium text-ink-primary">Password reset</span>
+                      {" "}— one-time link to the address on the forgot-password form.
+                    </li>
+                    <li>
+                      <span className="font-medium text-ink-primary">Settings test</span>
+                      {" "}— the “Send test” button below, to verify the key and from-address.
+                    </li>
+                    <li>
+                      <span className="font-medium text-ink-primary">Task due / assignment alerts</span>
+                      {" "}— in-app only right now (bell). The email queue exists but is not turned on for those yet.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+                  <div className="min-w-0">
+                    <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Resend API</h3>
                     {data?.resend.configured && (
+                      <p className="mb-3 text-xs text-ink-secondary etched">
+                        Current key: <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">{data.resend.keyHint}</code>{" "}
+                        <span className="text-ink-muted">(source: {data.resend.source})</span>
+                      </p>
+                    )}
+                    <label className="mb-3 block">
+                      <span className="mb-1.5 block text-xs font-semibold text-sage etched">API key</span>
+                      <input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="re_…"
+                        className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        disabled={clearKey.isPending}
-                        onClick={() => clearKey.mutate()}
-                        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                        disabled={saveKey.isPending || apiKey.length < 10}
+                        onClick={() => saveKey.mutate(apiKey)}
+                        className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
                       >
-                        {clearKey.isPending ? "Clearing…" : "Clear"}
+                        {saveKey.isPending ? "Saving…" : "Save key"}
                       </button>
-                    )}
+                      {data?.resend.configured && (
+                        <button
+                          type="button"
+                          disabled={clearKey.isPending}
+                          onClick={() => clearKey.mutate()}
+                          className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                        >
+                          {clearKey.isPending ? "Clearing…" : "Clear"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 border-t border-ink-muted/10 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                    <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Sender & Test</h3>
+                    <label className="mb-3 block">
+                      <span className="mb-1.5 block text-xs font-semibold text-sage etched">From address</span>
+                      <input
+                        type="text"
+                        value={mailFrom}
+                        onChange={(e) => setMailFrom(e.target.value)}
+                        placeholder="NCPA Venue Hire <noreply@example.com>"
+                        className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={saveMailFrom.isPending || !mailFrom.trim() || mailFrom === data?.mailFrom}
+                      onClick={() => saveMailFrom.mutate(mailFrom.trim())}
+                      className="carved-btn-terracotta mb-5 rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
+                    >
+                      {saveMailFrom.isPending ? "Saving…" : "Save from address"}
+                    </button>
+
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold text-sage etched">Send a test email</span>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          type="email"
+                          value={testEmail}
+                          onChange={(e) => setTestEmail(e.target.value)}
+                          className="carved min-w-0 flex-1 rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                          placeholder="recipient@example.com"
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          disabled={sendTest.isPending || !data?.resend.configured || !testEmail.trim()}
+                          onClick={() => sendTest.mutate(testEmail.trim())}
+                          className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
+                        >
+                          {sendTest.isPending ? "Sending…" : "Send test"}
+                        </button>
+                      </div>
+                    </label>
                   </div>
                 </div>
 
-                <div className="min-w-0 border-t border-ink-muted/10 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                  <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">Sender & Test</h3>
-                  <label className="mb-3 block">
-                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">From address</span>
+                <div className="border-t border-ink-muted/10 pt-6">
+                  <h3 className="mb-1 text-sm font-semibold text-ink-primary etched-deep">Report emails (Morning / Evening briefs)</h3>
+                  <p className="mb-4 text-xs text-ink-muted etched">
+                    Digests go only to the addresses listed here. Default is{" "}
+                    <code className="rounded bg-marble-shadow/60 px-1.5 py-0.5 font-mono text-[11px]">
+                      {data?.briefDefaults.email_recipients[0] ?? "nkotwal@ncpamumbai.com"}
+                    </code>
+                    . One address per line (or comma-separated).
+                  </p>
+
+                  <label className="mb-4 flex cursor-pointer items-center gap-3">
                     <input
-                      type="text"
-                      value={mailFrom}
-                      onChange={(e) => setMailFrom(e.target.value)}
-                      placeholder="NCPA Venue Hire <noreply@example.com>"
-                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      type="checkbox"
+                      checked={briefEmailEnabled}
+                      onChange={(e) => setBriefEmailEnabled(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-ink-muted"
+                    />
+                    <span className="text-sm text-ink-secondary etched">
+                      Email briefs automatically when Resend is configured
+                    </span>
+                  </label>
+
+                  <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold text-sage etched">Morning send (IST)</span>
+                      <input
+                        type="time"
+                        value={morningTime}
+                        onChange={(e) => setMorningTime(e.target.value)}
+                        className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold text-sage etched">Evening send (IST)</span>
+                      <input
+                        type="time"
+                        value={eveningTime}
+                        onChange={(e) => setEveningTime(e.target.value)}
+                        className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">Report recipients</span>
+                    <textarea
+                      value={briefRecipientsText}
+                      onChange={(e) => setBriefRecipientsText(e.target.value)}
+                      rows={3}
+                      placeholder="nkotwal@ncpamumbai.com"
+                      className="carved w-full rounded-xl bg-marble-shadow/40 px-4 py-2.5 font-mono text-sm text-ink-primary focus:outline-none"
                     />
                   </label>
+
                   <button
                     type="button"
-                    disabled={saveMailFrom.isPending || !mailFrom.trim() || mailFrom === data?.mailFrom}
-                    onClick={() => saveMailFrom.mutate(mailFrom.trim())}
-                    className="carved-btn-terracotta mb-5 rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
+                    disabled={saveBrief.isPending}
+                    onClick={() => saveBrief.mutate()}
+                    className="carved-btn-terracotta rounded-full bg-terracotta-btn px-5 py-2 text-sm font-semibold text-terracotta-text etched hover:bg-terracotta-btn-hover disabled:opacity-60"
                   >
-                    {saveMailFrom.isPending ? "Saving…" : "Save from address"}
+                    {saveBrief.isPending ? "Saving…" : "Save report email settings"}
                   </button>
-
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold text-sage etched">Send a test email</span>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        value={testEmail}
-                        onChange={(e) => setTestEmail(e.target.value)}
-                        className="carved min-w-0 flex-1 rounded-xl bg-marble-shadow/40 px-4 py-2.5 text-sm text-ink-primary focus:outline-none"
-                        placeholder="recipient@example.com"
-                        autoComplete="off"
-                      />
-                      <button
-                        type="button"
-                        disabled={sendTest.isPending || !data?.resend.configured || !testEmail.trim()}
-                        onClick={() => sendTest.mutate(testEmail.trim())}
-                        className="carved-btn rounded-full bg-neutral-btn px-5 py-2 text-sm font-medium text-ink-secondary etched disabled:opacity-60"
-                      >
-                        {sendTest.isPending ? "Sending…" : "Send test"}
-                      </button>
-                    </div>
-                  </label>
                 </div>
               </div>
             ) : (
