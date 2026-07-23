@@ -9,7 +9,7 @@ import {
   workflowPhaseForChecklistTarget,
   type WorkflowSnapshot,
 } from "../components/LifecycleWorkflowStack";
-import { PocIncompleteBanner, PocStatusBadge } from "../components/PocIncompleteBanner";
+import { PocIncompleteBanner } from "../components/PocIncompleteBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { EVENT_CLOSE_OUT_COPY } from "../lib/event-close-out-copy";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
@@ -206,13 +206,12 @@ export function EventDetailPage() {
   const [closeOutOtherText, setCloseOutOtherText] = useState("");
   const [closeOutNote, setCloseOutNote] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
-  const [deleteModal, setDeleteModal] = useState(false);
+  const [archiveModal, setArchiveModal] = useState(false);
   const [momOpen, setMomOpen] = useState(false);
   const [momCustomNotes, setMomCustomNotes] = useState("");
   const [momMissingPrompt, setMomMissingPrompt] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [keepOrgDetails, setKeepOrgDetails] = useState(true);
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
   const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
@@ -345,9 +344,9 @@ export function EventDetailPage() {
   });
 
   const archiveEvent = useMutation({
-    mutationFn: () => apiDelete(`/events/${id}`, { keep_org_details: keepOrgDetails }),
+    mutationFn: () => apiDelete(`/events/${id}`, { keep_org_details: true }),
     onSuccess: () => {
-      setDeleteModal(false);
+      setArchiveModal(false);
       qc.invalidateQueries({ queryKey: ["events"], exact: false });
       qc.invalidateQueries({ queryKey: ["calendar"], exact: false });
       qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
@@ -590,11 +589,10 @@ export function EventDetailPage() {
     <div>
       <PageHeader
         title={e.organisation_name ?? "—"}
+        titleAccessory={<StatusBadge status={e.status} size="md" />}
         subtitle={e.title}
         actions={
           <>
-            <StatusBadge status={e.status} size="md" />
-            {showPocAlert && <PocStatusBadge complete={false} />}
             {can(user?.permissions, "event.edit") && (
               <Link to={`/events/${id}/meeting`} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched">
                 Meeting Form
@@ -604,21 +602,6 @@ export function EventDetailPage() {
               <Link to={`/events/${id}/edit`} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
                 Edit
               </Link>
-            )}
-            {can(user?.permissions, "event.archive") && (
-              <div className="flex max-w-[12rem] flex-col items-end gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setKeepOrgDetails(true);
-                    setDeleteModal(true);
-                  }}
-                  className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-medium text-status-cancelled etched"
-                >
-                  Delete Record
-                </button>
-                <p className="text-right text-[10px] leading-snug text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.delete}</p>
-              </div>
             )}
           </>
         }
@@ -653,10 +636,12 @@ export function EventDetailPage() {
               nextAction={checklistData?.lifecycle.nextAction ?? null}
               canChangeStatus={canChangeStatus}
               canShowStatusActions={activeWorkflowPhase === "confirm"}
+              canArchiveEvent={can(user?.permissions, "event.archive")}
               savingFieldKey={savingChecklistFieldKey}
               onOpenBlocker={focusChecklistField}
               onGenerateMom={requestGenerateMom}
               onOpenEventFormPrintable={openEventFormExport}
+              onArchiveEvent={() => setArchiveModal(true)}
               onChoose={(status) => {
                 setStatusModal(status);
                 setReason("");
@@ -936,46 +921,39 @@ export function EventDetailPage() {
         />
       )}
 
-      {deleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setDeleteModal(false)}>
-          <div className="carved-card w-full max-w-lg rounded-2xl bg-marble-highlight p-6" onClick={(ev) => ev.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold text-ink-primary etched-deep">Delete Record</h3>
+      {archiveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-primary/20 backdrop-blur-sm" onClick={() => setArchiveModal(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-record-title"
+            className="carved-card w-full max-w-lg rounded-2xl bg-marble-highlight p-6"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h3 id="archive-record-title" className="mb-2 text-lg font-semibold text-ink-primary etched-deep">Archive Record</h3>
             <p className="text-sm text-ink-secondary etched">
-              This will remove the event from calendars, task views, dashboard counts, and active records. The event is archived rather than permanently erased.
+              This removes the event from calendars, task views, dashboard counts, and active records. Use this for duplicate, test, or incorrectly created records—not for genuine lost enquiries.
             </p>
-            <label className="mt-4 flex items-start gap-3 rounded-xl bg-marble-shadow/30 p-3 text-sm text-ink-secondary etched">
-              <input
-                type="checkbox"
-                checked={keepOrgDetails}
-                onChange={(ev) => setKeepOrgDetails(ev.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-terracotta"
-              />
-              <span>
-                <span className="block font-semibold text-ink-primary etched-deep">Keep organisation and POC details</span>
-                <span className="block text-xs text-ink-muted">The client organisation, primary contact, and contact history remain available for future enquiries.</span>
-              </span>
-            </label>
-            {!keepOrgDetails && (
-              <p className="mt-2 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled etched">
-                Organisation and POC details must be kept when deleting an event record.
-              </p>
-            )}
+            <div className="mt-4 rounded-xl bg-marble-shadow/30 p-3 text-sm text-ink-secondary etched">
+              <span className="block font-semibold text-ink-primary etched-deep">Organisation and POC details are retained</span>
+              <span className="mt-1 block text-xs text-ink-muted">The client organisation, primary contact, and contact history remain available for future enquiries.</span>
+            </div>
             {archiveEvent.error && <p role="alert" className="mt-3 text-sm text-status-cancelled etched">{(archiveEvent.error as Error).message}</p>}
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setDeleteModal(false)}
+                onClick={() => setArchiveModal(false)}
                 className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={!keepOrgDetails || archiveEvent.isPending}
+                disabled={archiveEvent.isPending}
                 onClick={() => archiveEvent.mutate()}
                 className="carved-btn rounded-full bg-status-cancelled/10 px-4 py-2 text-sm font-semibold text-status-cancelled etched disabled:opacity-60"
               >
-                {archiveEvent.isPending ? "Deleting..." : "Delete Record"}
+                {archiveEvent.isPending ? "Archiving..." : "Archive Record"}
               </button>
             </div>
           </div>
@@ -1251,10 +1229,12 @@ function LifecyclePanel({
   nextAction,
   canChangeStatus,
   canShowStatusActions,
+  canArchiveEvent,
   savingFieldKey,
   onOpenBlocker,
   onGenerateMom,
   onOpenEventFormPrintable,
+  onArchiveEvent,
   onChoose,
   completion,
   embedded = false,
@@ -1264,10 +1244,12 @@ function LifecyclePanel({
   nextAction: LifecycleAction | null;
   canChangeStatus: boolean;
   canShowStatusActions: boolean;
+  canArchiveEvent: boolean;
   savingFieldKey?: string | null;
   onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
   onGenerateMom: () => void;
   onOpenEventFormPrintable: () => void;
+  onArchiveEvent: () => void;
   onChoose: (status: EventStatus) => void;
   completion: {
     operations: number | null;
@@ -1422,20 +1404,37 @@ function LifecyclePanel({
           </div>
         )}
 
-        {canChangeStatus && canShowStatusActions && regretAction && (
+        {((canChangeStatus && canShowStatusActions && regretAction) || canArchiveEvent) && (
           <div className="mt-4 border-t border-ink-muted/10 pt-3">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Close out</h3>
-            <div className="max-w-md">
-              <button
-                type="button"
-                disabled={!regretAction.allowed}
-                title={regretAction.blockers.join(" ")}
-                onClick={() => onChoose(regretAction.status)}
-                className="rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 carved-btn bg-status-regret/10 text-status-regret"
-              >
-                {lifecycleActionLabel(regretAction.status)}
-              </button>
-              <p className="mt-1.5 text-xs text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.regret}</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              {canChangeStatus && canShowStatusActions && regretAction && (
+                <div className="max-w-md">
+                  <button
+                    type="button"
+                    disabled={!regretAction.allowed}
+                    title={regretAction.blockers.join(" ")}
+                    onClick={() => onChoose(regretAction.status)}
+                    className="rounded-full px-3 py-1.5 text-xs font-medium etched disabled:cursor-not-allowed disabled:opacity-50 carved-btn bg-status-regret/10 text-status-regret"
+                  >
+                    {lifecycleActionLabel(regretAction.status)}
+                  </button>
+                  <p className="mt-1.5 text-xs text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.regret}</p>
+                </div>
+              )}
+              {canArchiveEvent && (
+                <div className="max-w-md border-t border-ink-muted/10 pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted etched">Administrative cleanup</p>
+                  <button
+                    type="button"
+                    onClick={onArchiveEvent}
+                    className="carved-btn rounded-full bg-neutral-btn px-3 py-1.5 text-xs font-medium text-ink-secondary etched"
+                  >
+                    Archive Record
+                  </button>
+                  <p className="mt-1.5 text-xs text-ink-muted etched">{EVENT_CLOSE_OUT_COPY.archive}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
