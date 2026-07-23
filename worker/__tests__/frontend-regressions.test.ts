@@ -139,12 +139,13 @@ describe("frontend regression guards", () => {
     expect(fields).toContain('id={`requirement-field-${paxKey}`}');
   });
 
-  it("offers event record deletion while preserving organisation and POC details", () => {
+  it("offers administrative event archival while preserving organisation and POC details", () => {
     const source = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
 
-    expect(source).toContain("Delete Record");
-    expect(source).toContain("Keep organisation and POC details");
-    expect(source).toContain("keep_org_details: keepOrgDetails");
+    expect(source).toContain("Archive Record");
+    expect(source).toContain("Administrative cleanup");
+    expect(source).toContain("Organisation and POC details are retained");
+    expect(source).toContain("keep_org_details: true");
     expect(source).toContain("event.archive");
     expect(source).toContain("useNavigate");
   });
