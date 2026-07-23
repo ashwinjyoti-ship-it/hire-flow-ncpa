@@ -59,6 +59,14 @@ import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
 import { parseChecklistItemOptions } from "../lib/checklist-cache";
+import {
+  getCurrentPendingInstalmentNumber,
+  instalmentNumberFromFieldKey,
+  instalmentReceivedFieldKey,
+  isInstalmentExpectedDateField,
+  isInstalmentReceivedField,
+  isInstalmentReceivedValue,
+} from "../lib/instalments";
 import { useChecklistUpdate } from "../lib/use-checklist-update";
 import { formatActivityType, type ActivityType, type ScheduleDayInputT } from "../../worker/lib/types";
 import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
@@ -1462,9 +1470,14 @@ function ChecklistModuleView({
   // toggle in the same Financials section). Also used for transitive
   // visibility (Emailer dates hide when Emailer itself is hidden).
   const itemByKey = new Map<string, ChecklistItem>();
+  const allItems: ChecklistItem[] = [];
   for (const items of Object.values(sections)) {
-    for (const item of items) itemByKey.set(item.field_key, item);
+    for (const item of items) {
+      itemByKey.set(item.field_key, item);
+      allItems.push(item);
+    }
   }
+  const currentPendingInstalment = getCurrentPendingInstalmentNumber(allItems);
   return (
     <div className="space-y-4">
       {showGoToTop && <GoToTopButton targetId="event-lifecycle" onBeforeScroll={onGoToTop} />}
@@ -1474,6 +1487,13 @@ function ChecklistModuleView({
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
+            {section === "Financials" && currentPendingInstalment != null && (
+              <div className="mb-4 rounded-xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/10 px-3 py-2 text-xs text-ink-secondary etched">
+                <span className="font-semibold text-status-awaitingApproval">
+                  Installment {currentPendingInstalment} is due — confirm when payment is received.
+                </span>
+              </div>
+            )}
             {section === "Point of Contact" && pocCompletion && !pocCompletion.complete && (
               <div className="mb-4 rounded-xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/10 px-3 py-2 text-xs text-ink-secondary etched">
                 <span className="font-semibold text-status-awaitingApproval">
@@ -1485,7 +1505,29 @@ function ChecklistModuleView({
               </div>
             )}
             <div className="grid gap-3 md:grid-cols-2">
-              {visibleItems.map((item) => (
+              {visibleItems.map((item) => {
+                if (isInstalmentReceivedField(item.field_key)) return null;
+                if (isInstalmentExpectedDateField(item.field_key)) {
+                  const number = instalmentNumberFromFieldKey(item.field_key);
+                  if (!number) return null;
+                  const receivedItem = itemByKey.get(instalmentReceivedFieldKey(number));
+                  if (!receivedItem) return null;
+                  return (
+                    <div key={item.id} className="md:col-span-2">
+                      <InstalmentChecklistRow
+                        expectedItem={item}
+                        receivedItem={receivedItem}
+                        isCurrentPending={currentPendingInstalment === number}
+                        focused={focusedFieldKey === item.field_key || focusedFieldKey === receivedItem.field_key}
+                        canEdit={canEdit}
+                        saving={savingItemId === item.id || savingItemId === receivedItem.id}
+                        finalShowDate={finalShowDate}
+                        onUpdate={onUpdate}
+                      />
+                    </div>
+                  );
+                }
+                return (
                 <Fragment key={item.id}>
                   {section === "Onstage/Emailer" && item.field_key === "emailer" && (
                     <div className="md:col-span-2 mt-1 border-t border-marble-shadow/50 pt-4">
@@ -1504,7 +1546,8 @@ function ChecklistModuleView({
                     />
                   </div>
                 </Fragment>
-              ))}
+                );
+              })}
             </div>
           </section>
         );
@@ -1520,6 +1563,106 @@ function FieldSavingSpinner() {
       role="status"
       aria-label="Saving"
     />
+  );
+}
+
+function InstalmentChecklistRow({
+  expectedItem,
+  receivedItem,
+  isCurrentPending,
+  focused,
+  canEdit,
+  saving,
+  finalShowDate,
+  onUpdate,
+}: {
+  expectedItem: ChecklistItem;
+  receivedItem: ChecklistItem;
+  isCurrentPending: boolean;
+  focused: boolean;
+  canEdit: boolean;
+  saving?: boolean;
+  finalShowDate: string | null;
+  onUpdate: (item: ChecklistItem, value: string | null, status?: string) => void;
+}) {
+  const disabled = !canEdit;
+  const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-80" : "");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const received = isInstalmentReceivedValue(receivedItem.value);
+
+  const commitDate = (next: string | null) => {
+    if (next === (expectedItem.value ?? null)) return;
+    const warning = getPostShowDateWarning(expectedItem.field_key, next, finalShowDate);
+    if (warning) {
+      setValidationError(warning);
+      return;
+    }
+    onUpdate(expectedItem, next);
+  };
+
+  return (
+    <div
+      id={`checklist-${expectedItem.field_key}`}
+      className={
+        "block rounded-xl bg-marble-shadow/20 p-3 transition-shadow " +
+        (isCurrentPending ? "ring-2 ring-status-awaitingApproval/70 ring-offset-2 ring-offset-marble-highlight " : "") +
+        (focused ? "ring-2 ring-sage/70 ring-offset-2 ring-offset-marble-highlight " : "") +
+        (saving ? " ring-1 ring-sage/30" : "")
+      }
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ink-secondary etched">{expectedItem.label}</span>
+        <span className="flex items-center gap-1.5">
+          {saving ? <FieldSavingSpinner /> : null}
+          {isCurrentPending ? (
+            <span className="rounded-full bg-status-awaitingApproval/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-status-awaitingApproval">
+              Due now
+            </span>
+          ) : null}
+          <span className={"rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider " + statusClass(expectedItem.status)}>
+            {expectedItem.status.replace(/_/g, " ")}
+          </span>
+        </span>
+      </span>
+      <div className="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <label className="block">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-ink-muted etched">Expected date</span>
+          <input
+            disabled={disabled}
+            type="date"
+            lang="en-GB"
+            value={expectedItem.value ?? ""}
+            aria-busy={saving || undefined}
+            aria-invalid={Boolean(validationError)}
+            onChange={(ev) => {
+              if (validationError) setValidationError(null);
+              commitDate(ev.target.value || null);
+            }}
+            className={baseClass}
+          />
+        </label>
+        <label className="flex items-center gap-2 rounded-xl bg-marble-shadow/30 px-3 py-2 text-sm text-ink-primary">
+          <input
+            disabled={disabled}
+            type="checkbox"
+            checked={received}
+            aria-busy={saving || undefined}
+            onChange={(ev) => onUpdate(
+              receivedItem,
+              ev.target.checked ? "true" : null,
+              ev.target.checked ? "completed" : "not_started",
+            )}
+            className="h-4 w-4 accent-terracotta"
+          />
+          <span className="text-xs font-semibold text-ink-secondary etched">Payment received</span>
+        </label>
+      </div>
+      {validationError && (
+        <span role="alert" className="mt-2 block text-xs font-medium text-red-700">
+          {validationError}
+        </span>
+      )}
+    </div>
   );
 }
 

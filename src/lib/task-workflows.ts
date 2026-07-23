@@ -315,6 +315,10 @@ function inferTaskWorkTarget(task: Pick<TaskLike, "source_module" | "source_fiel
   if (haystack.includes("confirmation") || haystack.includes("letter")) return { module: "operations", fieldKey: "confirmation_made" };
   if (haystack.includes("proforma") || haystack.includes("invoice")) return { module: "operations", fieldKey: "proforma_invoice" };
   if (haystack.includes("installment") || haystack.includes("instalment") || haystack.includes("payment") || haystack.includes("deposit")) {
+    if (task.source_field_key && /^installment_\d_expected_date$/.test(task.source_field_key)) {
+      const number = task.source_field_key.match(/^installment_(\d)_expected_date$/)?.[1];
+      if (number) return { module: "operations", fieldKey: `installment_${number}_received` };
+    }
     return { module: "operations", fieldKey: "payment_status" };
   }
   if (haystack.includes("technical") || haystack.includes("meeting")) return { module: "operations", fieldKey: "technical_meeting_date" };

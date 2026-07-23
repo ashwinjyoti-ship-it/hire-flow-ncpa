@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileInstalmentTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -1781,5 +1781,53 @@ describe("reconcileTentativeVenuePaymentTasksForEvent", () => {
     expect(update?.binds).toContain("completed");
     expect(update?.binds).toContain("venue-booking:vb_1:payment-follow-up");
     expect(update?.binds).toContain("Completed automatically because the venue booking was confirmed.");
+  });
+});
+
+describe("instalment task reconciliation", () => {
+  it("does not create a follow-up task before the expected date", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const instalmentRows = [
+      { id: "exp1", field_key: "installment_1_expected_date", value: "2026-08-01", label: "Installment 1 — Expected Date", triggers_task: JSON.stringify({ rule: "instalment", title: "Follow up: Installment 1", due_after_days: 0 }) },
+      { id: "rec1", field_key: "installment_1_received", value: null, label: "Installment 1 — Received", triggers_task: null },
+      { id: "exp2", field_key: "installment_2_expected_date", value: null, label: "Installment 2 — Expected Date", triggers_task: JSON.stringify({ rule: "instalment", title: "Follow up: Installment 2", due_after_days: 0 }) },
+      { id: "rec2", field_key: "installment_2_received", value: null, label: "Installment 2 — Received", triggers_task: null },
+      { id: "exp3", field_key: "installment_3_expected_date", value: null, label: "Installment 3 — Expected Date", triggers_task: null },
+      { id: "rec3", field_key: "installment_3_received", value: null, label: "Installment 3 — Received", triggers_task: null },
+      { id: "exp4", field_key: "installment_4_expected_date", value: null, label: "Installment 4 — Expected Date", triggers_task: null },
+      { id: "rec4", field_key: "installment_4_received", value: null, label: "Installment 4 — Received", triggers_task: null },
+      { id: "exp5", field_key: "installment_5_expected_date", value: null, label: "Installment 5 — Expected Date", triggers_task: null },
+      { id: "rec5", field_key: "installment_5_received", value: null, label: "Installment 5 — Received", triggers_task: null },
+    ];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async first() {
+            if (sql.includes("field_key = 'instalment'")) return { value: "Yes" };
+            if (sql.includes("event_owner_id")) return { event_owner_id: null };
+            return null;
+          },
+          async all() {
+            if (sql.includes("installment_1_expected_date")) return { results: instalmentRows };
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileInstalmentTasksForEvent(db, "ev_1", "user_1", "2026-07-23");
+
+    expect(writes.some((write) => write.sql.includes("INSERT INTO tasks"))).toBe(false);
+    expect(writes.some((write) => write.binds.includes("Cancelled automatically because the installment follow-up is not due yet."))).toBe(true);
   });
 });

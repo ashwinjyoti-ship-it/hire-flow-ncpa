@@ -36,6 +36,18 @@ import {
   PROFORMA_SENT_REQUIRES_COSTING_MESSAGE,
 } from "./financial-sequence";
 import {
+  INSTALMENT_COUNT,
+  INSTALMENT_EXPECTED_DATE_FIELD_KEYS,
+  INSTALMENT_RECEIVED_FIELD_KEYS,
+  instalmentExpectedDateFieldKey,
+  instalmentExpectedDateStatus,
+  instalmentNumberFromFieldKey,
+  instalmentReceivedFieldKey,
+  isInstalmentExpectedDateField,
+  isInstalmentReceivedField,
+  isInstalmentReceivedValue,
+} from "./instalments";
+import {
   blockersForFileClose,
   FILE_CLOSE_CANCEL_NOTE,
   formatFileCloseBlockedMessage,
@@ -298,6 +310,25 @@ async function completeAutomaticTasksForChecklistItem(
        WHERE event_id = ? AND source_checklist_item_id = ? AND source_rule = ?
          AND status IN ('open','in_progress')`
     ).bind(now, userId, completionNote, now, eventId, checklistItemId, rule).run();
+  }
+}
+
+async function reopenAutomaticallyCompletedTasksForChecklistItem(
+  db: D1Database,
+  eventId: string,
+  checklistItemId: string,
+  rules: string[],
+): Promise<void> {
+  if (!rules.length) return;
+  const now = new Date().toISOString();
+  for (const rule of rules) {
+    await db.prepare(
+      `UPDATE tasks
+       SET status = 'open', completed_at = NULL, completed_by = NULL, completion_note = NULL, updated_at = ?
+       WHERE event_id = ? AND source_checklist_item_id = ? AND source_rule = ?
+         AND task_type = 'automatic' AND status = 'completed'
+         AND completion_note LIKE 'Completed automatically%'`
+    ).bind(now, eventId, checklistItemId, rule).run();
   }
 }
 
@@ -575,7 +606,15 @@ export async function updateChecklistItem(args: {
 
   const now = new Date().toISOString();
   const value = args.value === undefined ? current.value : args.value;
-  const status = args.status ?? itemStatusForValue({ field_type: current.field_type, value, is_computed: current.is_computed });
+  let status = args.status ?? itemStatusForValue({ field_type: current.field_type, value, is_computed: current.is_computed });
+  if (isInstalmentReceivedField(current.field_key)) {
+    status = isInstalmentReceivedValue(value) ? "completed" : "not_started";
+  } else if (isInstalmentExpectedDateField(current.field_key)) {
+    const receivedItem = await db.prepare(
+      "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = ?"
+    ).bind(current.event_id, instalmentReceivedFieldKey(instalmentNumberFromFieldKey(current.field_key)!)).first<{ value: string | null }>();
+    status = instalmentExpectedDateStatus(value, receivedItem?.value);
+  }
 
   // Financial sequence: Proforma Sent requires Costing Email = Yes.
   if (current.field_key === "proforma_invoice" && isProformaMarkedSent(value)) {
@@ -682,7 +721,16 @@ export async function updateChecklistItem(args: {
   await syncRequirementsFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await syncPocFromChecklistItem(db, current.event_id, current.field_key, value ?? null);
   await reconcilePocTaskForEvent(db, current.event_id);
-  await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
+  if (
+    isInstalmentExpectedDateField(current.field_key)
+    || isInstalmentReceivedField(current.field_key)
+    || current.field_key === "instalment"
+  ) {
+    await syncInstalmentStatusesForEvent(db, current.event_id, now);
+    await reconcileInstalmentTasksForEvent(db, current.event_id, user.id);
+  } else {
+    await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
+  }
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
   if (current.field_key === "file_closed" || current.field_key === "feedback_sent" || current.module === "accounts") {
     await reconcileWorkflowPhaseTasksForEvent(db, current.event_id);
@@ -1021,11 +1069,8 @@ async function syncEmailerDependentChecklistFromEvent(db: D1Database, eventId: s
 
 /** Installment date fields only apply when Instalment = Yes. */
 export const INSTALMENT_DEPENDENT_FIELD_KEYS = [
-  "installment_1_expected_date",
-  "installment_2_expected_date",
-  "installment_3_expected_date",
-  "installment_4_expected_date",
-  "installment_5_expected_date",
+  ...INSTALMENT_EXPECTED_DATE_FIELD_KEYS,
+  ...INSTALMENT_RECEIVED_FIELD_KEYS,
 ] as const;
 
 export async function syncInstalmentDependentChecklist(
@@ -1034,46 +1079,179 @@ export async function syncInstalmentDependentChecklist(
   instalmentValue: string | null | undefined,
 ): Promise<void> {
   const now = new Date().toISOString();
+  const fieldList = INSTALMENT_DEPENDENT_FIELD_KEYS.map((key) => `'${key}'`).join(", ");
   if (normalise(instalmentValue) !== "yes") {
     await db.prepare(
       `UPDATE checklist_items
        SET status = 'not_applicable', last_updated_at = ?
        WHERE event_id = ?
-         AND field_key IN (
-           'installment_1_expected_date',
-           'installment_2_expected_date',
-           'installment_3_expected_date',
-           'installment_4_expected_date',
-           'installment_5_expected_date'
-         )
+         AND field_key IN (${fieldList})
          AND status != 'not_applicable'`
     ).bind(now, eventId).run();
     return;
   }
 
+  await syncInstalmentStatusesForEvent(db, eventId, now);
+}
+
+type InstalmentRow = {
+  number: number;
+  expectedItemId: string;
+  expectedDate: string | null;
+  receivedItemId: string;
+  received: string | null;
+  triggersTask: string | null;
+  label: string;
+};
+
+async function loadInstalmentRows(db: D1Database, eventId: string): Promise<InstalmentRow[]> {
   const { results } = await db.prepare(
-    `SELECT ci.id, ci.value, cd.field_type, cd.is_computed
+    `SELECT ci.id, ci.field_key, ci.value, ci.label, cd.triggers_task
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.event_id = ?
-       AND ci.field_key IN (
-         'installment_1_expected_date',
-         'installment_2_expected_date',
-         'installment_3_expected_date',
-         'installment_4_expected_date',
-         'installment_5_expected_date'
-       )`
-  ).bind(eventId).all<{ id: string; value: string | null; field_type: string; is_computed: number }>();
+       AND ci.field_key IN (${INSTALMENT_DEPENDENT_FIELD_KEYS.map((key) => `'${key}'`).join(", ")})`
+  ).bind(eventId).all<{
+    id: string;
+    field_key: string;
+    value: string | null;
+    label: string;
+    triggers_task: string | null;
+  }>();
 
-  for (const row of results ?? []) {
-    const status = itemStatusForValue({
-      field_type: row.field_type,
-      value: row.value,
-      is_computed: row.is_computed,
+  const byKey = new Map((results ?? []).map((row) => [row.field_key, row]));
+  const rows: InstalmentRow[] = [];
+  for (let number = 1; number <= INSTALMENT_COUNT; number += 1) {
+    const expected = byKey.get(instalmentExpectedDateFieldKey(number));
+    const received = byKey.get(instalmentReceivedFieldKey(number));
+    if (!expected || !received) continue;
+    rows.push({
+      number,
+      expectedItemId: expected.id,
+      expectedDate: expected.value,
+      receivedItemId: received.id,
+      received: received.value,
+      triggersTask: expected.triggers_task,
+      label: expected.label,
     });
+  }
+  return rows;
+}
+
+export async function syncInstalmentStatusesForEvent(
+  db: D1Database,
+  eventId: string,
+  now = new Date().toISOString(),
+): Promise<void> {
+  const rows = await loadInstalmentRows(db, eventId);
+  for (const row of rows) {
+    const expectedStatus = instalmentExpectedDateStatus(row.expectedDate, row.received);
     await db.prepare(
       "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
-    ).bind(status, now, row.id).run();
+    ).bind(expectedStatus, now, row.expectedItemId).run();
+
+    const receivedStatus = isInstalmentReceivedValue(row.received) ? "completed" : "not_started";
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
+    ).bind(receivedStatus, now, row.receivedItemId).run();
+  }
+}
+
+export async function reconcileInstalmentTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  createdBy: string | null = null,
+  today = todayIso(),
+): Promise<void> {
+  const now = new Date().toISOString();
+  const instalment = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'instalment'"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (normalise(instalment?.value) !== "yes") {
+    for (const row of await loadInstalmentRows(db, eventId)) {
+      await cancelAutomaticTasksForChecklistItem(
+        db,
+        eventId,
+        row.expectedItemId,
+        ["instalment"],
+        "Cancelled automatically because instalments are not in use for this event.",
+      );
+    }
+    return;
+  }
+
+  const rows = await loadInstalmentRows(db, eventId);
+  for (const row of rows) {
+    const expectedDate = (row.expectedDate ?? "").trim();
+    const received = isInstalmentReceivedValue(row.received);
+    const checklistItem: ChecklistItemRow = {
+      id: row.expectedItemId,
+      event_id: eventId,
+      definition_id: "",
+      module: "operations",
+      section: "Financials",
+      field_key: instalmentExpectedDateFieldKey(row.number),
+      label: row.label,
+      status: instalmentExpectedDateStatus(row.expectedDate, row.received),
+      value: row.expectedDate,
+      due_date: row.expectedDate,
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: now,
+      last_updated_by: null,
+      field_type: "date",
+      options: null,
+      is_computed: 0,
+      triggers_task: row.triggersTask,
+      visibility_rule: "onlyWhen(instalment == Yes)",
+      sort_order: 0,
+    };
+
+    if (!expectedDate || received) {
+      if (received && createdBy) {
+        await completeAutomaticTasksForChecklistItem(
+          db,
+          eventId,
+          row.expectedItemId,
+          ["instalment"],
+          createdBy,
+          "Completed automatically from checklist update.",
+        );
+      } else if (received) {
+        await completeAutomaticTasksForChecklistItem(
+          db,
+          eventId,
+          row.expectedItemId,
+          ["instalment"],
+          "system",
+          "Completed automatically from checklist update.",
+        );
+      } else {
+        await cancelAutomaticTasksForChecklistItem(
+          db,
+          eventId,
+          row.expectedItemId,
+          ["instalment"],
+          expectedDate
+            ? "Cancelled automatically because the expected date was cleared."
+            : "Cancelled automatically because no expected date is set.",
+        );
+      }
+      continue;
+    }
+
+    if (expectedDate > today) {
+      await cancelAutomaticTasksForChecklistItem(
+        db,
+        eventId,
+        row.expectedItemId,
+        ["instalment"],
+        "Cancelled automatically because the installment follow-up is not due yet.",
+      );
+      continue;
+    }
+
+    await maybeCreateTaskForChecklistItem(db, checklistItem, createdBy);
   }
 }
 
@@ -1785,6 +1963,11 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   }
   if (!rule?.rule) return;
 
+  if (rule.rule === "instalment" && isInstalmentExpectedDateField(item.field_key)) {
+    const dueDateValue = (item.due_date ?? item.value ?? "").trim();
+    if (!dueDateValue || dueDateValue > todayIso()) return;
+  }
+
   const workflow = await resolveEventWorkflowPhase(db, item.event_id);
   if (workflow && !canGenerateTaskForPhase(rule.rule, workflow.activePhase)) {
     return;
@@ -1861,6 +2044,20 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined, userId: string): Promise<void> {
   await maybeCompleteAccountsFileTasks(db, eventId, fieldKey, value, userId);
 
+  if (isInstalmentReceivedField(fieldKey)) {
+    const number = instalmentNumberFromFieldKey(fieldKey);
+    if (!number) return;
+    const expectedItemId = await getChecklistItemIdByFieldKey(db, eventId, instalmentExpectedDateFieldKey(number));
+    if (!expectedItemId) return;
+    const note = "Completed automatically from checklist update.";
+    if (isInstalmentReceivedValue(value)) {
+      await completeAutomaticTasksForChecklistItem(db, eventId, expectedItemId, ["instalment"], userId, note);
+    } else {
+      await reopenAutomaticallyCompletedTasksForChecklistItem(db, eventId, expectedItemId, ["instalment"]);
+    }
+    return;
+  }
+
   const v = normalise(value);
   const completionByField: Record<string, { rule: string; complete: boolean }> = {
     approval_required: { rule: "approval_followup", complete: v === "not required" },
@@ -1873,7 +2070,6 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
     minutes_of_meeting: { rule: "technical_meeting", complete: v === "yes" },
     file_sent_to_accounts: { rule: "send_file_to_accounts", complete: Boolean(v) },
     tds_certificate_sent_to_accounts: { rule: "tds_send_to_accounts", complete: Boolean(v) },
-    payment_status: { rule: "instalment", complete: v === "completed" },
   };
   const action = completionByField[fieldKey];
   if (!action) return;
@@ -2397,8 +2593,10 @@ export async function rescheduleAutomaticTasksForEvent(
      WHERE ci.event_id = ? AND ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`
   ).bind(eventId).all<ChecklistItemRow>();
   for (const item of results ?? []) {
+    if (item.triggers_task && isInstalmentExpectedDateField(item.field_key)) continue;
     await maybeCreateTaskForChecklistItem(db, item, userId);
   }
+  await reconcileInstalmentTasksForEvent(db, eventId, userId);
   await reconcileFileToAccountsReminderForEvent(db, eventId);
   await reconcileWorkflowPhaseTasksForEvent(db, eventId);
 }
@@ -2493,9 +2691,16 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
          completed_by = CASE WHEN due_date <= ? THEN completed_by ELSE NULL END,
          last_updated_at = ?
      WHERE due_date IS NOT NULL
-       AND definition_id IN (SELECT id FROM checklist_definitions WHERE field_type = 'date')`
+       AND definition_id IN (SELECT id FROM checklist_definitions WHERE field_type = 'date')
+       AND field_key NOT IN (
+         'installment_1_expected_date',
+         'installment_2_expected_date',
+         'installment_3_expected_date',
+         'installment_4_expected_date',
+         'installment_5_expected_date'
+       )`
   ).bind(today, today, now, today, now).run();
-  for (const row of datedEvents) await recalculateEventCompletion(db, row.event_id);
+  for (const row of datedEvents ?? []) await recalculateEventCompletion(db, row.event_id);
 
   tasks += await rescheduleAllAutomaticTasks(db, today);
 
@@ -2528,13 +2733,15 @@ export async function runOperationalJobs(db: D1Database): Promise<{ tasks: numbe
 
 export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayIso()): Promise<number> {
   let changed = 0;
+  const now = new Date().toISOString();
   const { results: items } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
      JOIN checklist_definitions cd ON cd.id = ci.definition_id
      WHERE ci.value IS NOT NULL AND ci.value != '' AND cd.triggers_task IS NOT NULL`
   ).all<ChecklistItemRow>();
-  for (const item of items) {
+  for (const item of items ?? []) {
+    if (item.triggers_task && isInstalmentExpectedDateField(item.field_key)) continue;
     await maybeCreateTaskForChecklistItem(db, item, null);
     changed++;
   }
@@ -2547,6 +2754,8 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
   ).all<{ id: string }>();
   for (const row of activeEvents ?? []) {
     changed += await reconcileWorkflowPhaseTasksForEvent(db, row.id, today);
+    await syncInstalmentStatusesForEvent(db, row.id, now);
+    await reconcileInstalmentTasksForEvent(db, row.id, null, today);
   }
   return changed;
 }

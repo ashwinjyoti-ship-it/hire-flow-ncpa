@@ -10,6 +10,14 @@ import {
   type EventLifecycleRow,
 } from "../../worker/lib/operations";
 import type { EventStatus } from "../../worker/lib/state-machine";
+import {
+  instalmentExpectedDateFieldKey,
+  instalmentExpectedDateStatus,
+  instalmentNumberFromFieldKey,
+  instalmentReceivedFieldKey,
+  isInstalmentExpectedDateField,
+  isInstalmentReceivedField,
+} from "./instalments";
 
 export type ChecklistCacheItem = {
   id: string;
@@ -55,6 +63,16 @@ const INSTALMENT_DATE_KEYS = new Set([
   "installment_4_expected_date",
   "installment_5_expected_date",
 ]);
+
+const INSTALMENT_RECEIVED_KEYS = new Set([
+  "installment_1_received",
+  "installment_2_received",
+  "installment_3_received",
+  "installment_4_received",
+  "installment_5_received",
+]);
+
+const INSTALMENT_DEPENDENT_KEYS = new Set([...INSTALMENT_DATE_KEYS, ...INSTALMENT_RECEIVED_KEYS]);
 
 /** Controllers that trigger optimistic dependent-status updates (audit: keep in sync with seed visibility_rule). */
 export const OPTIMISTIC_GATE_CONTROLLERS = [
@@ -107,7 +125,8 @@ export function optimisticFieldStatus(
 ): string {
   if (status) return status;
   if (fieldType === "dropdown" || fieldType === "status") return optimisticDropdownStatus(value);
-  if (fieldType === "date" && value) return value <= todayIso() ? "completed" : "in_progress";
+  if (fieldType === "date" && value) return value <= todayIso() ? "in_progress" : "in_progress";
+  if (fieldType === "checkbox") return value === "true" ? "completed" : "not_started";
   return value ? "completed" : "not_started";
 }
 
@@ -257,6 +276,25 @@ export function applyOptimisticChecklistUpdate(
   forEachChecklistItem(next, (row) => {
     if (row.id !== item.id) return;
     row.value = value;
+    if (isInstalmentReceivedField(item.field_key)) {
+      row.status = optimisticFieldStatus(item.field_type, value, status);
+      const number = instalmentNumberFromFieldKey(item.field_key);
+      if (number) {
+        forEachChecklistItem(next, (expectedRow) => {
+          if (expectedRow.field_key !== instalmentExpectedDateFieldKey(number)) return;
+          expectedRow.status = instalmentExpectedDateStatus(expectedRow.value, value);
+        });
+      }
+      updated = true;
+      return;
+    }
+    if (isInstalmentExpectedDateField(item.field_key)) {
+      const receivedValue = checklistValueByKey(next, instalmentReceivedFieldKey(instalmentNumberFromFieldKey(item.field_key)!));
+      row.status = instalmentExpectedDateStatus(value, receivedValue ?? null);
+      if (item.field_type === "date") row.due_date = value;
+      updated = true;
+      return;
+    }
     row.status = optimisticFieldStatus(item.field_type, value, status);
     if (item.field_type === "date") row.due_date = value;
     updated = true;
@@ -287,7 +325,7 @@ export function applyOptimisticChecklistUpdate(
   }
   if (item.field_key === "instalment") {
     setDependentStatuses(
-      INSTALMENT_DATE_KEYS,
+      INSTALMENT_DEPENDENT_KEYS,
       v === "yes" ? "not_started" : "not_applicable",
       next,
     );

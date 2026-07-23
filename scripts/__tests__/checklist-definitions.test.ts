@@ -30,16 +30,21 @@ describe("financials checklist definitions", () => {
     expect(payment?.default_value).toBe("Incomplete");
   });
 
-  it("keeps costing_email, proforma_invoice, instalment, and installment date fields", () => {
+  it("keeps costing_email, proforma_invoice, instalment, installment dates, and received checkboxes", () => {
     for (const key of [
       "costing_email",
       "proforma_invoice",
       "instalment",
       "installment_1_expected_date",
+      "installment_1_received",
       "installment_2_expected_date",
+      "installment_2_received",
       "installment_3_expected_date",
+      "installment_3_received",
       "installment_4_expected_date",
+      "installment_4_received",
       "installment_5_expected_date",
+      "installment_5_received",
     ]) {
       expect(fieldKeys).toContain(key);
     }
