@@ -821,7 +821,7 @@ export function EventDetailPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-1">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {([
           ["tasks", `Tasks${pendingTasks.length ? ` (${pendingTasks.length})` : ""}`] as const,
           ["venues", venuesAndScheduleTabLabel(
@@ -836,7 +836,9 @@ export function EventDetailPage() {
             onClick={() => selectTab(key)}
             className={
               "rounded-full px-4 py-1.5 text-sm font-medium etched " +
-              (visibleTab === key ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
+              (visibleTab === key
+                ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
+                : "carved-btn border border-ink-muted/25 bg-neutral-btn text-ink-secondary hover:bg-neutral-btn-hover")
             }
           >
             {label}
@@ -847,7 +849,9 @@ export function EventDetailPage() {
           onClick={() => selectTab("accounts")}
           className={
             "rounded-2xl px-3 py-1 text-center etched " +
-            (visibleTab === "accounts" ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta" : "text-ink-secondary hover:bg-marble-shadow/40")
+            (visibleTab === "accounts"
+              ? "bg-terracotta-btn text-terracotta-text carved-btn-terracotta"
+              : "carved-btn border border-ink-muted/25 bg-neutral-btn text-ink-secondary hover:bg-neutral-btn-hover")
           }
         >
           <span className="block text-xs font-semibold leading-tight">
