@@ -1787,6 +1787,12 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
   }
   if (!rule?.rule) return;
 
+  // Entering the technical meeting date is the scheduling action; do not keep
+  // (or recreate) a follow-up task once that date is on the checklist.
+  if (rule.rule === "technical_meeting" && item.field_key === "technical_meeting_date") {
+    return;
+  }
+
   const workflow = await resolveEventWorkflowPhase(db, item.event_id);
   if (workflow && !canGenerateTaskForPhase(rule.rule, workflow.activePhase)) {
     return;
@@ -1979,6 +1985,51 @@ export function taskRulesCompletedByLifecycleTransition(from: EventStatus, to: E
   if (to === "approved" || to === "confirmed") rules.add("approval_followup");
   if (to === "confirmed") rules.add("confirmation_letter");
   return Array.from(rules);
+}
+
+/** Close stale open technical-meeting tasks when the meeting date is already set. */
+export async function reconcileTechnicalMeetingTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'technical_meeting_date' LIMIT 1"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!normalise(row?.value)) return 0;
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completed_by = COALESCE(completed_by, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because Technical Meeting Date is set.'),
+         updated_at = ?
+     WHERE event_id = ? AND source_rule = 'technical_meeting' AND status IN ('open','in_progress')`
+  ).bind(now, userId, now, eventId).run();
+  return result.meta?.changes ?? 0;
+}
+
+export async function reconcileAllTechnicalMeetingTasks(db: D1Database): Promise<number> {
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because Technical Meeting Date is set.'),
+         updated_at = ?
+     WHERE source_rule = 'technical_meeting'
+       AND status IN ('open','in_progress')
+       AND EXISTS (
+         SELECT 1
+         FROM checklist_items ci
+         WHERE ci.event_id = tasks.event_id
+           AND ci.field_key = 'technical_meeting_date'
+           AND trim(COALESCE(ci.value, '')) != ''
+       )`
+  ).bind(now, now).run();
+  return result.meta?.changes ?? 0;
 }
 
 export async function completeTasksForSourceRules(
@@ -2401,6 +2452,7 @@ export async function rescheduleAutomaticTasksForEvent(
   for (const item of results ?? []) {
     await maybeCreateTaskForChecklistItem(db, item, userId);
   }
+  await reconcileTechnicalMeetingTasksForEvent(db, eventId, userId);
   await reconcileFileToAccountsReminderForEvent(db, eventId);
   await reconcileWorkflowPhaseTasksForEvent(db, eventId);
 }
@@ -2544,6 +2596,7 @@ export async function rescheduleAllAutomaticTasks(db: D1Database, today = todayI
   changed += await reconcileAllPocTasks(db, today);
   changed += await reconcileAllTentativeVenuePaymentTasks(db, today);
   changed += await reconcileAllReadinessTasks(db);
+  changed += await reconcileAllTechnicalMeetingTasks(db);
   const { results: activeEvents } = await db.prepare(
     `SELECT id FROM events WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')`
   ).all<{ id: string }>();
