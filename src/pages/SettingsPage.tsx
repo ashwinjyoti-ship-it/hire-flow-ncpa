@@ -564,9 +564,9 @@ export function SettingsPage() {
           {isAdmin && (
             <CollapsibleSection
               title="Master Lists"
-              description="Manage the Caterer and Decorator option lists used in the Add Event form. Deactivating soft-deletes the option (existing events keep their value)."
+              description="Manage Caterer, Decorator, and Genre Head option lists. Deactivating soft-deletes an option (existing events keep their value)."
             >
-              <MasterListsSection listKeys={["caterer", "decorator"]} />
+              <MasterListsSection listKeys={["caterer", "decorator", "approval_sent_to"]} />
             </CollapsibleSection>
           )}
 
@@ -765,6 +765,7 @@ const LIST_LABELS: Record<string, string> = {
   handled_by: "Event Owners",
   caterer: "Caterers",
   decorator: "Decorators",
+  approval_sent_to: "Genre Heads",
   program_officer: "Programme officers",
 };
 

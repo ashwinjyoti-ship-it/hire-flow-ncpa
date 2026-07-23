@@ -49,7 +49,8 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Approval", field_key: "approval_required", label: "Approval Required?", field_type: "dropdown", options: ["Not Required", "Required"], default_value: "Not Required", vfh_only: true },
   { module: "operations", section: "Approval", field_key: "approval_sent_on", label: "Approval Sent On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)", triggers_task: { rule: "approval_followup", title: "Follow up on Approval", due_after_days: 7, complete_when: "Approval is Received or the event becomes Approved" } },
   { module: "operations", section: "Approval", field_key: "approval_received_on", label: "Approval Received On", field_type: "date", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
-  { module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", field_type: "text", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
+  // Options loaded from dropdown_options list_key = approval_sent_to (Settings → Master Lists).
+  { module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", field_type: "dropdown", vfh_only: true, visibility_rule: "onlyWhen(approval_required == Required)" },
 
   // 5. FINANCIALS
   // The Costing Email is the first post-inquiry financial step and a hard gate
