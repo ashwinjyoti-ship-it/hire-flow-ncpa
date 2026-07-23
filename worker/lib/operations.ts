@@ -7,6 +7,7 @@ import {
   EXECUTION_SECTIONS,
   shouldPreserveExecutionSectionValue,
 } from "./requirement-sections";
+import { hydrateChecklistItemOptions } from "./checklist-options";
 import { isChecklistFieldVisible, type ChecklistVisibilityItem } from "./checklist-visibility";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
@@ -496,7 +497,7 @@ export async function getChecklistItems(db: D1Database, eventId: string): Promis
      WHERE ci.event_id = ? AND ci.field_key != 'event_status'
      ORDER BY ci.module, cd.sort_order`
   ).bind(eventId).all<ChecklistItemRow>();
-  return results;
+  return hydrateChecklistItemOptions(db, results ?? []);
 }
 
 export async function recalculateEventCompletion(db: D1Database, eventId: string): Promise<{ operations: number; accounts: number; overall: number }> {
@@ -716,7 +717,8 @@ export async function updateChecklistItem(args: {
      WHERE ci.id = ?`
   ).bind(itemId).first<ChecklistItemRow>();
   if (!updated) throw new Error("Checklist item not found after update");
-  return updated;
+  const [hydrated] = await hydrateChecklistItemOptions(db, [updated]);
+  return hydrated ?? updated;
 }
 
 async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined): Promise<void> {

@@ -1502,6 +1502,7 @@ describe("VFH approval Not Required skips dependent checklist fields", () => {
       expect(byKey[key]?.visibility_rule).toBe("onlyWhen(approval_required == Required)");
       expect(byKey[key]?.vfh_only).toBe(true);
     }
+    expect(byKey.genre_head?.field_type).toBe("dropdown");
     expect(byKey.approval_required?.visibility_rule).toBeUndefined();
   });
 
@@ -1553,7 +1554,7 @@ describe("VFH approval Not Required skips dependent checklist fields", () => {
                 results: [
                   { id: "cli_sent", value: null, field_type: "date", is_computed: 0 },
                   { id: "cli_recv", value: "2026-07-01", field_type: "date", is_computed: 0 },
-                  { id: "cli_genre", value: null, field_type: "text", is_computed: 0 },
+                  { id: "cli_genre", value: null, field_type: "dropdown", is_computed: 0 },
                 ],
               };
             }
