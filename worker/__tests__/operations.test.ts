@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTentativeVenuePaymentTasksForEvent, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -516,7 +516,7 @@ describe("operational lifecycle readiness", () => {
 });
 
 describe("checklist task date synchronization", () => {
-  it("updates an existing automatic task to the current source date", async () => {
+  it("does not create a technical meeting task once the meeting date is set", async () => {
     const writes: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
       prepare(sql: string) {
@@ -562,8 +562,7 @@ describe("checklist task date synchronization", () => {
     await maybeCreateTaskForChecklistItem(db, item, "user_1");
 
     const taskWrite = writes.find((write) => write.sql.includes("INSERT INTO tasks"));
-    expect(taskWrite?.sql).toContain("ON CONFLICT(idempotency_key) DO UPDATE");
-    expect(taskWrite?.binds).toContain("2026-06-09");
+    expect(taskWrite).toBeUndefined();
   });
 
   it("completes technical meeting tasks when the meeting date is filled", async () => {
@@ -619,6 +618,90 @@ describe("checklist task date synchronization", () => {
     const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("source_rule = ?"));
     expect(completion?.binds).toContain("ev_foundation_day");
     expect(completion?.binds).toContain("technical_meeting");
+  });
+
+  it("closes stale technical meeting tasks during automatic task rescheduling", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("SELECT event_owner_id")) return { event_owner_id: null };
+            if (sql.includes("technical_meeting_date")) return { value: "2026-06-09" };
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileTechnicalMeetingTasksForEvent(db, "ev_foundation_day", "user_1");
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("technical_meeting"));
+    expect(completion?.binds).toContain("ev_foundation_day");
+    expect(writes.find((write) => write.sql.includes("INSERT INTO tasks"))).toBeUndefined();
+  });
+
+  it("does not leave open technical meeting tasks after rescheduleAllAutomaticTasks", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const technicalItem = {
+      id: "cli_technical",
+      event_id: "ev_foundation_day",
+      definition_id: "def_technical",
+      module: "operations",
+      section: "Technical Meeting & Minutes",
+      field_key: "technical_meeting_date",
+      label: "Technical Meeting Date",
+      status: "completed",
+      value: "2026-06-09",
+      due_date: "2026-06-09",
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "date",
+      options: null,
+      is_computed: 0,
+      triggers_task: JSON.stringify({ rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0 }),
+      visibility_rule: null,
+      sort_order: 0,
+    } satisfies ChecklistItemRow;
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("FROM app_settings")) return null;
+            if (sql.includes("SELECT event_owner_id")) return { event_owner_id: null };
+            return null;
+          },
+          async all() {
+            if (sql.includes("cd.triggers_task IS NOT NULL")) return { results: [technicalItem] };
+            if (sql.includes("FROM events WHERE is_archived = 0")) return { results: [{ id: "ev_foundation_day" }] };
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await rescheduleAllAutomaticTasks(db, "2026-07-01");
+
+    expect(writes.find((write) => write.sql.includes("INSERT INTO tasks"))).toBeUndefined();
+    expect(writes.some((write) => write.sql.includes("technical_meeting") && write.sql.includes("SET status = 'completed'"))).toBe(true);
   });
 
 });

@@ -99,7 +99,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   { module: "operations", section: "Monthly Chart", field_key: "monthly_chart_sent", label: "SENT for Monthly Chart", field_type: "dropdown", options: ["Not sent", "Sent"], default_value: "Not sent" },
 
   // 11. TECHNICAL MEETING & MINUTES
-  { module: "operations", section: "Technical Meeting & Minutes", field_key: "technical_meeting_date", label: "Technical Meeting Date", field_type: "date", triggers_task: { rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0, complete_when: "the meeting date passes" } },
+  { module: "operations", section: "Technical Meeting & Minutes", field_key: "technical_meeting_date", label: "Technical Meeting Date", field_type: "date", triggers_task: { rule: "technical_meeting", title: "Technical Meeting", due_after_days: 0, complete_when: "the meeting date is entered" } },
   { module: "operations", section: "Technical Meeting & Minutes", field_key: "minutes_of_meeting", label: "Minutes of Meeting", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
   // POST-EVENT CLOSURE (last operations section)
