@@ -332,6 +332,16 @@ describe("frontend regression guards", () => {
     expect(detail).not.toContain("defaultValue={item.value");
   });
 
+  it("keeps checklist text fields editable while deferring save until blur", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(detail).toContain("usesDeferredTextCommit");
+    expect(detail).toContain("const [draftValue, setDraftValue] = useState(item.value ?? \"\");");
+    expect(detail).toContain("onChange={(ev) => setDraftValue(ev.target.value)}");
+    expect(detail).toContain("onBlur={commitDraftValue}");
+    expect(detail).toContain("value={draftValue}");
+  });
+
   it("wires the topbar global search to organisations and events", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 

@@ -1527,6 +1527,18 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
   const disabled = !canEdit || Boolean(item.is_computed);
   const baseClass = "carved mt-1 w-full rounded-xl bg-marble-shadow/40 px-3 py-2 text-sm text-ink-primary focus:outline-none disabled:opacity-60" + (saving ? " opacity-80" : "");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const usesDeferredTextCommit = item.field_type === "text" || item.field_type === "textarea" || item.field_type === "number";
+  const [draftValue, setDraftValue] = useState(item.value ?? "");
+
+  useEffect(() => {
+    if (!usesDeferredTextCommit) return;
+    setDraftValue(item.value ?? "");
+  }, [item.id, item.value, usesDeferredTextCommit]);
+
+  const commitDraftValue = () => {
+    const next = draftValue || null;
+    if (next !== (item.value ?? null)) onUpdate(item, next);
+  };
 
   const commitDate = (next: string | null) => {
     if (next === (item.value ?? null)) return;
@@ -1576,9 +1588,10 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
       ) : item.field_type === "textarea" ? (
         <textarea
           disabled={disabled}
-          value={item.value ?? ""}
+          value={draftValue}
           aria-busy={saving || undefined}
-          onBlur={(ev) => ev.currentTarget.value !== (item.value ?? "") && onUpdate(item, ev.currentTarget.value || null)}
+          onChange={(ev) => setDraftValue(ev.target.value)}
+          onBlur={commitDraftValue}
           rows={2}
           className={baseClass}
         />
@@ -1610,12 +1623,10 @@ function ChecklistField({ item, focused, canEdit, saving, finalShowDate, onUpdat
         <input
           disabled={disabled}
           type={item.field_type === "number" ? "number" : "text"}
-          value={item.value ?? ""}
+          value={draftValue}
           aria-busy={saving || undefined}
-          onBlur={(ev) => {
-            const next = ev.currentTarget.value || null;
-            if (next !== (item.value ?? null)) onUpdate(item, next);
-          }}
+          onChange={(ev) => setDraftValue(ev.target.value)}
+          onBlur={commitDraftValue}
           className={baseClass}
         />
       )}
