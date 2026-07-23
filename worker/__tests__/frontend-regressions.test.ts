@@ -332,6 +332,24 @@ describe("frontend regression guards", () => {
     expect(detail).not.toContain("defaultValue={item.value");
   });
 
+  it("keeps checklist text fields editable while deferring save until blur", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+
+    expect(detail).toContain("usesDeferredTextCommit");
+    expect(detail).toContain("const [draftValue, setDraftValue] = useState(item.value ?? \"\");");
+    expect(detail).toContain("onChange={(ev) => setDraftValue(ev.target.value)}");
+    expect(detail).toContain("onBlur={commitDraftValue}");
+    expect(detail).toContain("value={draftValue}");
+  });
+
+  it("hydrates Genre Head checklist options from the approval_sent_to lookup list", () => {
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
+    const checklistOptions = readFileSync(resolve(root, "worker/lib/checklist-options.ts"), "utf8");
+
+    expect(operations).toContain("hydrateChecklistItemOptions");
+    expect(checklistOptions).toContain("genre_head: \"approval_sent_to\"");
+  });
+
   it("wires the topbar global search to organisations and events", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
 
@@ -664,7 +682,8 @@ describe("frontend regression guards", () => {
     expect(eventForm).toContain("lookups?.lookups.program_officer");
     expect(eventForm).not.toContain("lookups?.lookups.handled_by");
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
-    expect(settings).toContain('listKeys={["caterer", "decorator"]}');
+    expect(settings).toContain('listKeys={["caterer", "decorator", "approval_sent_to"]}');
+    expect(settings).toContain("approval_sent_to: \"Genre Heads\"");
     expect(settings).toContain("TeamAccountsSection");
     expect(settings).toContain("ProgrammeOfficersSection");
     expect(settings).toContain("is_event_owner");

@@ -13,7 +13,7 @@ describe("instalments", () => {
   });
 
   it("marks expected date completed only when received", () => {
-    expect(instalmentExpectedDateStatus("2026-03-01", "true")).toBe("completed");
-    expect(instalmentExpectedDateStatus("2026-03-01", null)).toBe("in_progress");
+    expect(instalmentExpectedDateStatus("2026-01-01", null)).toBe("in_progress");
+    expect(instalmentExpectedDateStatus("2026-01-01", "true")).toBe("completed");
   });
 });
