@@ -32,7 +32,7 @@ export function OrgCard({ org }: { org: OrgSummary }) {
         </span>
         {org.event_count > 0 && (
           <Link
-            to={`/calendar?org=${encodeURIComponent(org.id)}`}
+            to={`/calendar?view=lifecycle&q=${encodeURIComponent(org.name)}`}
             className="text-xs font-medium text-sage-text hover:underline etched"
           >
             View events →

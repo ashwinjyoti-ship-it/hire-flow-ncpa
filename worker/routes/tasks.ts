@@ -23,7 +23,7 @@ const TaskInput = z.object({
 
 taskRoutes.get("/", requireUser, async (c) => {
   const user = c.get("user")!;
-  const { status = "open", mine, event } = c.req.query();
+  const { status = "open", mine, event, q } = c.req.query();
   const where: string[] = ["(t.event_id IS NULL OR COALESCE(e.is_archived, 0) = 0)"];
   const binds: unknown[] = [];
 
@@ -35,6 +35,11 @@ taskRoutes.get("/", requireUser, async (c) => {
   if (event) {
     where.push("t.event_id = ?");
     binds.push(event);
+  }
+  if (q?.trim()) {
+    const like = `%${q.trim().toLowerCase()}%`;
+    where.push("(LOWER(t.title) LIKE ? OR LOWER(COALESCE(e.title, '')) LIKE ? OR LOWER(COALESCE(o.name, '')) LIKE ?)");
+    binds.push(like, like, like);
   }
   if (mine === "1" || !can(user.permissions, "task.view.all")) {
     where.push("t.assignee_id = ?");

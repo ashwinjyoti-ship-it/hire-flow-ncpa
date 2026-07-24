@@ -6,6 +6,14 @@ import { describeAccess } from "../../../worker/lib/rbac";
 import { apiGet, apiPost } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
 import { formatDate } from "../../lib/use-lookups";
+import {
+  buildCalendarSearchUrl,
+  buildOrganisationSearchUrl,
+  calendarViewForEvent,
+  resolveSearchNavigation,
+  type SearchEvent,
+  type SearchOrg,
+} from "../../lib/global-search";
 import { StickyNotesLauncher } from "../sticky-notes/StickyNotesLauncher";
 
 type NotificationRow = {
@@ -18,32 +26,6 @@ type NotificationRow = {
   task_title: string | null;
   created_at: string;
 };
-
-type SearchOrg = {
-  id: string;
-  name: string;
-  org_type: string | null;
-  event_count: number;
-};
-
-type SearchEvent = {
-  id: string;
-  title: string;
-  organisation_name: string | null;
-  event_start_date: string | null;
-  status: string;
-  venues: string | null;
-};
-
-function calendarViewForEvent(event: SearchEvent | undefined, fallback: "show" | "lifecycle"): "show" | "lifecycle" {
-  return event?.status === "confirmed" ? "show" : fallback;
-}
-
-function calendarUrlForSearch(term: string, view: "show" | "lifecycle", event?: SearchEvent): string {
-  const params = new URLSearchParams({ view, q: term });
-  if (event?.event_start_date) params.set("from", event.event_start_date);
-  return `/calendar?${params.toString()}`;
-}
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -285,7 +267,8 @@ function GlobalSearch() {
     if (
       location.pathname === "/calendar" ||
       location.pathname === "/organisations" ||
-      location.pathname === "/tasks"
+      location.pathname === "/tasks" ||
+      location.pathname === "/dashboard"
     ) {
       setQuery(urlQ);
     } else {
@@ -312,29 +295,36 @@ function GlobalSearch() {
   async function submitSearch() {
     const term = query.trim();
     if (!term) return;
-    // When already on a calendar view, stay on that exact view (Show vs Lifecycle).
     const view = onCalendar ? calendarView : "lifecycle";
+    const statusQuery = view === "show" ? "&status=confirmed" : "";
     try {
-      const statusQuery = view === "show" ? "&status=confirmed" : "";
       const [orgRes, eventRes] = await Promise.all([
         apiGet<{ organisations: SearchOrg[] }>(`/organisations?q=${encodeURIComponent(term)}`),
         apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}${statusQuery}`),
       ]);
-      const firstEvent = eventRes.events[0];
-      const targetView = onCalendar ? view : calendarViewForEvent(firstEvent, view);
-      if (firstEvent?.event_start_date) {
-        navigate(calendarUrlForSearch(term, targetView, firstEvent));
-      } else if (onCalendar) {
-        // Stay on the active calendar even if only an org name matched.
-        navigate(calendarUrlForSearch(term, targetView));
-      } else if (orgRes.organisations.length > 0) {
-        navigate(`/organisations?q=${encodeURIComponent(term)}`);
-      } else {
-        navigate(calendarUrlForSearch(term, view));
-      }
+      const destination = await resolveSearchNavigation(location.pathname, term, orgRes.organisations, eventRes.events, {
+        calendarView: view,
+        statusQuery,
+      });
+      navigate(destination);
     } catch {
-      navigate(calendarUrlForSearch(term, view));
+      navigate(await buildCalendarSearchUrl(term, view, { statusQuery }));
     }
+    setOpen(false);
+  }
+
+  async function openEventSearch(event: SearchEvent) {
+    const targetView = calendarViewForEvent(event, calendarView);
+    const statusQuery = targetView === "show" ? "&status=confirmed" : "";
+    navigate(await buildCalendarSearchUrl(event.title, targetView, {
+      statusQuery,
+      eventId: event.id,
+    }));
+    setOpen(false);
+  }
+
+  async function openOrganisationSearch(org: SearchOrg) {
+    navigate(await buildOrganisationSearchUrl(org, location.pathname, calendarView));
     setOpen(false);
   }
 
@@ -381,14 +371,7 @@ function GlobalSearch() {
                         <li key={org.id}>
                           <button
                             type="button"
-                            onClick={() => {
-                              if (onCalendar) {
-                                navigate(calendarUrlForSearch(org.name, calendarView));
-                              } else {
-                                navigate(`/organisations?q=${encodeURIComponent(org.name)}`);
-                              }
-                              setOpen(false);
-                            }}
+                            onClick={() => void openOrganisationSearch(org)}
                             className="w-full rounded-xl px-3 py-2 text-left hover:bg-marble-shadow/40"
                           >
                             <div className="text-sm font-medium text-ink-primary etched-deep">{org.name}</div>
@@ -407,16 +390,16 @@ function GlobalSearch() {
                     <ul className="space-y-1">
                       {events.map((event) => (
                         <li key={event.id}>
-                          <Link
-                            to={calendarUrlForSearch(event.title, calendarViewForEvent(event, calendarView), event)}
-                            onClick={() => setOpen(false)}
-                            className="block rounded-xl px-3 py-2 hover:bg-marble-shadow/40"
+                          <button
+                            type="button"
+                            onClick={() => void openEventSearch(event)}
+                            className="block w-full rounded-xl px-3 py-2 text-left hover:bg-marble-shadow/40"
                           >
                             <div className="text-sm font-medium text-ink-primary etched-deep">{event.title}</div>
                             <div className="text-[11px] text-ink-muted etched">
                               {[event.organisation_name, formatDate(event.event_start_date), event.venues].filter(Boolean).join(" · ")}
                             </div>
-                          </Link>
+                          </button>
                         </li>
                       ))}
                     </ul>
