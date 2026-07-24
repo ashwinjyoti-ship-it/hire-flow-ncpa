@@ -215,6 +215,7 @@ export function EventDetailPage() {
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(() => searchParams.get("field"));
   const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
+  const [lifecycleRegressionMessage, setLifecycleRegressionMessage] = useState<string | null>(null);
   // Only auto-scroll to a deep-linked field once; checklist refetches must not yank the viewport back.
   const scrolledToFieldRef = useRef<string | null>(null);
 
@@ -330,7 +331,12 @@ export function EventDetailPage() {
     },
   });
 
-  const checklistUpdate = useChecklistUpdate(id);
+  const checklistUpdate = useChecklistUpdate(id, {
+    onLifecycleRegression: (message) => {
+      setLifecycleRegressionMessage(message);
+      void qc.invalidateQueries({ queryKey: ["calendar"], exact: false });
+    },
+  });
   const savingChecklistItemId = checklistUpdate.savingItemId;
   const savingChecklistFieldKey = checklistUpdate.savingFieldKey;
 
@@ -803,6 +809,11 @@ export function EventDetailPage() {
       {checklistUpdate.error && (
         <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">
           {(checklistUpdate.error as Error).message}
+        </div>
+      )}
+      {lifecycleRegressionMessage && (
+        <div role="status" className="mb-4 rounded-lg bg-status-awaitingApproval/10 px-4 py-2 text-sm text-status-awaitingApproval etched">
+          {lifecycleRegressionMessage}
         </div>
       )}
 

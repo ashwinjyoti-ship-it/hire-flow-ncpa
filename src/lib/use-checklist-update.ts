@@ -12,11 +12,21 @@ import {
 
 export type ChecklistUpdateItem = ChecklistCacheItem;
 
-export type ChecklistUpdateResponse = ChecklistCacheResponse;
+export type ChecklistUpdateResponse = ChecklistCacheResponse & {
+  lifecycle_regression?: {
+    from_status: string;
+    to_status: string;
+    blockers: string[];
+    message: string;
+  };
+};
 
 type EventDetailCache = { event: Record<string, unknown> };
 
-export function useChecklistUpdate(eventId: string | undefined) {
+export function useChecklistUpdate(
+  eventId: string | undefined,
+  options?: { onLifecycleRegression?: (message: string) => void },
+) {
   const qc = useQueryClient();
 
   const mutation = useMutation({
@@ -26,7 +36,10 @@ export function useChecklistUpdate(eventId: string | undefined) {
       status?: string;
     }) => {
       if (!eventId) throw new Error("Event not found");
-      return apiPatch<{ item: ChecklistCacheItem }>(`/events/${eventId}/checklist/${args.item.id}`, {
+      return apiPatch<{
+        item: ChecklistCacheItem;
+        lifecycle_regression?: ChecklistUpdateResponse["lifecycle_regression"];
+      }>(`/events/${eventId}/checklist/${args.item.id}`, {
         value: args.value,
         status: args.status,
       });
@@ -68,6 +81,9 @@ export function useChecklistUpdate(eventId: string | undefined) {
     },
     onSuccess: (response, args) => {
       if (!eventId) return;
+      if (response?.lifecycle_regression?.message) {
+        options?.onLifecycleRegression?.(response.lifecycle_regression.message);
+      }
       const queryKey = ["event", eventId, "checklist"] as const;
       const eventKey = ["event", eventId] as const;
       const eventDetail = qc.getQueryData<EventDetailCache>(eventKey);
@@ -93,6 +109,9 @@ export function useChecklistUpdate(eventId: string | undefined) {
         qc.invalidateQueries({ queryKey: eventKey });
         qc.invalidateQueries({ queryKey: ["tasks", eventId] });
         qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
+        if (response?.lifecycle_regression) {
+          qc.invalidateQueries({ queryKey: ["calendar"], exact: false });
+        }
       })();
     },
     onError: (_err, _args, context) => {

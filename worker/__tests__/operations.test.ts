@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileInstalmentTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, formatConfirmationBlockerRegressionMessage, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileConfirmedStatusForBlockers, reconcileInstalmentTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -325,6 +325,212 @@ describe("operational lifecycle readiness", () => {
     expect(courieredReset?.sql).toContain("value = NULL");
     const signedReset = updates.find((u) => u.binds.includes("cli_signed"));
     expect(signedReset?.binds[0]).toBe("No");
+  });
+
+  it("formats the lifecycle regression message with the first blocker", () => {
+    expect(formatConfirmationBlockerRegressionMessage(["Payment must be completed."]))
+      .toBe("Payment must be completed. This event has been moved back to the Lifecycle Calendar.");
+  });
+
+  it("demotes a confirmed event when confirmation blockers reappear", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, status, event_type FROM events WHERE id = ?")) {
+              return { id: "ev_confirmed", status: "confirmed", event_type: "Free Event" };
+            }
+            if (sql.includes("SELECT id, title, status, event_type, approval_status, confirmation_status")) {
+              return {
+                id: "ev_confirmed",
+                title: "Annual Day",
+                status: "confirmed",
+                event_type: "Free Event",
+                approval_status: "not_required",
+                confirmation_status: "signed_received",
+                ops_completion: 0.5,
+                accounts_completion: 0,
+                overall_completion: 0.4,
+              };
+            }
+            if (sql.includes("SELECT confirmation_status FROM events WHERE id = ?")) {
+              return { confirmation_status: "signed_received" };
+            }
+            if (sql.includes("FROM event_status_history") && sql.includes("to_status = 'confirmed'")) {
+              return { from_status: "tentative" };
+            }
+            if (sql.includes("event_owner_id")) return { event_owner_id: null };
+            if (sql.includes("FROM organisations")) return null;
+            if (sql.includes("FROM checklist_items ci") && sql.includes("poc_name")) return null;
+            return null;
+          },
+          async all() {
+            if (sql.includes("'costing_email', 'payment_status'")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "Yes" },
+                  { field_key: "payment_status", value: "Incomplete" },
+                ],
+              };
+            }
+            if (sql.includes("field_key IN ('costing_email', 'proforma_invoice', 'payment_status')")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "Yes" },
+                  { field_key: "proforma_invoice", value: "Not Applicable" },
+                  { field_key: "payment_status", value: "Incomplete" },
+                ],
+              };
+            }
+            if (sql.includes("confirmation_made")) {
+              return {
+                results: [
+                  { id: "cli_made", field_key: "confirmation_made", value: "Yes" },
+                  { id: "cli_couriered", field_key: "confirmation_couriered", value: "2026-07-10" },
+                  { id: "cli_signed", field_key: "confirmation_signed_received", value: "Yes" },
+                ],
+              };
+            }
+            if (sql.includes("POC_FIELD") || sql.includes("poc_")) {
+              return { results: [] };
+            }
+            if (sql.includes("FROM checklist_items ci") && sql.includes("module")) {
+              return { results: [] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const result = await reconcileConfirmedStatusForBlockers(db, "ev_confirmed", "user_1");
+    expect(result?.from_status).toBe("confirmed");
+    expect(result?.to_status).toBe("tentative");
+    expect(result?.blockers).toContain("Payment must be completed.");
+    expect(result?.message).toContain("Lifecycle Calendar");
+    const statusUpdate = updates.find((u) => u.sql.includes("UPDATE events SET status = ?"));
+    expect(statusUpdate?.binds[0]).toBe("tentative");
+    const venueReset = updates.find((u) => u.sql.includes("booking_status = 'tentative'"));
+    expect(venueReset).toBeDefined();
+    const historyInsert = updates.find((u) => u.sql.includes("INSERT INTO event_status_history"));
+    expect(historyInsert?.binds).toContain("confirmed");
+    expect(historyInsert?.binds).toContain("tentative");
+  });
+
+  it("does not demote when the confirmed event still satisfies blockers", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, status, event_type FROM events WHERE id = ?")) {
+              return { id: "ev_confirmed", status: "confirmed", event_type: "Free Event" };
+            }
+            if (sql.includes("SELECT id, title, status, event_type, approval_status, confirmation_status")) {
+              return {
+                id: "ev_confirmed",
+                title: "Annual Day",
+                status: "confirmed",
+                event_type: "Free Event",
+                approval_status: "not_required",
+                confirmation_status: "signed_received",
+                ops_completion: 1,
+                accounts_completion: 0,
+                overall_completion: 0.8,
+              };
+            }
+            if (sql.includes("SELECT confirmation_status FROM events WHERE id = ?")) {
+              return { confirmation_status: "signed_received" };
+            }
+            if (sql.includes("SELECT requirements FROM events WHERE id = ?")) {
+              return {
+                requirements: JSON.stringify({
+                  poc_name: "Ada",
+                  poc_contact_number: "9999999999",
+                  poc_email: "ada@example.test",
+                  event_company_name: "Acme",
+                  event_company_contact_name: "Bob",
+                  event_company_contact_number: "8888888888",
+                  event_company_email: "bob@example.test",
+                  bank_details: "HDFC",
+                  gst_no: "GST1",
+                  tan_no: "TAN1",
+                  pan_no: "PAN1",
+                  signing_authority_address: "Mumbai",
+                  courier_address: "Mumbai",
+                  vendor_registration_form: "Yes",
+                }),
+              };
+            }
+            if (sql.includes("SELECT organisation_id FROM events WHERE id = ?")) {
+              return { organisation_id: "org_1" };
+            }
+            if (sql.includes("field_key IN (") && sql.includes("poc_name")) {
+              return { results: [] };
+            }
+            if (sql.includes("event_owner_id")) return { event_owner_id: null };
+            return null;
+          },
+          async all() {
+            if (sql.includes("'costing_email', 'payment_status'")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "Yes" },
+                  { field_key: "payment_status", value: "Completed" },
+                ],
+              };
+            }
+            if (sql.includes("field_key IN ('costing_email', 'proforma_invoice', 'payment_status')")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "Yes" },
+                  { field_key: "proforma_invoice", value: "Not Applicable" },
+                  { field_key: "payment_status", value: "Completed" },
+                ],
+              };
+            }
+            if (sql.includes("confirmation_made")) {
+              return {
+                results: [
+                  { id: "cli_made", field_key: "confirmation_made", value: "Yes" },
+                  { id: "cli_couriered", field_key: "confirmation_couriered", value: "2026-07-10" },
+                  { id: "cli_signed", field_key: "confirmation_signed_received", value: "Yes" },
+                ],
+              };
+            }
+            if (sql.includes("FROM checklist_items ci") && sql.includes("module")) {
+              return { results: [] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const result = await reconcileConfirmedStatusForBlockers(db, "ev_confirmed", "user_1");
+    expect(result).toBeNull();
+    expect(updates.find((u) => u.sql.includes("UPDATE events SET status = ?"))).toBeUndefined();
   });
 
   it("blocks confirmation when Point of Contact is incomplete", () => {

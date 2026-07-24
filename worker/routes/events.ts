@@ -806,7 +806,7 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
   const parsed = ChecklistUpdateInput.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "Invalid input", detail: parsed.error.flatten() }, 400);
   try {
-    const item = await updateChecklistItem({
+    const result = await updateChecklistItem({
       db: c.env.DB,
       itemId: c.req.param("itemId"),
       eventId: c.req.param("id"),
@@ -816,9 +816,10 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
     });
     return c.json({
       item: {
-        ...item,
-        options: item.options ? JSON.parse(item.options) as unknown[] : null,
+        ...result.item,
+        options: result.item.options ? JSON.parse(result.item.options) as unknown[] : null,
       },
+      ...(result.lifecycleRegression ? { lifecycle_regression: result.lifecycleRegression } : {}),
     });
   } catch (err) {
     const message = (err as Error).message;
