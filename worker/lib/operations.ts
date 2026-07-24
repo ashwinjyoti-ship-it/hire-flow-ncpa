@@ -543,6 +543,7 @@ export async function getChecklistItems(db: D1Database, eventId: string): Promis
   // Heal Couriered / Signed set while financials are still incomplete.
   await reconcileConfirmationLetterAgainstFinancials(db, eventId);
   await reconcileConfirmationLetterDeliveryChain(db, eventId);
+  await reconcileFollowUpTasksForEvent(db, eventId, null);
   const { results } = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
      FROM checklist_items ci
@@ -755,6 +756,7 @@ export async function updateChecklistItem(args: {
     await maybeCreateTaskForChecklistItem(db, { ...current, value: value ?? null, status, due_date: dueDate ?? null }, user.id);
   }
   await maybeCompleteTasksForChecklistUpdate(db, current.event_id, current.field_key, value, user.id);
+  await reconcileFollowUpTasksForEvent(db, current.event_id, user.id);
   if (current.field_key === "file_closed" || current.field_key === "feedback_sent" || current.module === "accounts") {
     await reconcileWorkflowPhaseTasksForEvent(db, current.event_id);
   }
@@ -2250,6 +2252,134 @@ export async function reconcileTechnicalMeetingTasksForEvent(
   return result.meta?.changes ?? 0;
 }
 
+/** Close confirmation-letter follow-ups once the signed copy is received. */
+export async function reconcileConfirmationLetterTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'confirmation_signed_received' LIMIT 1"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (normalise(row?.value) !== "yes") return 0;
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completed_by = COALESCE(completed_by, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because signed confirmation was received.'),
+         updated_at = ?
+     WHERE event_id = ? AND source_rule = 'confirmation_letter' AND status IN ('open','in_progress')`
+  ).bind(now, userId, now, eventId).run();
+  return result.meta?.changes ?? 0;
+}
+
+/** Close approval follow-ups when approval is received or marked Not Required. */
+export async function reconcileApprovalFollowupTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('approval_required', 'approval_received_on')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+
+  let approvalRequired: string | null = null;
+  let approvalReceived: string | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "approval_required") approvalRequired = row.value;
+    if (row.field_key === "approval_received_on") approvalReceived = row.value;
+  }
+  const satisfied = normalise(approvalRequired) === "not required" || Boolean(normalise(approvalReceived));
+  if (!satisfied) return 0;
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completed_by = COALESCE(completed_by, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because approval is satisfied.'),
+         updated_at = ?
+     WHERE event_id = ? AND source_rule = 'approval_followup' AND status IN ('open','in_progress')`
+  ).bind(now, userId, now, eventId).run();
+  return result.meta?.changes ?? 0;
+}
+
+/** Close OnStage follow-ups once the client file is received or OnStage is Not Required. */
+export async function reconcileOnstageTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('onstage_required', 'onstage_received_from_client')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+
+  let onstageRequired: string | null = null;
+  let onstageReceived: string | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "onstage_required") onstageRequired = row.value;
+    if (row.field_key === "onstage_received_from_client") onstageReceived = row.value;
+  }
+  const satisfied = normalise(onstageRequired) === "not required" || Boolean(normalise(onstageReceived));
+  if (!satisfied) return 0;
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completed_by = COALESCE(completed_by, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because OnStage is satisfied.'),
+         updated_at = ?
+     WHERE event_id = ? AND source_rule = 'onstage' AND status IN ('open','in_progress')`
+  ).bind(now, userId, now, eventId).run();
+  return result.meta?.changes ?? 0;
+}
+
+/** Close feedback follow-ups once the form is received. */
+export async function reconcileFeedbackTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  const row = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'feedback_received' LIMIT 1"
+  ).bind(eventId).first<{ value: string | null }>();
+  if (!normalise(row?.value)) return 0;
+
+  const now = new Date().toISOString();
+  const result = await db.prepare(
+    `UPDATE tasks
+     SET status = 'completed',
+         completed_at = COALESCE(completed_at, ?),
+         completed_by = COALESCE(completed_by, ?),
+         completion_note = COALESCE(completion_note, 'Completed automatically because feedback was received.'),
+         updated_at = ?
+     WHERE event_id = ? AND source_rule = 'feedback' AND status IN ('open','in_progress')`
+  ).bind(now, userId, now, eventId).run();
+  return result.meta?.changes ?? 0;
+}
+
+/** Heal stale open follow-up tasks when checklist completion was missed on write. */
+export async function reconcileFollowUpTasksForEvent(
+  db: D1Database,
+  eventId: string,
+  userId: string | null = null,
+): Promise<number> {
+  let changed = 0;
+  changed += await reconcileConfirmationLetterTasksForEvent(db, eventId, userId);
+  changed += await reconcileApprovalFollowupTasksForEvent(db, eventId, userId);
+  changed += await reconcileOnstageTasksForEvent(db, eventId, userId);
+  changed += await reconcileFeedbackTasksForEvent(db, eventId, userId);
+  return changed;
+}
+
 export async function reconcileAllTechnicalMeetingTasks(db: D1Database): Promise<number> {
   const now = new Date().toISOString();
   const result = await db.prepare(
@@ -2771,6 +2901,7 @@ export async function rescheduleAutomaticTasksForEvent(
   }
   await reconcileInstalmentTasksForEvent(db, eventId, userId);
   await reconcileTechnicalMeetingTasksForEvent(db, eventId, userId);
+  await reconcileFollowUpTasksForEvent(db, eventId, userId);
   await reconcileFileToAccountsReminderForEvent(db, eventId);
   await reconcileWorkflowPhaseTasksForEvent(db, eventId);
 }

@@ -10,6 +10,7 @@ type RequirementsRecord = Record<string, unknown>;
 /** Keys that stay on the event (Step 1), not on each venue booking. */
 export const EVENT_LEVEL_REQUIREMENT_KEYS = [
   "program_officer_phone",
+  "event_company_required",
   "poc_name",
   "poc_contact_number",
   "poc_email",
@@ -80,7 +81,7 @@ export function createDefaultVenueRequirements(): RequirementsRecord {
 
 /** Event-level requirement defaults (Step 1 fields stored in requirements JSON). */
 export function createDefaultEventLevelRequirements(): RequirementsRecord {
-  return { vendor_registration_form: "Not Applicable" };
+  return { event_company_required: "N/A", vendor_registration_form: "Not Applicable" };
 }
 
 /** Merge saved values over policy defaults without dropping explicit nulls the user set. */
