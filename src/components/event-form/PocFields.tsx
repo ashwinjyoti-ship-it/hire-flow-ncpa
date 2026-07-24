@@ -48,6 +48,7 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
           )}
         </div>
       )}
+      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Organisation</h4>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="POC Name">
           <input id="requirement-field-poc_name" type="text" value={(reqs.poc_name as string) ?? ""} onChange={(e) => setReq("poc_name", e.target.value || null)} className="carved input" />
@@ -57,21 +58,6 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
         </Field>
         <Field label="Email" className="md:col-span-2">
           <input id="requirement-field-poc_email" type="email" value={(reqs.poc_email as string) ?? ""} onChange={(e) => setReq("poc_email", e.target.value || null)} className="carved input" />
-        </Field>
-      </div>
-      <h4 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Company Name" className="md:col-span-2">
-          <input id="requirement-field-event_company_name" type="text" value={(reqs.event_company_name as string) ?? ""} onChange={(e) => setReq("event_company_name", e.target.value || null)} className="carved input" />
-        </Field>
-        <Field label="Contact Name">
-          <input id="requirement-field-event_company_contact_name" type="text" value={(reqs.event_company_contact_name as string) ?? ""} onChange={(e) => setReq("event_company_contact_name", e.target.value || null)} className="carved input" />
-        </Field>
-        <Field label="Contact Number">
-          <input id="requirement-field-event_company_contact_number" type="tel" value={(reqs.event_company_contact_number as string) ?? ""} onChange={(e) => setReq("event_company_contact_number", e.target.value || null)} className="carved input" />
-        </Field>
-        <Field label="Email" className="md:col-span-2">
-          <input id="requirement-field-event_company_email" type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
         </Field>
         <Field label="GST No.">
           <input id="requirement-field-gst_no" type="text" value={(reqs.gst_no as string) ?? ""} onChange={(e) => setReq("gst_no", e.target.value || null)} className="carved input" />
@@ -96,6 +82,21 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
         </Field>
         <Field label="Courier Address">
           <textarea id="requirement-field-courier_address" value={(reqs.courier_address as string) ?? ""} onChange={(e) => setReq("courier_address", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+      </div>
+      <h4 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Company Name" className="md:col-span-2">
+          <input id="requirement-field-event_company_name" type="text" value={(reqs.event_company_name as string) ?? ""} onChange={(e) => setReq("event_company_name", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Point of Contact Name">
+          <input id="requirement-field-event_company_contact_name" type="text" value={(reqs.event_company_contact_name as string) ?? ""} onChange={(e) => setReq("event_company_contact_name", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Contact Number">
+          <input id="requirement-field-event_company_contact_number" type="tel" value={(reqs.event_company_contact_number as string) ?? ""} onChange={(e) => setReq("event_company_contact_number", e.target.value || null)} className="carved input" />
+        </Field>
+        <Field label="Email" className="md:col-span-2">
+          <input id="requirement-field-event_company_email" type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
         </Field>
       </div>
     </section>
