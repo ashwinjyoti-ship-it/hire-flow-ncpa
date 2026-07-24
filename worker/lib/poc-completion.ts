@@ -1,9 +1,13 @@
 import {
+  EVENT_COMPANY_FIELD_KEYS,
+  EVENT_COMPANY_REQUIRED_KEY,
   POC_FIELD_KEYS,
   POC_FIELD_LABELS,
   POC_ORGANISATION_LABEL,
   POC_REQUIRED_FIELD_KEYS,
+  type EventCompanyFieldKey,
   type PocFieldKey,
+  type PocRequiredFieldKey,
 } from "./poc-fields";
 
 export const POC_CONFIRMATION_BLOCKER = "POC not filled, cannot confirm.";
@@ -17,6 +21,29 @@ export type PocCompletionStatus = {
   missing: PocFieldKey[];
   missingLabels: string[];
 };
+
+function normalisePocValue(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+/** Whether Event Company contact details are required for this event. */
+export function isEventCompanyRequired(
+  values: Partial<Record<string, string | null | undefined>>,
+): boolean {
+  const explicit = normalisePocValue(values[EVENT_COMPANY_REQUIRED_KEY]);
+  if (explicit === "yes") return true;
+  if (explicit === "n/a" || explicit === "not applicable") return false;
+  // Legacy rows: company data present but no toggle → treat as Yes.
+  return EVENT_COMPANY_FIELD_KEYS.some((key) => isPocFieldValueFilled(key, values[key]));
+}
+
+export function requiredPocFieldKeys(
+  values: Partial<Record<string, string | null | undefined>>,
+): Array<PocRequiredFieldKey | EventCompanyFieldKey> {
+  const keys: Array<PocRequiredFieldKey | EventCompanyFieldKey> = [...POC_REQUIRED_FIELD_KEYS];
+  if (isEventCompanyRequired(values)) keys.push(...EVENT_COMPANY_FIELD_KEYS);
+  return keys;
+}
 
 export function isPocFieldValueFilled(fieldKey: PocFieldKey, value: string | null | undefined): boolean {
   const trimmed = (value ?? "").trim();
@@ -36,10 +63,11 @@ export function evaluatePocCompletion(
   values: Partial<Record<PocFieldKey, string | null | undefined>>,
   opts?: PocCompletionOptions,
 ): PocCompletionStatus {
-  const missing = POC_REQUIRED_FIELD_KEYS.filter((key) => !isPocFieldValueFilled(key, values[key]));
+  const requiredKeys = requiredPocFieldKeys(values);
+  const missing = requiredKeys.filter((key) => !isPocFieldValueFilled(key, values[key]));
   const organisationMissing = opts ? !(opts.organisationId ?? "").trim() : false;
-  const filledCount = (organisationMissing ? 0 : opts ? 1 : 0) + (POC_REQUIRED_FIELD_KEYS.length - missing.length);
-  const totalCount = POC_REQUIRED_FIELD_KEYS.length + (opts ? 1 : 0);
+  const filledCount = (organisationMissing ? 0 : opts ? 1 : 0) + (requiredKeys.length - missing.length);
+  const totalCount = requiredKeys.length + (opts ? 1 : 0);
   const missingLabels = [
     ...(organisationMissing ? [POC_ORGANISATION_LABEL] : []),
     ...missing.map((key) => POC_FIELD_LABELS[key]),
@@ -48,7 +76,7 @@ export function evaluatePocCompletion(
     complete: missing.length === 0 && !organisationMissing,
     filledCount,
     totalCount,
-    missing,
+    missing: missing as PocFieldKey[],
     missingLabels,
   };
 }

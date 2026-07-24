@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, formatConfirmationBlockerRegressionMessage, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileConfirmedStatusForBlockers, reconcileInstalmentTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, formatConfirmationBlockerRegressionMessage, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileApprovalFollowupTasksForEvent, reconcileConfirmedStatusForBlockers, reconcileConfirmationLetterTasksForEvent, reconcileFeedbackTasksForEvent, reconcileFollowUpTasksForEvent, reconcileInstalmentTasksForEvent, reconcileOnstageTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -854,6 +854,154 @@ describe("checklist task date synchronization", () => {
     const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("technical_meeting"));
     expect(completion?.binds).toContain("ev_foundation_day");
     expect(writes.find((write) => write.sql.includes("INSERT INTO tasks"))).toBeUndefined();
+  });
+
+  it("closes stale confirmation letter tasks when signed copy is received", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("confirmation_signed_received")) return { value: "yes" };
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileConfirmationLetterTasksForEvent(db, "ev_letter", "user_1");
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("confirmation_letter"));
+    expect(completion?.binds).toContain("ev_letter");
+  });
+
+  it("closes stale approval follow-up tasks when approval is satisfied", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() { return null; },
+          async all() {
+            if (sql.includes("approval_required")) {
+              return { results: [{ field_key: "approval_required", value: "Yes" }, { field_key: "approval_received_on", value: "2026-06-01" }] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileApprovalFollowupTasksForEvent(db, "ev_approval", "user_1");
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("approval_followup"));
+    expect(completion?.binds).toContain("ev_approval");
+  });
+
+  it("closes stale onstage tasks when OnStage is not required", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() { return null; },
+          async all() {
+            if (sql.includes("onstage_required")) {
+              return { results: [{ field_key: "onstage_required", value: "Not Required" }, { field_key: "onstage_received_from_client", value: null }] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileOnstageTasksForEvent(db, "ev_onstage", "user_1");
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("onstage"));
+    expect(completion?.binds).toContain("ev_onstage");
+  });
+
+  it("closes stale feedback tasks when feedback is received", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("feedback_received")) return { value: "2026-06-15" };
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileFeedbackTasksForEvent(db, "ev_feedback", "user_1");
+
+    const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("feedback"));
+    expect(completion?.binds).toContain("ev_feedback");
+  });
+
+  it("reconciles all follow-up task types in one pass", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("confirmation_signed_received")) return { value: "yes" };
+            if (sql.includes("feedback_received")) return { value: "2026-06-15" };
+            return null;
+          },
+          async all() {
+            if (sql.includes("approval_required")) {
+              return { results: [{ field_key: "approval_required", value: "Not Required" }, { field_key: "approval_received_on", value: null }] };
+            }
+            if (sql.includes("onstage_required")) {
+              return { results: [{ field_key: "onstage_required", value: "Not Required" }, { field_key: "onstage_received_from_client", value: null }] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    const changed = await reconcileFollowUpTasksForEvent(db, "ev_all", "user_1");
+
+    expect(changed).toBe(4);
+    expect(writes.filter((write) => write.sql.includes("SET status = 'completed'"))).toHaveLength(4);
   });
 
   it("does not leave open technical meeting tasks after rescheduleAllAutomaticTasks", async () => {
