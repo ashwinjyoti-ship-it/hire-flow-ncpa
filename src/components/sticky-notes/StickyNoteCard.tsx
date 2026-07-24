@@ -21,7 +21,6 @@ type StickyNoteCardProps = {
   onRelink: (noteId: string, link: StickyNoteLinkValue | null) => Promise<void>;
   onArchive: (noteId: string) => Promise<void>;
   onDelete: (noteId: string) => Promise<void>;
-  onOpenEvent: (eventId: string) => void;
 };
 
 type DragState = {
@@ -43,7 +42,6 @@ export function StickyNoteCard({
   onRelink,
   onArchive,
   onDelete,
-  onOpenEvent,
 }: StickyNoteCardProps) {
   const dragRef = useRef<DragState | null>(null);
   const livePositionRef = useRef<StickyNoteLayout | null>(null);
@@ -219,9 +217,9 @@ export function StickyNoteCard({
       ) : link ? (
         <button
           type="button"
-          onClick={() => note.event_id ? onOpenEvent(note.event_id) : setLinking(true)}
+          onClick={() => setLinking(true)}
           className="mt-1 truncate rounded-lg bg-black/5 px-2 py-1 text-left text-[10px] font-semibold text-[#66583d] hover:bg-black/10"
-          title={note.event_id ? "Open linked event form" : "Change linked organisation"}
+          title="Change or remove linked record"
         >
           {note.event_title ?? note.organisation_name}
           {note.event_title && note.organisation_name ? ` · ${note.organisation_name}` : ""}

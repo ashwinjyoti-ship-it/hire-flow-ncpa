@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { StickyNote, StickyNoteLayout, StickyNotesResponse } from "../../../worker/lib/sticky-notes";
 import { useAuth } from "../../lib/auth";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "../../lib/api";
 import {
   autoStickyPosition,
   clampUnit,
-  currentEventId,
   STICKY_CARD_HEIGHT,
   STICKY_CARD_WIDTH,
 } from "../../lib/sticky-notes";
@@ -19,15 +18,6 @@ import type { StickyNoteLinkValue } from "./StickyNoteLinkPicker";
 type StickyNotesTrayProps = {
   open: boolean;
   onClose: () => void;
-};
-
-type EventContextResponse = {
-  event: {
-    id: string;
-    title: string;
-    organisation_id: string | null;
-    organisation_name: string | null;
-  };
 };
 
 type NotePerson = { id: string; name: string };
@@ -60,7 +50,6 @@ function noteMatches(note: StickyNote, search: string): boolean {
 
 export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
   const { user } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -83,25 +72,8 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [draftBody, setDraftBody] = useState("");
   const [draftLink, setDraftLink] = useState<StickyNoteLinkValue | null>(null);
-  const [draftLinkTouched, setDraftLinkTouched] = useState(false);
   const [composerPosition, setComposerPosition] = useState(DEFAULT_COMPOSER_POSITION);
   const [boardError, setBoardError] = useState<string | null>(null);
-  const routeEventId = currentEventId(location.pathname);
-
-  const eventContextQuery = useQuery({
-    queryKey: ["sticky-note-event-context", routeEventId],
-    queryFn: () => apiGet<EventContextResponse>(`/events/${routeEventId}`),
-    enabled: open && Boolean(routeEventId),
-  });
-  const contextualLink: StickyNoteLinkValue | null = eventContextQuery.data?.event
-    ? {
-        event_id: eventContextQuery.data.event.id,
-        event_title: eventContextQuery.data.event.title,
-        organisation_id: eventContextQuery.data.event.organisation_id,
-        organisation_name: eventContextQuery.data.event.organisation_name,
-      }
-    : null;
-
   const activeQuery = useQuery({
     queryKey: ["sticky-notes", "active"],
     queryFn: () => apiGet<StickyNotesResponse>("/sticky-notes?status=active&limit=100"),
@@ -147,7 +119,6 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
     onSuccess: async () => {
       setDraftBody("");
       setDraftLink(null);
-      setDraftLinkTouched(false);
       setComposerOpen(false);
       await refreshNotes();
     },
@@ -213,11 +184,6 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
     return () => observer.disconnect();
   }, [open, tab]);
 
-  useEffect(() => {
-    if (!composerOpen || draftLinkTouched || draftLink || !contextualLink) return;
-    setDraftLink(contextualLink);
-  }, [composerOpen, contextualLink, draftLink, draftLinkTouched]);
-
   const allActiveNotes = activeQuery.data?.notes ?? [];
   const activeNotes = allActiveNotes.filter((note) => noteMatches(note, activeSearch));
   const highestServerZ = allActiveNotes.reduce(
@@ -252,7 +218,6 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
 
   function startComposer(position: StickyNoteLayout) {
     setComposerPosition(position);
-    if (!draftLinkTouched && !draftLink && contextualLink) setDraftLink(contextualLink);
     setComposerOpen(true);
   }
 
@@ -333,7 +298,6 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
     setComposerOpen(false);
     setDraftBody("");
     setDraftLink(null);
-    setDraftLinkTouched(false);
     createMutation.reset();
   }
 
@@ -452,7 +416,7 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
                     pending={createMutation.isPending}
                     error={createMutation.error instanceof Error ? createMutation.error.message : null}
                     onBodyChange={setDraftBody}
-                    onLinkChange={(link) => { setDraftLink(link); setDraftLinkTouched(true); }}
+                    onLinkChange={setDraftLink}
                     onSave={() => createMutation.mutate()}
                     onCancel={cancelComposer}
                   />
@@ -474,7 +438,6 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
                     onRelink={relinkNote}
                     onArchive={archiveNote}
                     onDelete={deleteNote}
-                    onOpenEvent={openEvent}
                   />
                 );
               })}
@@ -487,7 +450,7 @@ export function StickyNotesTray({ open, onClose }: StickyNotesTrayProps) {
                   pending={createMutation.isPending}
                   error={createMutation.error instanceof Error ? createMutation.error.message : null}
                   onBodyChange={setDraftBody}
-                  onLinkChange={(link) => { setDraftLink(link); setDraftLinkTouched(true); }}
+                  onLinkChange={setDraftLink}
                   onSave={() => createMutation.mutate()}
                   onCancel={cancelComposer}
                 />
