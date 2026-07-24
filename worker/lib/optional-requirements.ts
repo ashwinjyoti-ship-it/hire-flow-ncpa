@@ -5,7 +5,7 @@ export const OPTIONAL_NOT_APPLICABLE = "N/A";
 const LEGACY_NOT_APPLICABLE_VALUES = new Set([
   "no",
   "not required",
-  "remove",
+  "keep",
 ]);
 
 const SETTLED_VALUES = new Set([
@@ -17,7 +17,7 @@ const SETTLED_VALUES = new Set([
   ...LEGACY_NOT_APPLICABLE_VALUES,
 ]);
 
-const AFFIRMATIVE_VALUES = new Set(["yes", "required", "keep"]);
+const AFFIRMATIVE_VALUES = new Set(["yes", "required", "remove"]);
 
 export function textValue(value: unknown): string {
   return String(value ?? "").trim();

@@ -100,7 +100,7 @@ function aggregateMomRequirements(input: MomEventInput): Record<string, unknown>
     const venueReqs = resolveVenueRequirements(booking, eventReqs);
     for (const [key, value] of Object.entries(venueReqs)) {
       if (!filled(out[key]) && filled(value)) out[key] = value;
-      else if (filled(value) && (value === "Yes" || value === "Required" || value === "Keep")) out[key] = value;
+      else if (filled(value) && (value === "Yes" || value === "Required" || value === "Remove" || value === "Keep")) out[key] = value;
     }
   }
   return out;
@@ -131,7 +131,7 @@ function orTbc(value: unknown): string {
 }
 
 function isYes(value: unknown, yesValue = "Yes"): boolean {
-  return value === yesValue || value === "Yes" || value === "Required" || value === "Keep";
+  return value === yesValue || value === "Yes" || value === "Required" || value === "Remove" || value === "Keep";
 }
 
 function formatEventType(value: string | null | undefined): string | null {

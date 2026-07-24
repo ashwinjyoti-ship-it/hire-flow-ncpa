@@ -31,7 +31,7 @@ export const EXECUTION_SECTION_OPTIONS = [
   EXECUTION_SECTION_STATUS.notApplicable,
 ] as const;
 
-const AFFIRMATIVE = new Set(["yes", "required", "keep"]);
+const AFFIRMATIVE = new Set(["yes", "required", "remove", "keep"]);
 
 function str(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();

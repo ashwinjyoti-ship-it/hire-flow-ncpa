@@ -44,7 +44,7 @@ const sample = {
     parking: "1 Parking space for tempo required",
     security: "Stage door monitoring",
     housekeeping: "Toilets cleaned and opened by 2pm",
-    orchestra_pit_chairs: "Keep",
+    orchestra_pit_chairs: "Remove",
     orchestra_pit_chairs_note: "12 chairs",
   },
   venue_bookings: [

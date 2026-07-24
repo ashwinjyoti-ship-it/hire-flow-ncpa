@@ -573,7 +573,7 @@ export function RequirementsFields({
         <div id="requirement-field-additional_options" className="grid scroll-mt-24 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Field fieldKey="orchestra_pit_chairs" label="Orchestra Pit Chairs">
-              <OptionalToggleSelect value={(reqs.orchestra_pit_chairs as string) ?? ""} onChange={(v) => setReq("orchestra_pit_chairs", v || null)} yesValue="Keep" />
+              <OptionalToggleSelect value={(reqs.orchestra_pit_chairs as string) ?? ""} onChange={(v) => setReq("orchestra_pit_chairs", v || null)} yesValue="Remove" />
             </Field>
             <Field fieldKey="orchestra_pit_chairs_note" label="Orchestra Pit Chairs — notes">
               <input type="text" value={(reqs.orchestra_pit_chairs_note as string) ?? ""} onChange={(e) => setReq("orchestra_pit_chairs_note", e.target.value || null)} className="carved input" placeholder="Qty or other notes…" />
