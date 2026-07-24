@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
@@ -6,6 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { AnnouncementBanner } from "../components/AnnouncementBanner";
 import { PocStatusBadge } from "../components/PocIncompleteBanner";
 import { apiGet } from "../lib/api";
+import { matchesSearchTerm } from "../lib/global-search";
 import { dashboardOperationalCounts, operationalLifecycleEntries } from "../lib/dashboard-operational-counts";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { eventDisplayName } from "../lib/event-display";
@@ -63,6 +64,8 @@ const DASHBOARD_LIST_MAX_HEIGHT = `${DASHBOARD_VISIBLE_EVENTS * 6.75 + (DASHBOAR
 const DASHBOARD_LIST_STYLE = { "--dashboard-list-height": DASHBOARD_LIST_MAX_HEIGHT } as CSSProperties;
 
 export function DashboardPage() {
+  const [searchParams] = useSearchParams();
+  const searchQuery = (searchParams.get("q") ?? "").trim();
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -78,6 +81,7 @@ export function DashboardPage() {
   const lifecycleEntries = lifecycleData?.entries ?? [];
   const tasks = (taskData?.tasks ?? [])
     .filter(isDashboardActionableTask)
+    .filter((task) => matchesSearchTerm(searchQuery, task.organisation_name, task.event_title, task.title))
     .sort((a, b) => taskRank(a, todayIso) - taskRank(b, todayIso));
   const actionGroups = groupDashboardActions(tasks);
   const overdueActionGroupCount = actionGroups.filter((group) => getDaysOverdue(group.lead, todayIso) > 0).length;
@@ -85,6 +89,7 @@ export function DashboardPage() {
   const operationalCounts = dashboardOperationalCounts(lifecycleEntries, todayIso);
   const pipelineDecisions = operationalEntries
     .filter((entry) => entry.status === "enquiry" || entry.status === "tentative" || entry.status === "approved")
+    .filter((entry) => matchesSearchTerm(searchQuery, entry.organisation_name, entry.title, entry.venues))
     .sort((a, b) => pipelineDecisionRank(a, todayIso) - pipelineDecisionRank(b, todayIso)
       || compareOptionalDates(usablePipelineDate(a.event_start_date), usablePipelineDate(b.event_start_date))
       || String(a.milestone_date ?? "").localeCompare(String(b.milestone_date ?? "")));
@@ -102,6 +107,12 @@ export function DashboardPage() {
       />
 
       <AnnouncementBanner />
+
+      {searchQuery && (
+        <div className="mb-4 rounded-2xl border border-sage/20 bg-sage/5 px-4 py-3 text-sm text-ink-secondary etched">
+          Showing dashboard results for <span className="font-semibold text-ink-primary etched-deep">“{searchQuery}”</span>
+        </div>
+      )}
 
       {lifecycleLoadFailed && (
         <div role="alert" className="mb-6 rounded-2xl border border-status-cancelled/30 bg-status-cancelled/10 px-5 py-4 text-sm text-status-cancelled etched">

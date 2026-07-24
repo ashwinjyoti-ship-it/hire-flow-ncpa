@@ -5,6 +5,7 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { getEventStatusSurface } from "../lib/event-status-surface";
 import { apiGet } from "../lib/api";
+import { matchesSearchTerm } from "../lib/global-search";
 import { formatDate } from "../lib/use-lookups";
 import { eventContextLines } from "../lib/event-display";
 import {
@@ -36,17 +37,27 @@ export function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseView(searchParams.get("view"));
   const mine = searchParams.get("mine") === "1";
+  const searchQuery = (searchParams.get("q") ?? "").trim();
   const today = useMemo(() => isoTodayInIndia(), []);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["tasks", "active", mine],
-    queryFn: () => apiGet<{ tasks: TaskRow[] }>(`/tasks?status=all&mine=${mine ? "1" : "0"}`),
+    queryKey: ["tasks", "active", mine, searchQuery],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        status: "all",
+        mine: mine ? "1" : "0",
+      });
+      if (searchQuery) params.set("q", searchQuery);
+      return apiGet<{ tasks: TaskRow[] }>(`/tasks?${params.toString()}`);
+    },
   });
 
   const tasks = useMemo(() => {
     const rows = data?.tasks ?? [];
-    return rows.filter((task) => !isStaleConfirmedLifecycleTask(task) && (task.status === "open" || task.status === "in_progress"));
-  }, [data?.tasks]);
+    return rows
+      .filter((task) => !isStaleConfirmedLifecycleTask(task) && (task.status === "open" || task.status === "in_progress"))
+      .filter((task) => matchesSearchTerm(searchQuery, task.organisation_name, task.event_title, task.title));
+  }, [data?.tasks, searchQuery]);
 
   function selectView(next: TaskView) {
     const params = new URLSearchParams(searchParams);
@@ -91,6 +102,12 @@ export function TasksPage() {
         </div>
       </div>
 
+      {searchQuery && (
+        <div className="mb-4 rounded-2xl border border-sage/20 bg-sage/5 px-4 py-3 text-sm text-ink-secondary etched">
+          Showing tasks for <span className="font-semibold text-ink-primary etched-deep">“{searchQuery}”</span>
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-4 py-2 text-sm text-status-cancelled">
           {(error as Error).message}
@@ -100,7 +117,9 @@ export function TasksPage() {
       {isLoading ? (
         <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">Loading...</div>
       ) : tasks.length === 0 ? (
-        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">No tasks in this view.</div>
+        <div className="carved-card rounded-2xl bg-marble-highlight/50 p-6 text-sm text-ink-muted etched">
+          {searchQuery ? `No tasks match “${searchQuery}”.` : "No tasks in this view."}
+        </div>
       ) : view === "cards" ? (
         <EventCommandCards tasks={tasks} today={today} />
       ) : view === "queue" ? (

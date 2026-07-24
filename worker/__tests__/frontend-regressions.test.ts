@@ -425,21 +425,38 @@ describe("frontend regression guards", () => {
     expect(calendar).toContain("dateFromParam(searchParams.get(\"from\"))");
     expect(calendar).toContain("searchParams.get(\"status\") ?? \"\"");
     expect(calendar).toContain("URL is the single source of truth");
-    expect(calendar).toContain("/events?q=");
+    expect(calendar).toContain("/calendar/lifecycle?q=");
+    expect(calendar).toContain("monthStartFromIsoDate");
     expect(calendar).toContain("params.set(\"from\", from)");
   });
 
   it("preserves the active calendar view when submitting topbar search", () => {
     const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+    const search = readFileSync(resolve(root, "src/lib/global-search.ts"), "utf8");
 
     expect(source).toContain("const onCalendar = location.pathname === \"/calendar\"");
     expect(source).toContain("const view = onCalendar ? calendarView : \"lifecycle\"");
-    expect(source).toContain("function calendarUrlForSearch");
-    expect(source).toContain('params.set("from", event.event_start_date)');
-    expect(source).toContain("calendarViewForEvent(firstEvent, view)");
-    expect(source).toContain("to={calendarUrlForSearch(event.title, calendarViewForEvent(event, calendarView), event)}");
+    expect(source).toContain("resolveSearchNavigation");
+    expect(source).toContain("buildCalendarSearchUrl");
+    expect(source).toContain("buildOrganisationSearchUrl");
+    expect(search).toContain("resolveCalendarAnchorDate");
+    expect(search).toContain("monthStartFromIsoDate");
+    expect(source).toContain("openEventSearch");
     expect(source).toContain('View on ${calendarLabel}');
     expect(source).toContain('new URLSearchParams(location.search).get("q") ?? ""');
+    expect(source).toContain('location.pathname === "/dashboard"');
+  });
+
+  it("routes global search by page context", () => {
+    const search = readFileSync(resolve(root, "src/lib/global-search.ts"), "utf8");
+    const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
+    const tasks = readFileSync(resolve(root, "src/pages/TasksPage.tsx"), "utf8");
+
+    expect(search).toContain('if (context === "dashboard") return `/dashboard?q=${encoded}`');
+    expect(search).toContain('if (context === "tasks") return `/tasks?q=${encoded}`');
+    expect(dashboard).toContain('searchParams.get("q")');
+    expect(tasks).toContain('searchParams.get("q")');
+    expect(tasks).toContain('params.set("q", searchQuery)');
   });
 
   it("keeps page-level calendar filters collapsed behind one filter menu", () => {
