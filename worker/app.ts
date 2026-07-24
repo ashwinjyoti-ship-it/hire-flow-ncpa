@@ -14,6 +14,7 @@ import { documentRoutes, eventDocumentRoutes } from "./routes/documents";
 import { reportRoutes } from "./routes/reports";
 import { analyticsRoutes } from "./routes/analytics";
 import { announcementRoutes } from "./routes/announcements";
+import { stickyNoteRoutes } from "./routes/sticky-notes";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -82,6 +83,9 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Pinned team announcement (admin → whole team, shown on the Dashboard).
   app.route("/announcements", announcementRoutes);
+
+  // Shared call-capture corkboard (all authenticated team accounts).
+  app.route("/sticky-notes", stickyNoteRoutes);
 
   return app;
 }
