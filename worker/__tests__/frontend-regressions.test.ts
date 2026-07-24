@@ -830,6 +830,7 @@ describe("frontend regression guards", () => {
     expect(pocFields).toContain("event_company_contact_number");
     expect(pocFields).toContain("event_company_email");
     expect(pocFields).toContain("Event Company");
+    expect(pocFields).toContain("Organisation");
     expect(pocFields).toContain("VENDOR_REGISTRATION_OPTIONS");
     expect(pocFields).toContain("Point of Contact incomplete");
     expect(eventForm).toContain("hydrateVenueRequirements");

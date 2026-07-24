@@ -106,7 +106,7 @@ function formatReviewLabel(key: string): string {
     poc_contact_number: "Contact Number",
     poc_email: "Email",
     event_company_name: "Event Company Name",
-    event_company_contact_name: "Event Company Contact Name",
+    event_company_contact_name: "Event Company Point of Contact Name",
     event_company_contact_number: "Event Company Contact Number",
     event_company_email: "Event Company Email",
     bank_details: "Bank Details",
