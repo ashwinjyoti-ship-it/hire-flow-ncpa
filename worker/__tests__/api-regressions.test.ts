@@ -505,13 +505,13 @@ describe("API regressions", () => {
           }),
         };
       }
-      // POC keys are bind parameters, not SQL literals — match the 13-placeholder IN clause.
-      if (sql.includes("field_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+      // POC keys are bind parameters, not SQL literals — match the 14-placeholder IN clause.
+      if (sql.includes("field_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
         return {
           all: () => ({
             results: [
               "poc_name", "poc_contact_number", "poc_email",
-              "event_company_contact_name", "event_company_contact_number", "event_company_email",
+              "event_company_name", "event_company_contact_name", "event_company_contact_number", "event_company_email",
               "bank_details", "gst_no",
               "tan_no", "pan_no", "signing_authority_address", "courier_address", "vendor_registration_form",
             ].map((field_key) => ({
