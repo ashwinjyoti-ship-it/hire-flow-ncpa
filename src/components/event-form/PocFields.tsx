@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { VENDOR_REGISTRATION_OPTIONS } from "../../../worker/lib/poc-fields";
 import { evaluatePocCompletion } from "../../../worker/lib/poc-completion";
 import { withDefaultEventLevelRequirements } from "../../lib/event-edit-form";
@@ -9,9 +10,17 @@ type PocFieldsProps = {
   onChange: (next: PocValue) => void;
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label className="block">
+    <label className={clsx("block", className)}>
       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">{label}</span>
       {children}
     </label>
@@ -46,46 +55,47 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
         <Field label="Contact Number">
           <input id="requirement-field-poc_contact_number" type="tel" value={(reqs.poc_contact_number as string) ?? ""} onChange={(e) => setReq("poc_contact_number", e.target.value || null)} className="carved input" />
         </Field>
-        <Field label="Email">
+        <Field label="Email" className="md:col-span-2">
           <input id="requirement-field-poc_email" type="email" value={(reqs.poc_email as string) ?? ""} onChange={(e) => setReq("poc_email", e.target.value || null)} className="carved input" />
         </Field>
       </div>
       <h4 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
       <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Company Name" className="md:col-span-2">
+          <input id="requirement-field-event_company_name" type="text" value={(reqs.event_company_name as string) ?? ""} onChange={(e) => setReq("event_company_name", e.target.value || null)} className="carved input" />
+        </Field>
         <Field label="Contact Name">
-          <input type="text" value={(reqs.event_company_contact_name as string) ?? ""} onChange={(e) => setReq("event_company_contact_name", e.target.value || null)} className="carved input" />
+          <input id="requirement-field-event_company_contact_name" type="text" value={(reqs.event_company_contact_name as string) ?? ""} onChange={(e) => setReq("event_company_contact_name", e.target.value || null)} className="carved input" />
         </Field>
         <Field label="Contact Number">
-          <input type="tel" value={(reqs.event_company_contact_number as string) ?? ""} onChange={(e) => setReq("event_company_contact_number", e.target.value || null)} className="carved input" />
+          <input id="requirement-field-event_company_contact_number" type="tel" value={(reqs.event_company_contact_number as string) ?? ""} onChange={(e) => setReq("event_company_contact_number", e.target.value || null)} className="carved input" />
         </Field>
-        <Field label="Email Address">
-          <input type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
-        </Field>
-      </div>
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <Field label="Bank Details">
-          <textarea id="requirement-field-bank_details" value={(reqs.bank_details as string) ?? ""} onChange={(e) => setReq("bank_details", e.target.value || null)} className="carved input" rows={3} />
+        <Field label="Email" className="md:col-span-2">
+          <input id="requirement-field-event_company_email" type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
         </Field>
         <Field label="GST No.">
-          <input type="text" value={(reqs.gst_no as string) ?? ""} onChange={(e) => setReq("gst_no", e.target.value || null)} className="carved input" />
-        </Field>
-        <Field label="TAN No.">
-          <input type="text" value={(reqs.tan_no as string) ?? ""} onChange={(e) => setReq("tan_no", e.target.value || null)} className="carved input" />
+          <input id="requirement-field-gst_no" type="text" value={(reqs.gst_no as string) ?? ""} onChange={(e) => setReq("gst_no", e.target.value || null)} className="carved input" />
         </Field>
         <Field label="PAN No.">
-          <input type="text" value={(reqs.pan_no as string) ?? ""} onChange={(e) => setReq("pan_no", e.target.value || null)} className="carved input" />
+          <input id="requirement-field-pan_no" type="text" value={(reqs.pan_no as string) ?? ""} onChange={(e) => setReq("pan_no", e.target.value || null)} className="carved input" />
         </Field>
-        <Field label="Signing Authority & Address">
-          <textarea id="requirement-field-signing_authority_address" value={(reqs.signing_authority_address as string) ?? ""} onChange={(e) => setReq("signing_authority_address", e.target.value || null)} className="carved input" rows={3} />
+        <Field label="TAN No.">
+          <input id="requirement-field-tan_no" type="text" value={(reqs.tan_no as string) ?? ""} onChange={(e) => setReq("tan_no", e.target.value || null)} className="carved input" />
         </Field>
-        <Field label="Courier Address">
-          <textarea value={(reqs.courier_address as string) ?? ""} onChange={(e) => setReq("courier_address", e.target.value || null)} className="carved input" rows={3} />
-        </Field>
-        <Field label="Vendor Registration Form">
-          <select value={(reqs.vendor_registration_form as string) ?? ""} onChange={(e) => setReq("vendor_registration_form", e.target.value || null)} className="carved input">
+        <Field label="Vendor Registration">
+          <select id="requirement-field-vendor_registration_form" value={(reqs.vendor_registration_form as string) ?? ""} onChange={(e) => setReq("vendor_registration_form", e.target.value || null)} className="carved input">
             <option value="">Select…</option>
             {VENDOR_REGISTRATION_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
+        </Field>
+        <Field label="Bank Details" className="md:col-span-2">
+          <textarea id="requirement-field-bank_details" value={(reqs.bank_details as string) ?? ""} onChange={(e) => setReq("bank_details", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+        <Field label="Signing Authority">
+          <textarea id="requirement-field-signing_authority_address" value={(reqs.signing_authority_address as string) ?? ""} onChange={(e) => setReq("signing_authority_address", e.target.value || null)} className="carved input" rows={3} />
+        </Field>
+        <Field label="Courier Address">
+          <textarea id="requirement-field-courier_address" value={(reqs.courier_address as string) ?? ""} onChange={(e) => setReq("courier_address", e.target.value || null)} className="carved input" rows={3} />
         </Field>
       </div>
     </section>

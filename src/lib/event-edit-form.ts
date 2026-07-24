@@ -13,6 +13,7 @@ export const EVENT_LEVEL_REQUIREMENT_KEYS = [
   "poc_name",
   "poc_contact_number",
   "poc_email",
+  "event_company_name",
   "event_company_contact_name",
   "event_company_contact_number",
   "event_company_email",

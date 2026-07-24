@@ -140,6 +140,7 @@ function checklistValue(def: ChecklistDefinition, event: DemoEvent): string | nu
     case "poc_name": return `${event.orgName.split(" ")[0]} Coordinator`;
     case "poc_contact_number": return event.phone;
     case "poc_email": return event.email;
+    case "event_company_name": return event.orgName;
     case "event_company_contact_name": return `${event.orgName.split(" ")[0]} Events Lead`;
     case "event_company_contact_number": return event.phone;
     case "event_company_email": return `events@${slug(event.orgName).slice(0, 12) || "organiser"}.example`;
