@@ -74,6 +74,90 @@ body {
   overflow-x: clip;
 }
 
+.font-hand {
+  font-family: "Patrick Hand", "Bradley Hand", "Segoe Print", cursive;
+}
+
+/* Shared sticky-note corkboard. A compressed natural-cork tile provides the
+   irregular fibres and pores; broad translucent shading keeps it integrated
+   with the carved app shell without turning the grain into a dot pattern. */
+.corkboard {
+  background-color: #a97446;
+  background-image:
+    radial-gradient(130% 95% at 52% -8%, rgba(255, 236, 198, 0.13), transparent 62%),
+    linear-gradient(105deg, rgba(79, 42, 19, 0.08), transparent 44%, rgba(255, 231, 189, 0.04)),
+    url("/assets/cork-texture.jpg");
+  background-size: auto, auto, 620px 620px;
+  background-blend-mode: screen, multiply, normal;
+  box-shadow:
+    inset 12px 0 28px rgba(72, 38, 20, 0.18),
+    inset 0 8px 18px rgba(72, 38, 20, 0.18);
+}
+
+.sticky-paper {
+  color-scheme: light;
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.32), transparent 38%),
+    linear-gradient(180deg, #fff3ad 0%, #f8e58f 100%);
+  color: #433c2d;
+  border-radius: 3px 3px 7px 3px;
+  box-shadow:
+    0 14px 22px rgba(61, 34, 18, 0.24),
+    0 3px 6px rgba(61, 34, 18, 0.18),
+    inset 0 -1px 0 rgba(133, 101, 35, 0.18);
+}
+
+.sticky-paper::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  background: linear-gradient(135deg, transparent 47%, rgba(151, 112, 40, 0.13) 49%, rgba(255, 249, 196, 0.85) 72%);
+  border-bottom-right-radius: 7px;
+}
+
+.sticky-pin {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 28%, #f4b08b 0 18%, #b95f3a 38% 72%, #71351f 100%);
+  box-shadow: 0 2px 3px rgba(70, 34, 18, 0.35);
+}
+
+.sticky-drag-handle {
+  touch-action: none;
+  cursor: grab;
+}
+
+.sticky-drag-handle:active {
+  cursor: grabbing;
+}
+
+:root[data-theme="dark"] .corkboard {
+  background-color: #6f4930;
+  background-image:
+    linear-gradient(rgba(35, 25, 17, 0.33), rgba(35, 25, 17, 0.33)),
+    radial-gradient(120% 90% at 55% 0%, rgba(217, 177, 119, 0.08), transparent 65%),
+    url("/assets/cork-texture.jpg");
+  background-size: auto, auto, 620px 620px;
+  background-blend-mode: multiply, screen, normal;
+}
+
+:root[data-theme="dark"] .sticky-paper {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.18), transparent 38%),
+    linear-gradient(180deg, #ead58d 0%, #d5bd6e 100%);
+  color: #393225;
+}
+
 /* Keep the standalone app clear of iPhone notches and the home indicator. */
 @supports (padding: max(0px)) {
   body {

@@ -6,6 +6,7 @@ import { describeAccess } from "../../../worker/lib/rbac";
 import { apiGet, apiPost } from "../../lib/api";
 import { BrandLogo } from "../BrandLogo";
 import { formatDate } from "../../lib/use-lookups";
+import { StickyNotesLauncher } from "../sticky-notes/StickyNotesLauncher";
 
 type NotificationRow = {
   id: string;
@@ -54,7 +55,12 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 }
 
 /** Top navigation bar with global search + user menu (carved-header depth). */
-export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
+type TopbarProps = {
+  onMenuToggle: () => void;
+  onStickyNotesOpen: () => void;
+};
+
+export function Topbar({ onMenuToggle, onStickyNotesOpen }: TopbarProps) {
   const { user } = useAuth();
   const location = useLocation();
   const qc = useQueryClient();
@@ -135,6 +141,7 @@ export function Topbar({ onMenuToggle }: { onMenuToggle: () => void }) {
         </div>
         {user ? (
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+            <StickyNotesLauncher onOpen={onStickyNotesOpen} />
             <div ref={notificationsRef} className="relative">
               <button
                 type="button"
