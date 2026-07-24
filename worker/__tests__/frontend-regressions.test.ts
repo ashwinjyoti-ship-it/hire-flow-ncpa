@@ -898,6 +898,29 @@ describe("frontend regression guards", () => {
     expect(mom).toContain("font-weight:700");
   });
 
+
+  it("keeps new corkboard notes unlinked until a search result is selected", () => {
+    const tray = readFileSync(resolve(root, "src/components/sticky-notes/StickyNotesTray.tsx"), "utf8");
+    const picker = readFileSync(resolve(root, "src/components/sticky-notes/StickyNoteLinkPicker.tsx"), "utf8");
+
+    expect(tray).not.toContain("sticky-note-event-context");
+    expect(tray).not.toContain("contextualLink");
+    expect(tray).not.toContain("currentEventId");
+    expect(picker).toContain("const enabled = editing && term.length >= 2");
+    expect(picker).toContain("onChange({");
+  });
+
+  it("opens the corkboard linked-record picker for removal instead of navigating", () => {
+    const card = readFileSync(resolve(root, "src/components/sticky-notes/StickyNoteCard.tsx"), "utf8");
+    const picker = readFileSync(resolve(root, "src/components/sticky-notes/StickyNoteLinkPicker.tsx"), "utf8");
+
+    expect(card).toContain("onClick={() => setLinking(true)}");
+    expect(card).toContain('title="Change or remove linked record"');
+    expect(card).not.toContain("onOpenEvent");
+    expect(picker).toContain('aria-label="Remove linked record"');
+    expect(picker).toContain("onChange(null)");
+  });
+
   it("exposes a printable event form action on the lifecycle panel", () => {
     const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
     const helper = readFileSync(resolve(root, "src/lib/event-form-print.ts"), "utf8");
