@@ -293,6 +293,19 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("onLifecycleRegression");
   });
 
+  it("heals stale follow-up tasks when checklist completion was missed on write", () => {
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
+
+    expect(operations).toContain("reconcileFollowUpTasksForEvent");
+    expect(operations).toContain("reconcileConfirmationLetterTasksForEvent");
+    expect(operations).toContain("reconcileApprovalFollowupTasksForEvent");
+    expect(operations).toContain("reconcileOnstageTasksForEvent");
+    expect(operations).toContain("reconcileFeedbackTasksForEvent");
+    expect(operations).toMatch(/getChecklistItems[\s\S]*reconcileFollowUpTasksForEvent/);
+    expect(operations).toMatch(/rescheduleAutomaticTasksForEvent[\s\S]*reconcileFollowUpTasksForEvent/);
+    expect(operations).toMatch(/updateChecklistItem[\s\S]*reconcileFollowUpTasksForEvent/);
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
     const shell = readFileSync(resolve(root, "src/components/shell/AppShell.tsx"), "utf8");
@@ -843,6 +856,10 @@ describe("frontend regression guards", () => {
     expect(pocFields).toContain("event_company_contact_name");
     expect(pocFields).toContain("event_company_contact_number");
     expect(pocFields).toContain("event_company_email");
+    expect(pocFields).toContain("event_company_required");
+    expect(pocFields).toContain("isEventCompanyRequired");
+    expect(pocFields).toContain("event_company_required");
+    expect(pocFields).toContain("isEventCompanyRequired");
     expect(pocFields).toContain("Event Company");
     expect(pocFields).toContain("Organisation");
     expect(pocFields).toContain("VENDOR_REGISTRATION_OPTIONS");

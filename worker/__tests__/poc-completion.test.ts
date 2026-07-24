@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluatePocCompletion,
   getPocFieldValuesForEvents,
+  isEventCompanyRequired,
   isPocFieldValueFilled,
   listEventsWithIncompletePoc,
   mergePocValues,
@@ -75,6 +76,7 @@ describe("poc completion", () => {
 
   it("allows optional POC fields to remain empty", () => {
     const complete = evaluatePocCompletion({
+      event_company_required: "N/A",
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
       poc_email: "karina.arora@cathedral-school.com",
@@ -87,11 +89,46 @@ describe("poc completion", () => {
     expect(complete.complete).toBe(true);
   });
 
-  it("still marks complete when all POC fields are filled", () => {
-    const complete = evaluatePocCompletion({
+  it("requires event company fields only when Event Company is Yes", () => {
+    const missing = evaluatePocCompletion({
+      event_company_required: "Yes",
       poc_name: "Karina Arora",
       poc_contact_number: "9833205630",
       poc_email: "karina.arora@cathedral-school.com",
+      bank_details: "ICICI Bank",
+      signing_authority_address: "Principal",
+    });
+    expect(missing.complete).toBe(false);
+    expect(missing.missingLabels).toContain("Event Company Name");
+    expect(missing.totalCount).toBe(9);
+
+    const complete = evaluatePocCompletion({
+      event_company_required: "Yes",
+      poc_name: "Karina Arora",
+      poc_contact_number: "9833205630",
+      poc_email: "karina.arora@cathedral-school.com",
+      bank_details: "ICICI Bank",
+      signing_authority_address: "Principal",
+      event_company_name: "Event Co",
+      event_company_contact_name: "Ravi Shah",
+      event_company_contact_number: "9820000000",
+      event_company_email: "ravi@eventco.example",
+    });
+    expect(complete.complete).toBe(true);
+  });
+
+  it("infers Event Company = Yes for legacy rows with company data but no toggle", () => {
+    expect(isEventCompanyRequired({ event_company_name: "Event Co" })).toBe(true);
+    expect(isEventCompanyRequired({ event_company_required: "N/A", event_company_name: "Event Co" })).toBe(false);
+  });
+
+  it("still marks complete when all POC fields are filled", () => {
+    const complete = evaluatePocCompletion({
+      event_company_required: "Yes",
+      poc_name: "Karina Arora",
+      poc_contact_number: "9833205630",
+      poc_email: "karina.arora@cathedral-school.com",
+      event_company_name: "Event Co",
       event_company_contact_name: "Ravi Shah",
       event_company_contact_number: "9820000000",
       event_company_email: "ravi@eventco.example",

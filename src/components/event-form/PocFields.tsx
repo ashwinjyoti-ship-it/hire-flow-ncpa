@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { VENDOR_REGISTRATION_OPTIONS } from "../../../worker/lib/poc-fields";
-import { evaluatePocCompletion } from "../../../worker/lib/poc-completion";
+import { evaluatePocCompletion, isEventCompanyRequired } from "../../../worker/lib/poc-completion";
 import { withDefaultEventLevelRequirements } from "../../lib/event-edit-form";
 
 type PocValue = Record<string, unknown>;
@@ -32,6 +32,7 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
   const reqs = withDefaultEventLevelRequirements(value);
   const setReq = (key: string, nextValue: unknown) => onChange({ ...reqs, [key]: nextValue });
   const poc = evaluatePocCompletion(reqs);
+  const eventCompanyRequired = isEventCompanyRequired(reqs as Partial<Record<string, string | null | undefined>>);
 
   return (
     <section id="requirement-poc" className="carved-card scroll-mt-6 rounded-2xl bg-marble-highlight/50 p-5">
@@ -84,7 +85,21 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
           <textarea id="requirement-field-courier_address" value={(reqs.courier_address as string) ?? ""} onChange={(e) => setReq("courier_address", e.target.value || null)} className="carved input" rows={3} />
         </Field>
       </div>
-      <h4 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Event Company</h4>
+        <Field label="Event Company" className="min-w-[10rem]">
+          <select
+            id="requirement-field-event_company_required"
+            value={(reqs.event_company_required as string) ?? "N/A"}
+            onChange={(e) => setReq("event_company_required", e.target.value || "N/A")}
+            className="carved input"
+          >
+            <option value="N/A">N/A</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </Field>
+      </div>
+      {eventCompanyRequired && (
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Company Name" className="md:col-span-2">
           <input id="requirement-field-event_company_name" type="text" value={(reqs.event_company_name as string) ?? ""} onChange={(e) => setReq("event_company_name", e.target.value || null)} className="carved input" />
@@ -99,6 +114,12 @@ export function PocFields({ value, onChange }: PocFieldsProps) {
           <input id="requirement-field-event_company_email" type="email" value={(reqs.event_company_email as string) ?? ""} onChange={(e) => setReq("event_company_email", e.target.value || null)} className="carved input" />
         </Field>
       </div>
+      )}
+      {!eventCompanyRequired && (
+        <p className="text-xs text-ink-muted etched">
+          Event Company is not required when the organisation is running the event directly.
+        </p>
+      )}
     </section>
   );
 }
