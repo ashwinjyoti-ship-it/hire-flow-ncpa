@@ -26,7 +26,7 @@ export const EVENT_LEVEL_REQUIREMENT_KEYS = [
   "vendor_registration_form",
 ] as const;
 
-const AFFIRMATIVE_VALUES = new Set(["Yes", "Required", "Keep"]);
+const AFFIRMATIVE_VALUES = new Set(["Yes", "Required", "Remove"]);
 const JOINABLE_TEXT_KEYS = new Set([
   "sound", "light", "green_room_amenities", "parking", "security", "fire_safety", "housekeeping",
   "licenses", "licenses_status", "stage_setup", "foyer_setup", "orchestra_pit_chairs_note", "digital_standee_note",

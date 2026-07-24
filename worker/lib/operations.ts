@@ -1413,7 +1413,7 @@ function parseRequirementsJson(raw: string | null | undefined): Record<string, u
   }
 }
 
-const AFFIRMATIVE = new Set(["Yes", "Required", "Keep"]);
+const AFFIRMATIVE = new Set(["Yes", "Required", "Remove"]);
 const JOINABLE = new Set([
   "sound", "light", "green_room_amenities", "parking", "security", "housekeeping",
   "licenses", "licenses_status", "stage_setup", "foyer_setup", "orchestra_pit_chairs_note", "digital_standee_note",

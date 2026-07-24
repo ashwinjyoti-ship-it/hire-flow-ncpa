@@ -19,7 +19,8 @@ describe("optional requirements", () => {
 
   it("recognises affirmative values", () => {
     expect(isOptionalAffirmative("Required")).toBe(true);
-    expect(isOptionalAffirmative("Keep")).toBe(true);
+    expect(isOptionalAffirmative("Remove")).toBe(true);
+    expect(isOptionalAffirmative("Keep")).toBe(false);
     expect(isOptionalAffirmative("Not Required")).toBe(false);
   });
 
@@ -44,7 +45,8 @@ describe("optional requirements", () => {
   it("maps legacy No to N/A for display (documented: N/A = No)", () => {
     expect(optionalDisplayValue("No")).toBe("N/A");
     expect(optionalDisplayValue("Not Required")).toBe("N/A");
-    expect(optionalDisplayValue("Remove")).toBe("N/A");
+    expect(optionalDisplayValue("Keep")).toBe("N/A");
+    expect(optionalDisplayValue("Remove")).toBe("Remove");
     expect(optionalDisplayValue("Yes")).toBe("Yes");
     expect(optionalDisplayValue("Required")).toBe("Required");
   });
