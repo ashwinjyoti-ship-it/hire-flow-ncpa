@@ -145,6 +145,27 @@ export type LifecycleReadiness = {
   actions: LifecycleAction[];
 };
 
+/** Returned when a confirmed event is demoted because confirmation blockers reappeared. */
+export type ConfirmationBlockerRegression = {
+  from_status: EventStatus;
+  to_status: EventStatus;
+  blockers: string[];
+  message: string;
+};
+
+export type ChecklistUpdateResult = {
+  item: ChecklistItemRow;
+  lifecycleRegression: ConfirmationBlockerRegression | null;
+};
+
+export const CONFIRMATION_BLOCKER_REGRESSION_SUFFIX =
+  "This event has been moved back to the Lifecycle Calendar.";
+
+export function formatConfirmationBlockerRegressionMessage(blockers: string[]): string {
+  const blocker = blockers[0] ?? "Confirmation is no longer complete.";
+  return `${blocker} ${CONFIRMATION_BLOCKER_REGRESSION_SUFFIX}`;
+}
+
 export type LifecycleWorkflowSnapshot = {
   activePhase: LifecycleWorkflowPhase;
   label: string;
@@ -594,7 +615,7 @@ export async function updateChecklistItem(args: {
   value?: string | null;
   status?: string;
   user: AuthUser;
-}): Promise<ChecklistItemRow> {
+}): Promise<ChecklistUpdateResult> {
   const { db, itemId, user } = args;
   const current = await db.prepare(
     `SELECT ci.*, cd.field_type, cd.options, cd.is_computed, cd.triggers_task, cd.visibility_rule, cd.sort_order
@@ -752,11 +773,15 @@ export async function updateChecklistItem(args: {
     await eventActivity(db, current.event_id, "closed", user.id, { reopened: true });
   }
   await recalculateEventCompletion(db, current.event_id);
+  const lifecycleRegression = await reconcileConfirmedStatusForBlockers(db, current.event_id, user.id);
   await eventActivity(db, current.event_id, "checklist_updated", user.id, {
     field: current.field_key,
     label: current.label,
     value,
     status,
+    ...(lifecycleRegression
+      ? { lifecycle_regression: { from: lifecycleRegression.from_status, to: lifecycleRegression.to_status, blockers: lifecycleRegression.blockers } }
+      : {}),
   });
 
   const updated = await db.prepare(
@@ -767,7 +792,7 @@ export async function updateChecklistItem(args: {
   ).bind(itemId).first<ChecklistItemRow>();
   if (!updated) throw new Error("Checklist item not found after update");
   const [hydrated] = await hydrateChecklistItemOptions(db, [updated]);
-  return hydrated ?? updated;
+  return { item: hydrated ?? updated, lifecycleRegression };
 }
 
 async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined): Promise<void> {
@@ -806,9 +831,20 @@ async function syncEventFieldsFromChecklist(db: D1Database, eventId: string, fie
     await db.prepare("UPDATE events SET confirmation_status = 'couriered', updated_at = ? WHERE id = ? AND confirmation_status != 'signed_received'")
       .bind(now, eventId).run();
   }
-  if (fieldKey === "confirmation_signed_received" && v === "yes") {
-    await db.prepare("UPDATE events SET confirmation_status = 'signed_received', updated_at = ? WHERE id = ?")
-      .bind(now, eventId).run();
+  if (fieldKey === "confirmation_signed_received") {
+    if (v === "yes") {
+      await db.prepare("UPDATE events SET confirmation_status = 'signed_received', updated_at = ? WHERE id = ?")
+        .bind(now, eventId).run();
+    } else {
+      const letter = await getConfirmationLetterDeliveryState(db, eventId);
+      const confirmationStatus = isConfirmationLetterCouriered(letter.couriered)
+        ? "couriered"
+        : isConfirmationLetterMade(letter.made)
+          ? "made"
+          : "none";
+      await db.prepare("UPDATE events SET confirmation_status = ?, updated_at = ? WHERE id = ?")
+        .bind(confirmationStatus, now, eventId).run();
+    }
   }
   if (fieldKey === "noc_sent") {
     await syncNocDependentChecklist(db, eventId, value);
@@ -2551,6 +2587,83 @@ export async function reconcileConfirmationLetterDeliveryChain(
   await reopenAutomaticallyCompletedTasks(db, eventId, ["confirmation_letter"]);
   await recalculateEventCompletion(db, eventId);
   return true;
+}
+
+const PRE_CONFIRM_STATUSES = new Set<EventStatus>(["enquiry", "tentative", "approved"]);
+
+async function priorStatusBeforeConfirmed(db: D1Database, eventId: string, eventType: string | null): Promise<EventStatus> {
+  const row = await db.prepare(
+    `SELECT from_status
+     FROM event_status_history
+     WHERE event_id = ? AND to_status = 'confirmed'
+     ORDER BY changed_at DESC
+     LIMIT 1`
+  ).bind(eventId).first<{ from_status: EventStatus }>();
+  if (row?.from_status && PRE_CONFIRM_STATUSES.has(row.from_status)) {
+    return row.from_status;
+  }
+  return eventType === "VFH" ? "approved" : "tentative";
+}
+
+/**
+ * When a confirmed event no longer satisfies confirmation blockers (because a
+ * checklist field regressed), demote it back to the pre-confirm pipeline so it
+ * leaves the Show Calendar and returns to the Lifecycle Calendar.
+ */
+export async function reconcileConfirmedStatusForBlockers(
+  db: D1Database,
+  eventId: string,
+  userId: string,
+): Promise<ConfirmationBlockerRegression | null> {
+  const event = await db.prepare(
+    "SELECT id, status, event_type FROM events WHERE id = ? AND is_archived = 0"
+  ).bind(eventId).first<{ id: string; status: EventStatus; event_type: string | null }>();
+  if (!event || event.status !== "confirmed") return null;
+
+  const { event: lifecycleEvent } = await getEventLifecycle(db, eventId);
+  const blockers = blockersForTransition(lifecycleEvent, "confirmed");
+  if (blockers.length === 0) return null;
+
+  const toStatus = await priorStatusBeforeConfirmed(db, eventId, event.event_type);
+  const now = new Date().toISOString();
+  const message = formatConfirmationBlockerRegressionMessage(blockers);
+
+  await db.prepare("UPDATE events SET status = ?, updated_at = ? WHERE id = ?")
+    .bind(toStatus, now, eventId).run();
+  await db.prepare(
+    "UPDATE venue_bookings SET booking_status = 'tentative', updated_at = ? WHERE event_id = ? AND booking_status = 'confirmed'"
+  ).bind(now, eventId).run();
+  await db.prepare(
+    `INSERT INTO event_status_history (id, event_id, from_status, to_status, changed_by, changed_at, reason, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    makeId("sh"),
+    eventId,
+    "confirmed",
+    toStatus,
+    userId,
+    now,
+    "Confirmation blockers regressed",
+    blockers.join(" "),
+  ).run();
+
+  await reconcileTasksForLifecycleTransition(db, eventId, "confirmed", toStatus, userId);
+  await reconcileTentativeVenuePaymentTasksForEvent(db, eventId);
+  await reconcileReadinessTasksForEvent(db, eventId);
+  await reconcileWorkflowPhaseTasksForEvent(db, eventId);
+  await eventActivity(db, eventId, "status_changed", userId, {
+    from: "confirmed",
+    to: toStatus,
+    reason: "Confirmation blockers regressed",
+    blockers,
+  });
+
+  return {
+    from_status: "confirmed",
+    to_status: toStatus,
+    blockers,
+    message,
+  };
 }
 
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness; poc: import("./poc-completion").PocCompletionStatus }> {

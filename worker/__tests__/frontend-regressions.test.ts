@@ -279,6 +279,20 @@ describe("frontend regression guards", () => {
     expect(operations).toContain("syncInstalmentDependentChecklist");
   });
 
+  it("surfaces confirmation blocker regression when a confirmed event regresses", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const checklistUpdate = readFileSync(resolve(root, "src/lib/use-checklist-update.ts"), "utf8");
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
+    const routes = readFileSync(resolve(root, "worker/routes/events.ts"), "utf8");
+
+    expect(operations).toContain("reconcileConfirmedStatusForBlockers");
+    expect(operations).toContain("CONFIRMATION_BLOCKER_REGRESSION_SUFFIX");
+    expect(routes).toContain("lifecycle_regression");
+    expect(checklistUpdate).toContain("onLifecycleRegression");
+    expect(detail).toContain("lifecycleRegressionMessage");
+    expect(detail).toContain("onLifecycleRegression");
+  });
+
   it("keeps notification flyout above routed page controls", () => {
     const topbar = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
     const shell = readFileSync(resolve(root, "src/components/shell/AppShell.tsx"), "utf8");
