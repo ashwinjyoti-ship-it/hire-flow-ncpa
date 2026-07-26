@@ -328,6 +328,20 @@ function GlobalSearch() {
     setOpen(false);
   }
 
+  function clearUrlSearchQuery() {
+    const searchable =
+      location.pathname === "/calendar" ||
+      location.pathname === "/organisations" ||
+      location.pathname === "/tasks" ||
+      location.pathname === "/dashboard";
+    if (!searchable) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.has("q")) return;
+    params.delete("q");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
+  }
+
   return (
     <div ref={rootRef} className="relative w-full max-w-md">
       <form
@@ -340,8 +354,10 @@ function GlobalSearch() {
           type="search"
           value={query}
           onChange={(event) => {
-            setQuery(event.target.value);
+            const value = event.target.value;
+            setQuery(value);
             setOpen(true);
+            if (!value.trim()) clearUrlSearchQuery();
           }}
           onFocus={() => setOpen(true)}
           placeholder={onCalendar ? `Search ${calendarLabel.toLowerCase()}…` : "Search events, organisations…"}

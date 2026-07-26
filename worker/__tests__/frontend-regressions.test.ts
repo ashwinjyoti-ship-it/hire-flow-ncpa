@@ -447,6 +447,14 @@ describe("frontend regression guards", () => {
     expect(source).toContain('location.pathname === "/dashboard"');
   });
 
+  it("clears the shareable URL search param when the topbar search is wiped", () => {
+    const source = readFileSync(resolve(root, "src/components/shell/Topbar.tsx"), "utf8");
+
+    expect(source).toContain("function clearUrlSearchQuery");
+    expect(source).toContain('params.delete("q")');
+    expect(source).toContain("if (!value.trim()) clearUrlSearchQuery()");
+  });
+
   it("routes global search by page context", () => {
     const search = readFileSync(resolve(root, "src/lib/global-search.ts"), "utf8");
     const dashboard = readFileSync(resolve(root, "src/pages/DashboardPage.tsx"), "utf8");
