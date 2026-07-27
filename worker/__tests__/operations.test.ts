@@ -60,7 +60,9 @@ describe("operational lifecycle readiness", () => {
   });
 
   it("walks confirmation blockers in order", () => {
-    expect(blockersForTransition(event({ confirmation_status: "none" }), "confirmed")).toContain("Confirmation letter must be made.");
+    const noneBlockers = blockersForTransition(event({ costing_email: "Yes", payment_status: "Incomplete", confirmation_status: "none" }), "confirmed");
+    expect(noneBlockers[0]).toBe("Confirmation letter must be made.");
+    expect(noneBlockers[1]).toBe("Payment must be completed.");
     expect(blockersForTransition(event({ confirmation_status: "made" }), "confirmed")).toContain("Confirmation letter must be couriered.");
     expect(blockersForTransition(event({ confirmation_status: "couriered" }), "confirmed")).toContain("Signed confirmation must be received.");
   });
