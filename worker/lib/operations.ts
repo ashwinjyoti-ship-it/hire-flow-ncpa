@@ -2972,20 +2972,23 @@ export function blockersForTransition(event: EventLifecycleRow, to: EventStatus)
     }
   }
   if (to === "confirmed") {
-    // Financials gate — costing email = Yes, then payment = Completed.
-    // Payment Completed while costing is still No does not satisfy the gate
-    // (invalid sequence). Proforma / instalment tracking do NOT gate.
+    // Financials & confirmation letter gate order:
+    // 1. Costing Email
+    // 2. Confirmation letter Made
+    // 3. Payment Completed
+    // 4. Confirmation letter delivery (Couriered -> Signed Copy Received)
     if (!isCostingEmailSent(event.costing_email)) {
       blockers.push(COSTING_EMAIL_BLOCKER);
+    }
+    if (!event.confirmation_status || event.confirmation_status === "none") {
+      blockers.push("Confirmation letter must be made.");
     }
     if (!isPaymentGateSatisfied(event.costing_email, event.payment_status)) {
       blockers.push(PAYMENT_COMPLETED_BLOCKER);
     }
-    if (!event.confirmation_status || event.confirmation_status === "none") {
-      blockers.push("Confirmation letter must be made.");
-    } else if (event.confirmation_status === "made") {
+    if (event.confirmation_status === "made") {
       blockers.push("Confirmation letter must be couriered.");
-    } else if (event.confirmation_status !== "signed_received") {
+    } else if (event.confirmation_status && event.confirmation_status !== "none" && event.confirmation_status !== "signed_received") {
       blockers.push("Signed confirmation must be received.");
     }
     // The approval checklist must not impede confirmation when approval is
