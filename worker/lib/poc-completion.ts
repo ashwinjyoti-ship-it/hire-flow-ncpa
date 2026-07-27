@@ -31,10 +31,7 @@ export function isEventCompanyRequired(
   values: Partial<Record<string, string | null | undefined>>,
 ): boolean {
   const explicit = normalisePocValue(values[EVENT_COMPANY_REQUIRED_KEY]);
-  if (explicit === "yes") return true;
-  if (explicit === "n/a" || explicit === "not applicable") return false;
-  // Legacy rows: company data present but no toggle → treat as Yes.
-  return EVENT_COMPANY_FIELD_KEYS.some((key) => isPocFieldValueFilled(key, values[key]));
+  return explicit === "yes";
 }
 
 export function requiredPocFieldKeys(
