@@ -117,9 +117,10 @@ describe("poc completion", () => {
     expect(complete.complete).toBe(true);
   });
 
-  it("infers Event Company = Yes for legacy rows with company data but no toggle", () => {
-    expect(isEventCompanyRequired({ event_company_name: "Event Co" })).toBe(true);
+  it("treats Event Company as required only when event_company_required is Yes", () => {
+    expect(isEventCompanyRequired({ event_company_name: "Event Co" })).toBe(false);
     expect(isEventCompanyRequired({ event_company_required: "N/A", event_company_name: "Event Co" })).toBe(false);
+    expect(isEventCompanyRequired({ event_company_required: "Yes", event_company_name: "Event Co" })).toBe(true);
   });
 
   it("still marks complete when all POC fields are filled", () => {
