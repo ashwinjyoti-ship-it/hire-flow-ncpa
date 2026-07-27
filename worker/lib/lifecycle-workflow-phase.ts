@@ -129,7 +129,7 @@ export function workflowPhaseForTaskRule(sourceRule: string | null | undefined):
   if (!sourceRule) return null;
   if (sourceRule === "poc_incomplete") return "confirm";
   if (sourceRule === "approval_followup") return "confirm";
-  if (sourceRule === "confirmation_letter") return "confirm";
+  if (sourceRule === "confirmation_letter" || sourceRule === "confirmation_make") return "confirm";
   if (sourceRule === "instalment") return "confirm";
   if (sourceRule === "venue_booking_payment_followup") return "confirm";
   if (sourceRule.startsWith("event_form_readiness:")) return "event";

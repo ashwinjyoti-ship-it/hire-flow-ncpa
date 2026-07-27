@@ -2252,28 +2252,84 @@ export async function reconcileTechnicalMeetingTasksForEvent(
   return result.meta?.changes ?? 0;
 }
 
-/** Close confirmation-letter follow-ups once the signed copy is received. */
+/** Close confirmation-letter tasks once satisfied or cancel follow-up when Couriered is cleared. */
 export async function reconcileConfirmationLetterTasksForEvent(
   db: D1Database,
   eventId: string,
   userId: string | null = null,
 ): Promise<number> {
-  const row = await db.prepare(
-    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'confirmation_signed_received' LIMIT 1"
-  ).bind(eventId).first<{ value: string | null }>();
-  if (normalise(row?.value) !== "yes") return 0;
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN ('costing_email', 'confirmation_made', 'confirmation_couriered', 'confirmation_signed_received')`
+  ).bind(eventId).all<{ field_key: string; value: string | null }>();
+
+  let costingEmail: string | null = null;
+  let confirmationMade: string | null = null;
+  let confirmationCouriered: string | null = null;
+  let confirmationSigned: string | null = null;
+  for (const row of results ?? []) {
+    if (row.field_key === "costing_email") costingEmail = row.value;
+    if (row.field_key === "confirmation_made") confirmationMade = row.value;
+    if (row.field_key === "confirmation_couriered") confirmationCouriered = row.value;
+    if (row.field_key === "confirmation_signed_received") confirmationSigned = row.value;
+  }
 
   const now = new Date().toISOString();
-  const result = await db.prepare(
-    `UPDATE tasks
-     SET status = 'completed',
-         completed_at = COALESCE(completed_at, ?),
-         completed_by = COALESCE(completed_by, ?),
-         completion_note = COALESCE(completion_note, 'Completed automatically because signed confirmation was received.'),
-         updated_at = ?
-     WHERE event_id = ? AND source_rule = 'confirmation_letter' AND status IN ('open','in_progress')`
-  ).bind(now, userId, now, eventId).run();
-  return result.meta?.changes ?? 0;
+  let changed = 0;
+
+  const madeYes = normalise(confirmationMade) === "yes";
+  const courieredSet = Boolean(normalise(confirmationCouriered));
+  const signedYes = normalise(confirmationSigned) === "yes";
+
+  // Task 1: Prepare confirmation letter (source_rule: 'confirmation_make')
+  if (madeYes) {
+    const result = await db.prepare(
+      `UPDATE tasks
+       SET status = 'completed',
+           completed_at = COALESCE(completed_at, ?),
+           completed_by = COALESCE(completed_by, ?),
+           completion_note = COALESCE(completion_note, 'Completed automatically because Confirmation Letter was made.'),
+           updated_at = ?
+       WHERE event_id = ? AND source_rule = 'confirmation_make' AND status IN ('open','in_progress')`
+    ).bind(now, userId, now, eventId).run();
+    changed += result.meta?.changes ?? 0;
+  } else if (normalise(costingEmail) === "yes") {
+    const result = await db.prepare(
+      `UPDATE tasks
+       SET status = 'open',
+           completed_at = NULL,
+           completed_by = NULL,
+           completion_note = NULL,
+           updated_at = ?
+       WHERE event_id = ? AND source_rule = 'confirmation_make' AND status = 'completed'`
+    ).bind(now, eventId).run();
+    changed += result.meta?.changes ?? 0;
+  }
+
+  // Task 2: Follow up on signed copy received (source_rule: 'confirmation_letter')
+  if (signedYes) {
+    const result = await db.prepare(
+      `UPDATE tasks
+       SET status = 'completed',
+           completed_at = COALESCE(completed_at, ?),
+           completed_by = COALESCE(completed_by, ?),
+           completion_note = COALESCE(completion_note, 'Completed automatically because signed confirmation was received.'),
+           updated_at = ?
+       WHERE event_id = ? AND source_rule = 'confirmation_letter' AND status IN ('open','in_progress')`
+    ).bind(now, userId, now, eventId).run();
+    changed += result.meta?.changes ?? 0;
+  } else if (!courieredSet || !madeYes) {
+    const result = await db.prepare(
+      `UPDATE tasks
+       SET status = 'cancelled',
+           completion_note = 'Cancelled automatically because Confirmation Letter is no longer marked Couriered.',
+           updated_at = ?
+       WHERE event_id = ? AND source_rule = 'confirmation_letter' AND status IN ('open','in_progress')`
+    ).bind(now, eventId).run();
+    changed += result.meta?.changes ?? 0;
+  }
+
+  return changed;
 }
 
 /** Close approval follow-ups when approval is received or marked Not Required. */
@@ -2714,7 +2770,7 @@ export async function reconcileConfirmationLetterDeliveryChain(
   await db.prepare("UPDATE events SET confirmation_status = ?, updated_at = ? WHERE id = ?")
     .bind(confirmationStatus, now, eventId).run();
 
-  await reopenAutomaticallyCompletedTasks(db, eventId, ["confirmation_letter"]);
+  await reconcileConfirmationLetterTasksForEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
   return true;
 }
