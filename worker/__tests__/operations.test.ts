@@ -863,11 +863,17 @@ describe("checklist task date synchronization", () => {
         const statement = {
           binds: [] as unknown[],
           bind(...values: unknown[]) { this.binds = values; return this; },
-          async first() {
-            if (sql.includes("confirmation_signed_received")) return { value: "yes" };
-            return null;
+          async first() { return null; },
+          async all() {
+            if (sql.includes("confirmation_signed_received") || sql.includes("confirmation_made")) {
+              return { results: [
+                { field_key: "confirmation_made", value: "Yes" },
+                { field_key: "confirmation_couriered", value: "2026-06-01" },
+                { field_key: "confirmation_signed_received", value: "yes" },
+              ] };
+            }
+            return { results: [] };
           },
-          async all() { return { results: [] }; },
           async run() {
             writes.push({ sql, binds: [...this.binds] });
             return { meta: { changes: 1 } };
@@ -881,6 +887,39 @@ describe("checklist task date synchronization", () => {
 
     const completion = writes.find((write) => write.sql.includes("SET status = 'completed'") && write.sql.includes("confirmation_letter"));
     expect(completion?.binds).toContain("ev_letter");
+  });
+
+  it("cancels open confirmation letter follow-up tasks when Made is No or Couriered is cleared", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() { return null; },
+          async all() {
+            if (sql.includes("confirmation_signed_received") || sql.includes("confirmation_made")) {
+              return { results: [
+                { field_key: "confirmation_made", value: "No" },
+                { field_key: "confirmation_couriered", value: null },
+                { field_key: "confirmation_signed_received", value: "No" },
+              ] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileConfirmationLetterTasksForEvent(db, "ev_letter", "user_1");
+
+    const cancellation = writes.find((write) => write.sql.includes("SET status = 'cancelled'") && write.sql.includes("confirmation_letter"));
+    expect(cancellation?.binds).toContain("ev_letter");
   });
 
   it("closes stale approval follow-up tasks when approval is satisfied", async () => {
@@ -981,6 +1020,13 @@ describe("checklist task date synchronization", () => {
             return null;
           },
           async all() {
+            if (sql.includes("confirmation_signed_received") || sql.includes("confirmation_made")) {
+              return { results: [
+                { field_key: "confirmation_made", value: "Yes" },
+                { field_key: "confirmation_couriered", value: "2026-06-01" },
+                { field_key: "confirmation_signed_received", value: "yes" },
+              ] };
+            }
             if (sql.includes("approval_required")) {
               return { results: [{ field_key: "approval_required", value: "Not Required" }, { field_key: "approval_received_on", value: null }] };
             }
@@ -1000,8 +1046,8 @@ describe("checklist task date synchronization", () => {
 
     const changed = await reconcileFollowUpTasksForEvent(db, "ev_all", "user_1");
 
-    expect(changed).toBe(4);
-    expect(writes.filter((write) => write.sql.includes("SET status = 'completed'"))).toHaveLength(4);
+    expect(changed).toBe(5);
+    expect(writes.filter((write) => write.sql.includes("SET status = 'completed'"))).toHaveLength(5);
   });
 
   it("does not leave open technical meeting tasks after rescheduleAllAutomaticTasks", async () => {

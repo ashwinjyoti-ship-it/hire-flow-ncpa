@@ -58,7 +58,7 @@ type TasksResponse = {
   }>;
 };
 
-const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_letter"]);
+const STALE_CONFIRMED_TASK_RULES = new Set(["approval_followup", "confirmation_letter", "confirmation_make"]);
 const DASHBOARD_VISIBLE_EVENTS = 5;
 const DASHBOARD_LIST_MAX_HEIGHT = `${DASHBOARD_VISIBLE_EVENTS * 6.75 + (DASHBOARD_VISIBLE_EVENTS - 1) * 0.5}rem`;
 const DASHBOARD_LIST_STYLE = { "--dashboard-list-height": DASHBOARD_LIST_MAX_HEIGHT } as CSSProperties;

@@ -73,7 +73,7 @@ export const WORKFLOW_LABELS: Record<WorkflowFamily, string> = {
 
 const CARD_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
 const LANE_WORKFLOW_ORDER: WorkflowFamily[] = ["beforeConfirmation", "payments", "operations", "accounts", "postEvent", "manual"];
-const STALE_CONFIRMED_LIFECYCLE_RULES = new Set(["approval_followup", "confirmation_letter"]);
+const STALE_CONFIRMED_LIFECYCLE_RULES = new Set(["approval_followup", "confirmation_letter", "confirmation_make"]);
 
 const TIMING_LABELS: Record<TimingGroupKey, string> = {
   overdue: "Overdue",

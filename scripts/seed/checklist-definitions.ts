@@ -61,7 +61,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
   // Confirmation Letter Couriered / Signed also require these financials first
   // (Proforma Sent or Not Applicable). Made may still be set earlier.
   // Couriered requires Made; Signed requires Couriered.
-  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
+  { module: "operations", section: "Financials", field_key: "costing_email", label: "Costing Email", field_type: "dropdown", options: ["No", "Yes"], default_value: "No", triggers_task: { rule: "confirmation_make", title: "Prepare confirmation letter", due_after_days: 2, complete_when: "Confirmation Letter Made is marked Yes" } },
   // "Not Applicable" — a client may not need a proforma invoice; that still
   // satisfies the Confirmation Letter delivery gate.
   { module: "operations", section: "Financials", field_key: "proforma_invoice", label: "Proforma Invoice", field_type: "dropdown", options: ["Not Sent", "Sent", "Not Applicable"], default_value: "Not Sent" },
@@ -80,7 +80,7 @@ export const CHECKLIST_DEFINITIONS: ChecklistDefSeed[] = [
 
   // 6. CONFIRMATION LETTER
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_made", label: "Made", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
-  { module: "operations", section: "Confirmation Letter", field_key: "confirmation_couriered", label: "Couriered", field_type: "date", triggers_task: { rule: "confirmation_letter", title: "Follow up on Confirmation Letter", due_after_days: 3, complete_when: "signed confirmation is received" } },
+  { module: "operations", section: "Confirmation Letter", field_key: "confirmation_couriered", label: "Couriered", field_type: "date", triggers_task: { rule: "confirmation_letter", title: "Follow up on signed copy received", due_after_days: 3, complete_when: "signed confirmation is received" } },
   { module: "operations", section: "Confirmation Letter", field_key: "confirmation_signed_received", label: "Signed Copy Received", field_type: "dropdown", options: ["No", "Yes"], default_value: "No" },
 
   // 8. NOC
