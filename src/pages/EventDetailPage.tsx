@@ -1157,7 +1157,7 @@ function MomPanel({
           <div className="mb-4">
             <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-sage etched">Generated MoM</span>
             <div
-              className="carved rounded-xl border border-marble-shadow/40 bg-marble-highlight/80 px-4 py-3 font-serif text-[15px] leading-relaxed text-ink-primary"
+              className="mom-rich-preview carved rounded-xl border border-marble-shadow/40 px-4 py-3 font-serif text-[15px] leading-relaxed"
               dangerouslySetInnerHTML={{ __html: autoHtml }}
             />
           </div>

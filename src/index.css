@@ -107,6 +107,16 @@ body {
     inset 0 -1px 0 rgba(133, 101, 35, 0.18);
 }
 
+/* MoM rich HTML preview — always render as a light document surface in dark mode. */
+.mom-rich-preview {
+  color-scheme: only light;
+  background-color: #fefefe;
+  color: #2f2c27;
+}
+.mom-rich-preview * {
+  color: inherit;
+}
+
 .sticky-paper::after {
   content: "";
   position: absolute;
