@@ -735,7 +735,8 @@ describe("frontend regression guards", () => {
     expect(eventForm).toContain("lookups?.lookups.program_officer");
     expect(eventForm).not.toContain("lookups?.lookups.handled_by");
     expect(settings).not.toContain('listKeys={["handled_by", "caterer", "decorator"]}');
-    expect(settings).toContain('listKeys={["caterer", "decorator", "approval_sent_to"]}');
+    expect(settings).toContain('listKeys={["venue", "caterer", "decorator", "approval_sent_to"]}');
+    expect(settings).toContain("venue: \"Venues\"");
     expect(settings).toContain("approval_sent_to: \"Genre Heads\"");
     expect(settings).toContain("TeamAccountsSection");
     expect(settings).toContain("ProgrammeOfficersSection");

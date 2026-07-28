@@ -564,9 +564,9 @@ export function SettingsPage() {
           {isAdmin && (
             <CollapsibleSection
               title="Master Lists"
-              description="Manage Caterer, Decorator, and Genre Head option lists. Deactivating soft-deletes an option (existing events keep their value)."
+              description="Manage venue, caterer, decorator, and genre head option lists used across the app. Deactivating soft-deletes an option — existing events keep their value."
             >
-              <MasterListsSection listKeys={["caterer", "decorator", "approval_sent_to"]} />
+              <MasterListsSection listKeys={["venue", "caterer", "decorator", "approval_sent_to"]} />
             </CollapsibleSection>
           )}
 
@@ -763,6 +763,7 @@ type LookupOption = {
 
 const LIST_LABELS: Record<string, string> = {
   handled_by: "Event Owners",
+  venue: "Venues",
   caterer: "Caterers",
   decorator: "Decorators",
   approval_sent_to: "Genre Heads",
@@ -962,41 +963,69 @@ function MasterListsSection({ listKeys }: { listKeys: string[] }) {
   const [newVal, setNewVal] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
 
+  const venueKey = "venue";
+  const venueKeys = listKeys.filter((k) => k === venueKey);
+  const otherKeys = listKeys.filter((k) => k !== venueKey);
+
+  const sharedProps = {
+    editing,
+    onEditChange: (listKey: string, id: string | null, value: string) =>
+      setEditing((s) => ({ ...s, [listKey]: id ? { id, value } : null })),
+    newVal,
+    onNewChange: (listKey: string, value: string) => setNewVal((s) => ({ ...s, [listKey]: value })),
+    onInvalidate: () => {
+      qc.invalidateQueries({ queryKey: ["lookups"] });
+      setErr(null);
+    },
+    onError: (m: string) => setErr(m),
+  };
+
   return (
     <div>
-      {err && <div role="alert" className="mb-3 rounded-lg bg-status-cancelled/10 px-3 py-1.5 text-xs text-status-cancelled">{err}</div>}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {listKeys.map((listKey) => (
-          <ListEditor
-            key={listKey}
-            listKey={listKey}
-            editingId={editing[listKey]?.id ?? null}
-            editingValue={editing[listKey]?.value ?? ""}
-            onEditChange={(id, value) => setEditing((s) => ({ ...s, [listKey]: id ? { id, value } : null }))}
-            newValue={newVal[listKey] ?? ""}
-            onNewChange={(v) => setNewVal((s) => ({ ...s, [listKey]: v }))}
-            onInvalidate={() => { qc.invalidateQueries({ queryKey: ["lookups"] }); setErr(null); }}
-            onError={(m) => setErr(m)}
-          />
-        ))}
-      </div>
+      {err && (
+        <div role="alert" className="mb-4 rounded-lg bg-status-cancelled/10 px-3 py-2 text-xs text-status-cancelled">
+          {err}
+        </div>
+      )}
+      {venueKeys.map((listKey) => (
+        <ListEditor key={listKey} listKey={listKey} fullWidth {...sharedProps} />
+      ))}
+      {otherKeys.length > 0 && (
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          {otherKeys.map((listKey) => (
+            <ListEditor key={listKey} listKey={listKey} {...sharedProps} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function ListEditor({
-  listKey, editingId, editingValue, onEditChange, newValue, onNewChange, onInvalidate, onError,
+  listKey,
+  fullWidth = false,
+  editing,
+  onEditChange,
+  newVal,
+  onNewChange,
+  onInvalidate,
+  onError,
 }: {
   listKey: string;
-  editingId: string | null;
-  editingValue: string;
-  onEditChange: (id: string | null, value: string) => void;
-  newValue: string;
-  onNewChange: (v: string) => void;
+  fullWidth?: boolean;
+  editing: Record<string, { id: string; value: string } | null>;
+  onEditChange: (listKey: string, id: string | null, value: string) => void;
+  newVal: Record<string, string>;
+  onNewChange: (listKey: string, value: string) => void;
   onInvalidate: () => void;
   onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
+  const [showDeactivated, setShowDeactivated] = useState(false);
+  const editingId = editing[listKey]?.id ?? null;
+  const editingValue = editing[listKey]?.value ?? "";
+  const newValue = newVal[listKey] ?? "";
+
   const { data, isLoading } = useQuery<{ options: LookupOption[] }>({
     queryKey: ["lookup", listKey],
     queryFn: () => apiGet(`/lookups/${listKey}`),
@@ -1004,61 +1033,172 @@ function ListEditor({
 
   const add = useMutation({
     mutationFn: async (value: string) => apiPost(`/lookups/${listKey}`, { value }),
-    onSuccess: () => { onNewChange(""); qc.invalidateQueries({ queryKey: ["lookup", listKey] }); onInvalidate(); },
+    onSuccess: () => {
+      onNewChange(listKey, "");
+      qc.invalidateQueries({ queryKey: ["lookup", listKey] });
+      onInvalidate();
+    },
     onError: (e: Error) => onError(e.message),
   });
   const update = useMutation({
     mutationFn: async ({ id, value }: { id: string; value: string }) => apiPut(`/lookups/${listKey}/${id}`, { value }),
-    onSuccess: () => { onEditChange(null, ""); qc.invalidateQueries({ queryKey: ["lookup", listKey] }); onInvalidate(); },
+    onSuccess: () => {
+      onEditChange(listKey, null, "");
+      qc.invalidateQueries({ queryKey: ["lookup", listKey] });
+      onInvalidate();
+    },
     onError: (e: Error) => onError(e.message),
   });
   const toggle = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) => apiPut(`/lookups/${listKey}/${id}`, { is_active: active }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["lookup", listKey] }); onInvalidate(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lookup", listKey] });
+      onInvalidate();
+    },
     onError: (e: Error) => onError(e.message),
   });
   const remove = useMutation({
     mutationFn: async (id: string) => apiDelete(`/lookups/${listKey}/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["lookup", listKey] }); onInvalidate(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lookup", listKey] });
+      onInvalidate();
+    },
     onError: (e: Error) => onError(e.message),
   });
 
   const options = data?.options ?? [];
+  const activeOptions = options.filter((o) => o.is_active);
+  const deactivatedOptions = options.filter((o) => !o.is_active);
   const title = LIST_LABELS[listKey] ?? listKey[0]!.toUpperCase() + listKey.slice(1);
+  const aliasOf = (o: LookupOption) =>
+    typeof o.metadata?.also === "string" && o.metadata.also.trim() ? o.metadata.also.trim() : "";
+
+  const renderOptionRow = (o: LookupOption) => (
+    <li key={o.id} className="rounded-xl bg-marble-highlight/50 px-3 py-2.5">
+      {editingId === o.id ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={editingValue}
+            onChange={(e) => onEditChange(listKey, o.id, e.target.value)}
+            className="carved min-w-0 flex-1 rounded-lg bg-marble-shadow/40 px-2.5 py-1.5 text-sm text-ink-primary focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={update.isPending || !editingValue.trim()}
+            onClick={() => update.mutate({ id: o.id, value: editingValue.trim() })}
+            className="text-xs font-semibold text-sage-text hover:underline disabled:opacity-40"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => onEditChange(listKey, null, "")}
+            className="text-xs text-ink-muted hover:underline"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <span className={"text-sm font-medium " + (o.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>
+              {o.value}
+            </span>
+            {aliasOf(o) && (
+              <span className="ml-2 text-xs text-ink-muted etched">also {aliasOf(o)}</span>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
+            <button
+              type="button"
+              onClick={() => onEditChange(listKey, o.id, o.value)}
+              className="text-xs text-sage-text hover:underline"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ id: o.id, active: !o.is_active })}
+              className="text-xs text-ink-secondary hover:underline"
+            >
+              {o.is_active ? "Deactivate" : "Activate"}
+            </button>
+            <button
+              type="button"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate(o.id)}
+              className="text-xs text-status-cancelled hover:underline"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
 
   return (
-    <div className="min-w-0">
-      <h3 className="mb-3 text-sm font-semibold text-ink-primary etched-deep">{title}</h3>
-      {isLoading ? <p className="text-xs text-ink-muted etched">Loading…</p> : (
-        <ul className="mb-3 divide-y divide-ink-muted/10 border-y border-ink-muted/10">
-          {options.length === 0 && <li className="text-xs text-ink-muted etched">No options yet.</li>}
-          {options.map((o) => (
-            <li key={o.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center">
-              {editingId === o.id ? (
-                <>
-                  <input value={editingValue} onChange={(e) => onEditChange(o.id, e.target.value)} className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1 text-sm text-ink-primary focus:outline-none" />
-                  <div className="flex shrink-0 gap-3">
-                    <button type="button" disabled={update.isPending} onClick={() => update.mutate({ id: o.id, value: editingValue.trim() })} className="text-xs text-sage-text hover:underline">Save</button>
-                    <button type="button" onClick={() => onEditChange(null, "")} className="text-xs text-ink-muted hover:underline">Cancel</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className={"min-w-0 flex-1 text-sm " + (o.is_active ? "text-ink-primary etched-deep" : "text-ink-muted line-through")}>{o.value}</span>
-                  <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1">
-                    <button type="button" onClick={() => onEditChange(o.id, o.value)} className="text-xs text-sage-text hover:underline">Edit</button>
-                    <button type="button" disabled={toggle.isPending} onClick={() => toggle.mutate({ id: o.id, active: !o.is_active })} className="text-xs text-ink-secondary hover:underline">{o.is_active ? "Deactivate" : "Activate"}</button>
-                    <button type="button" disabled={remove.isPending} onClick={() => remove.mutate(o.id)} className="text-xs text-status-cancelled hover:underline">Delete</button>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex gap-2">
-        <input value={newValue} onChange={(e) => onNewChange(e.target.value)} placeholder={`Add ${title.toLowerCase()}…`} className="carved flex-1 rounded-lg bg-marble-highlight/60 px-2 py-1.5 text-sm text-ink-primary focus:outline-none" />
-        <button type="button" disabled={add.isPending || !newValue.trim()} onClick={() => add.mutate(newValue.trim())} className="carved-btn-sage rounded-full bg-sage-btn px-4 py-1.5 text-xs font-semibold text-sage-text etched disabled:opacity-60">Add</button>
+    <div className={fullWidth ? "mb-6" : "min-w-0"}>
+      <div className="rounded-xl bg-marble-shadow/25 p-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink-primary etched-deep">{title}</h3>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted etched">
+            {activeOptions.length} active
+          </span>
+        </div>
+
+        <div className="mb-4 flex gap-2">
+          <input
+            value={newValue}
+            onChange={(e) => onNewChange(listKey, e.target.value)}
+            placeholder={`Add ${title.toLowerCase()}…`}
+            className="carved min-w-0 flex-1 rounded-lg bg-marble-highlight/60 px-3 py-2 text-sm text-ink-primary focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={add.isPending || !newValue.trim()}
+            onClick={() => add.mutate(newValue.trim())}
+            className="carved-btn-sage shrink-0 rounded-full bg-sage-btn px-4 py-2 text-xs font-semibold text-sage-text etched disabled:opacity-60"
+          >
+            {add.isPending ? "Adding…" : "+ Add"}
+          </button>
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-ink-muted etched">Loading…</p>
+        ) : activeOptions.length === 0 && deactivatedOptions.length === 0 ? (
+          <p className="text-sm text-ink-muted etched">No options yet.</p>
+        ) : (
+          <>
+            {activeOptions.length === 0 ? (
+              <p className="text-sm text-ink-muted etched">No active options.</p>
+            ) : (
+              <ul className={fullWidth ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3" : "space-y-2"}>
+                {activeOptions.map(renderOptionRow)}
+              </ul>
+            )}
+
+            {deactivatedOptions.length > 0 && (
+              <div className="mt-4 border-t border-ink-muted/10 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDeactivated((open) => !open)}
+                  aria-expanded={showDeactivated}
+                  className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-muted etched hover:text-ink-secondary"
+                >
+                  <span>Deactivated ({deactivatedOptions.length})</span>
+                  <span aria-hidden="true">{showDeactivated ? "▴" : "▾"}</span>
+                </button>
+                {showDeactivated && (
+                  <ul className={fullWidth ? "mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3" : "mt-2 space-y-2"}>
+                    {deactivatedOptions.map(renderOptionRow)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
