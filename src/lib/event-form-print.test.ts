@@ -185,6 +185,8 @@ describe("event-form-print", () => {
     const html = buildEventFormHtml(sample);
 
     expect(html).toContain("<!DOCTYPE html>");
+    expect(html).toContain("color-scheme: only light");
+    expect(html).toContain("background-color: #ffffff");
     expect(html).toContain("window.print()");
     expect(html).toContain(">Print</button>");
     expect(html).toContain(">Save as PDF</button>");

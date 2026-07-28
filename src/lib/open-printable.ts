@@ -17,10 +17,16 @@ export function openPrintableHtml(html: string, options?: OpenPrintableHtmlOptio
   win.document.close();
 
   if (options?.autoPrint) {
-    win.addEventListener("load", () => {
+    const triggerPrint = () => {
       win.focus();
       win.print();
-    });
+    };
+    // document.write + close may complete before the load event fires.
+    if (win.document.readyState === "complete") {
+      triggerPrint();
+    } else {
+      win.addEventListener("load", triggerPrint);
+    }
   }
 }
 

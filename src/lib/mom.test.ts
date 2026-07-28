@@ -173,6 +173,8 @@ describe("buildMomHtml", () => {
   it("wraps rich MoM body in a printable document", () => {
     const page = buildMomHtml(sample, "Minutes of Meeting — Test");
     expect(page).toContain("<!DOCTYPE html>");
+    expect(page).toContain("color-scheme: only light");
+    expect(page).toContain("background-color: #ffffff");
     expect(page).toContain("font-weight:700");
     expect(page).toContain(">Print</button>");
     expect(page).toContain(">Save as PDF</button>");

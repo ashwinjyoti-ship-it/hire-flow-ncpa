@@ -45,10 +45,9 @@ describe("open-printable", () => {
           writes.push(html);
         },
         close: () => undefined,
+        readyState: "complete",
       },
-      addEventListener: vi.fn((event: string, handler: () => void) => {
-        if (event === "load") handler();
-      }),
+      addEventListener: vi.fn(),
       focus: vi.fn(),
       print: printSpy,
     };

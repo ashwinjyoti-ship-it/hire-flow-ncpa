@@ -17,12 +17,17 @@ export const PRINTABLE_TOOLBAR_HTML = `<div class="toolbar">
 </div>`;
 
 export const PRINTABLE_PAGE_CSS = `
-  :root { color-scheme: light; }
+  :root { color-scheme: only light; }
+  html {
+    color-scheme: only light;
+    background-color: #ffffff;
+  }
   @page { size: A4; margin: 18mm 15mm 20mm 15mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
     font-family: Georgia, 'Times New Roman', serif;
+    background-color: #ffffff;
     color: #2f2c27;
     line-height: 1.45;
     font-size: 10.5pt;
@@ -68,8 +73,18 @@ export const PRINTABLE_PAGE_CSS = `
   .sign-line { border-bottom: 1px solid #2f2c27; margin-bottom: 4px; }
   .sign-meta { font-size: 8pt; color: #6b655c; }
   .toolbar { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .toolbar button { font: inherit; padding: 6px 14px; cursor: pointer; }
-  .mom-document { font-size: 11pt; }
+  .toolbar button {
+    font: inherit;
+    padding: 6px 14px;
+    cursor: pointer;
+    background: #f4f4f2;
+    border: 1px solid #cfc7ba;
+    color: #2f2c27;
+    border-radius: 6px;
+  }
+  .toolbar button:hover { background: #eceae6; }
+  .mom-document { font-size: 11pt; color: #2f2c27; }
+  .mom-document * { color: inherit; }
   @media print {
     .toolbar { display: none; }
     header { break-after: avoid-page; page-break-after: avoid; }
@@ -88,7 +103,7 @@ export type PrintablePageOptions = {
 
 export function buildPrintablePageHtml({ title, bodyHtml, extraCss = "" }: PrintablePageOptions): string {
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${escapePrintableHtml(title)}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="only light"><title>${escapePrintableHtml(title)}</title>
 <style>
 ${PRINTABLE_PAGE_CSS}
 ${extraCss}
