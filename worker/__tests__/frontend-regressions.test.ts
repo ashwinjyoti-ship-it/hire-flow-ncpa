@@ -954,6 +954,8 @@ describe("frontend regression guards", () => {
     expect(detail).toContain("text/html");
     expect(mom).toContain("text-decoration:underline");
     expect(mom).toContain("font-weight:700");
+    expect(detail).toContain("Save as PDF");
+    expect(detail).toContain("onSaveAsPdf");
   });
 
 

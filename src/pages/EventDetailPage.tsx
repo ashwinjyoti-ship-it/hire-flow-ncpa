@@ -522,6 +522,11 @@ export function EventDetailPage() {
     setExportMenuOpen(false);
   }
 
+  function saveMomAsPdf() {
+    openPrintableHtml(buildMomHtml(momInput, momTitle, momCustomNotes), { autoPrint: true });
+    setExportMenuOpen(false);
+  }
+
   const eventFormPrintInput: EventFormPrintInput = {
     event_code: e.event_code,
     title: e.title,
@@ -757,7 +762,7 @@ export function EventDetailPage() {
           onToggleExport={() => setExportMenuOpen((open) => !open)}
           onCopy={copyMomText}
           onExportWord={exportMomWord}
-          onExportPdf={openMomPrintable}
+          onSaveAsPdf={saveMomAsPdf}
           onPrint={openMomPrintable}
           escapeEnabled={!momMissingPrompt}
           onClose={() => {
@@ -1078,7 +1083,7 @@ function MomPanel({
   onToggleExport,
   onCopy,
   onExportWord,
-  onExportPdf,
+  onSaveAsPdf,
   onPrint,
   escapeEnabled = true,
   onClose,
@@ -1092,7 +1097,7 @@ function MomPanel({
   onToggleExport: () => void;
   onCopy: () => void;
   onExportWord: () => void;
-  onExportPdf: () => void;
+  onSaveAsPdf: () => void;
   onPrint: () => void;
   escapeEnabled?: boolean;
   onClose: () => void;
@@ -1179,8 +1184,8 @@ function MomPanel({
             </button>
             {exportMenuOpen && (
               <div className="absolute bottom-full left-0 z-10 mb-2 min-w-36 rounded-xl bg-marble-highlight p-2 shadow-lg">
-                <button type="button" onClick={onExportPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
-                  Print / PDF
+                <button type="button" onClick={onSaveAsPdf} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
+                  Save as PDF
                 </button>
                 <button type="button" onClick={onExportWord} className="block w-full rounded-lg px-3 py-2 text-left text-sm text-ink-primary hover:bg-marble-shadow/40">
                   Word
@@ -1189,7 +1194,7 @@ function MomPanel({
             )}
           </div>
           <button type="button" onClick={onPrint} className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched">
-            Print / PDF
+            Print
           </button>
         </div>
       </div>

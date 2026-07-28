@@ -34,4 +34,32 @@ describe("open-printable", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("auto-opens the print dialog when autoPrint is set", () => {
+    const writes: string[] = [];
+    const printSpy = vi.fn();
+    const mockWin = {
+      document: {
+        open: () => undefined,
+        write: (html: string) => {
+          writes.push(html);
+        },
+        close: () => undefined,
+      },
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        if (event === "load") handler();
+      }),
+      focus: vi.fn(),
+      print: printSpy,
+    };
+    const openSpy = vi.fn().mockReturnValue(mockWin);
+    vi.stubGlobal("window", { open: openSpy });
+
+    openPrintableHtml("<p>Preview</p>", { autoPrint: true });
+
+    expect(openSpy).toHaveBeenCalledWith("", "_blank");
+    expect(printSpy).toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
 });

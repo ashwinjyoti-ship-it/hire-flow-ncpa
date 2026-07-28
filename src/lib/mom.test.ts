@@ -175,7 +175,7 @@ describe("buildMomHtml", () => {
     expect(page).toContain("<!DOCTYPE html>");
     expect(page).toContain("font-weight:700");
     expect(page).toContain(">Print</button>");
-    expect(page).toContain(">Export to PDF</button>");
+    expect(page).toContain(">Save as PDF</button>");
     expect(page).toContain("Godrej Dance Theatre");
   });
 });

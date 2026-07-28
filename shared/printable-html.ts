@@ -13,7 +13,7 @@ export function escapePrintableHtml(value: string | null | undefined): string {
 
 export const PRINTABLE_TOOLBAR_HTML = `<div class="toolbar">
   <button type="button" onclick="window.print()">Print</button>
-  <button type="button" onclick="window.print()">Export to PDF</button>
+  <button type="button" onclick="window.print()">Save as PDF</button>
 </div>`;
 
 export const PRINTABLE_PAGE_CSS = `
