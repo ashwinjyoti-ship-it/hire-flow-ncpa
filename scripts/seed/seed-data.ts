@@ -37,6 +37,7 @@ export const VENUES: DropdownSeed[] = [
   { list_key: "venue", value: "SVR", sort_order: 12 },
   { list_key: "venue", value: "TATA LOBBY", sort_order: 13 },
   { list_key: "venue", value: "JBT LOBBY", sort_order: 14 },
+  { list_key: "venue", value: "JBT MUSEUM", sort_order: 15 },
 ];
 
 export const DROPDOWN_LISTS: DropdownSeed[] = [

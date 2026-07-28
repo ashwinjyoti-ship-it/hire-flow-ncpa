@@ -21,7 +21,14 @@ import { makeId } from "../lib/id";
 export const lookupRoutes = new Hono<AuthEnv>();
 
 // Lists that admins may manage via this endpoint.
-const MANAGED_LISTS = new Set(["handled_by", "caterer", "decorator", "program_officer"]);
+const MANAGED_LISTS = new Set([
+  "handled_by",
+  "caterer",
+  "decorator",
+  "approval_sent_to",
+  "program_officer",
+  "venue",
+]);
 
 const MetadataBody = z.record(z.unknown()).nullish();
 

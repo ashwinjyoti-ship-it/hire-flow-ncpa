@@ -803,6 +803,41 @@ describe("API regressions", () => {
     expect(insertedValue).toBe("New Owner");
   });
 
+  it("allows admins to manage venue and genre head lookup options", async () => {
+    const inserted: Array<{ listKey: string; value: string }> = [];
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("MAX(sort_order)")) return { first: () => ({ next: 16 }) };
+      if (sql.includes("INSERT INTO dropdown_options")) {
+        return {
+          run: () => {
+            inserted.push({ listKey: "venue", value: "JBT MUSEUM" });
+            return { success: true };
+          },
+        };
+      }
+      if (sql.includes("INSERT INTO audit_logs")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/lookups/venue",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `${SESSION_COOKIE}=sess_test`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ value: "JBT MUSEUM" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(201);
+    expect(inserted[0]).toEqual({ listKey: "venue", value: "JBT MUSEUM" });
+  });
+
   it("blocks confirming a VFH event before approval and signed confirmation are complete", async () => {
     let updatedStatus: string | null = null;
     const db = fakeDb((sql) => {
