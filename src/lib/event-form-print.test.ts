@@ -181,13 +181,13 @@ describe("event-form-print", () => {
     vi.unstubAllGlobals();
   });
 
-  it("builds print-ready HTML with separate Print and Export to PDF toolbar actions", () => {
+  it("builds print-ready HTML with separate Print and Save as PDF toolbar actions", () => {
     const html = buildEventFormHtml(sample);
 
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("window.print()");
     expect(html).toContain(">Print</button>");
-    expect(html).toContain(">Export to PDF</button>");
+    expect(html).toContain(">Save as PDF</button>");
     expect(html).toContain("@page { size: A4;");
     expect(html).toContain("<h1>Gujrati Play - Long Drive</h1>");
     expect(html).toContain('class="header-summary">Evening performance</p>');
