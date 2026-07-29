@@ -13,6 +13,7 @@ import { getEventOperationsLink } from "../lib/task-workflows";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS } from "../../worker/lib/state-machine";
 import { monthStartFromIsoDate } from "../lib/global-search";
+import { normaliseCalendarDate } from "../lib/lifecycle-calendar-links";
 import { shouldShowLifecycleStepCountBadge } from "../lib/lifecycle-calendar-display";
 
 type CalEntry = {
@@ -303,16 +304,20 @@ export function CalendarPage() {
           const res = await apiGet<{ entries: Array<{ milestone_date: string | null }> }>(
             `/calendar/lifecycle?q=${encodeURIComponent(term)}`,
           );
-          firstDate = res.entries.find((entry) => entry.milestone_date)?.milestone_date ?? null;
+          firstDate = res.entries
+            .map((entry) => normaliseCalendarDate(entry.milestone_date))
+            .find((date): date is string => Boolean(date)) ?? null;
         } else {
           const statusQuery = `&status=${encodeURIComponent(filters.status || "confirmed")}`;
           const res = await apiGet<{ events: Array<{ event_start_date: string | null }> }>(
             `/events?q=${encodeURIComponent(term)}${statusQuery}`,
           );
-          firstDate = res.events.find((event) => event.event_start_date)?.event_start_date ?? null;
+          firstDate = res.events
+            .map((event) => normaliseCalendarDate(event.event_start_date))
+            .find((date): date is string => Boolean(date)) ?? null;
         }
         if (cancelled) return;
-        if (!firstDate || !/^\d{4}-\d{2}-\d{2}$/.test(firstDate)) return;
+        if (!firstDate) return;
         const from = monthStartFromIsoDate(firstDate);
         if (searchParams.get("from") === from) return;
         updateParams((params) => {

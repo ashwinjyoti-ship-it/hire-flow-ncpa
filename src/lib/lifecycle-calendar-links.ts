@@ -25,7 +25,8 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function normaliseDate(value: string | null | undefined): string | null {
+/** Normalise ISO or imported dd-Mmm-yyyy dates for calendar deep links. */
+export function normaliseCalendarDate(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -49,7 +50,7 @@ export function getLifecycleCalendarHref(
   const todayIso = isoDate(today);
   const dates = entries
     .filter((entry) => entry.milestone_type === status)
-    .map((entry) => normaliseDate(entry.milestone_date))
+    .map((entry) => normaliseCalendarDate(entry.milestone_date))
     .filter((date): date is string => Boolean(date))
     .sort((a, b) => a.localeCompare(b));
 
@@ -69,7 +70,7 @@ export function getConfirmedShowCalendarHref(
   const todayIso = isoDate(today);
   const dates = entries
     .filter((entry) => entry.milestone_type === "confirmed")
-    .map((entry) => normaliseDate(entry.event_start_date) || normaliseDate(entry.milestone_date))
+    .map((entry) => normaliseCalendarDate(entry.event_start_date) || normaliseCalendarDate(entry.milestone_date))
     .filter((date): date is string => Boolean(date))
     .sort((a, b) => a.localeCompare(b));
 

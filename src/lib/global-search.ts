@@ -1,4 +1,5 @@
 import { apiGet } from "./api";
+import { normaliseCalendarDate } from "./lifecycle-calendar-links";
 
 export type SearchOrg = {
   id: string;
@@ -67,8 +68,8 @@ export async function resolveCalendarAnchorDate(
     const match = options?.eventId
       ? res.events.find((event) => event.id === options.eventId)
       : res.events[0];
-    const date = match?.event_start_date ?? null;
-    return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    const date = normaliseCalendarDate(match?.event_start_date ?? null);
+    return date ?? null;
   }
 
   const res = await apiGet<{ entries: LifecycleSearchEntry[] }>(
@@ -77,8 +78,8 @@ export async function resolveCalendarAnchorDate(
   const match = options?.eventId
     ? res.entries.find((entry) => entry.event_id === options.eventId)
     : res.entries[0];
-  const date = match?.milestone_date ?? null;
-  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const date = normaliseCalendarDate(match?.milestone_date ?? null);
+  return date ?? null;
 }
 
 export async function buildCalendarSearchUrl(
