@@ -8,6 +8,12 @@ import {
   shouldPreserveExecutionSectionValue,
 } from "./requirement-sections";
 import { hydrateChecklistItemOptions } from "./checklist-options";
+import {
+  gateControllerStatus,
+  GATE_CONTROLLER_STATUS_FIELD_KEYS,
+  GATE_CONTROLLER_SYNC_FIELD_KEYS,
+  SELECTION_COMPLETE_FIELD_KEYS,
+} from "./checklist-field-status";
 import { isChecklistFieldVisible, type ChecklistVisibilityItem } from "./checklist-visibility";
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
@@ -495,6 +501,7 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
     await syncOnstageDependentChecklistFromEvent(db, eventId);
     await syncEmailerDependentChecklistFromEvent(db, eventId);
     await syncInstalmentDependentChecklistFromEvent(db, eventId);
+    await syncGateControllerStatusesForEvent(db, eventId);
     await recalculateEventCompletion(db, eventId);
     return;
   }
@@ -531,12 +538,14 @@ export async function ensureChecklistForEvent(db: D1Database, eventId: string): 
   await syncEmailerDependentChecklistFromEvent(db, eventId);
   await syncInstalmentDependentChecklistFromEvent(db, eventId);
   await syncEventReferenceChecklist(db, eventId);
+  await syncGateControllerStatusesForEvent(db, eventId);
   await recalculateEventCompletion(db, eventId);
 }
 
 export async function getChecklistItems(db: D1Database, eventId: string): Promise<ChecklistItemRow[]> {
   await ensureChecklistForEvent(db, eventId);
   await syncInstalmentStatusesForEvent(db, eventId);
+  await syncGateControllerStatusesForEvent(db, eventId);
   // Heal Completed payment stored while Costing Email is still No so the
   // Financials UI does not show a green COMPLETED badge for an invalid sequence.
   await reconcileFinancialSequenceForEvent(db, eventId);
@@ -631,6 +640,9 @@ export async function updateChecklistItem(args: {
   const now = new Date().toISOString();
   const value = args.value === undefined ? current.value : args.value;
   let status = args.status ?? itemStatusForValue({ field_type: current.field_type, value, is_computed: current.is_computed });
+  if (SELECTION_COMPLETE_FIELD_KEYS.has(current.field_key)) {
+    status = (value ?? "").trim() ? "completed" : "not_started";
+  }
   if (isInstalmentReceivedField(current.field_key)) {
     status = isInstalmentReceivedValue(value) ? "completed" : "not_started";
   } else if (isInstalmentExpectedDateField(current.field_key)) {
@@ -739,6 +751,7 @@ export async function updateChecklistItem(args: {
   }
 
   await syncEventFieldsFromChecklist(db, current.event_id, current.field_key, value);
+  await syncGateControllerStatusesForEvent(db, current.event_id, now);
   // Mirror requirement checklist edits back into the event form's requirements
   // JSON so the Add/Edit Event form reflects Operations-tab changes. Section
   // rollup rows (exec_*) are checklist-only.
@@ -952,6 +965,35 @@ export async function syncApprovalDependentChecklist(
     await db.prepare(
       "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE id = ?"
     ).bind(status, now, row.id).run();
+  }
+  await syncGateControllerStatusesForEvent(db, eventId, now);
+}
+
+/**
+ * Reconcile gate-controller badges (Approval Required?, Genre Head, OnStage
+ * Required?, Emailer, Instalment) from their workflow context so they do not
+ * stay stuck at in_progress after dependents are complete.
+ */
+export async function syncGateControllerStatusesForEvent(
+  db: D1Database,
+  eventId: string,
+  now = new Date().toISOString(),
+): Promise<void> {
+  const placeholders = GATE_CONTROLLER_SYNC_FIELD_KEYS.map(() => "?").join(", ");
+  const { results } = await db.prepare(
+    `SELECT field_key, value FROM checklist_items
+     WHERE event_id = ? AND field_key IN (${placeholders})`
+  ).bind(eventId, ...GATE_CONTROLLER_SYNC_FIELD_KEYS).all<{ field_key: string; value: string | null }>();
+
+  const values: Record<string, string | null | undefined> = {};
+  for (const row of results ?? []) values[row.field_key] = row.value;
+
+  for (const fieldKey of GATE_CONTROLLER_STATUS_FIELD_KEYS) {
+    const status = gateControllerStatus(fieldKey, values);
+    if (!status) continue;
+    await db.prepare(
+      "UPDATE checklist_items SET status = ?, last_updated_at = ? WHERE event_id = ? AND field_key = ?"
+    ).bind(status, now, eventId, fieldKey).run();
   }
 }
 

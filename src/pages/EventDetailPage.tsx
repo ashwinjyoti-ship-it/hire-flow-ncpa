@@ -58,7 +58,7 @@ import { openPrintableHtml } from "../lib/open-printable";
 import type { PocCompletionStatus } from "../../worker/lib/poc-completion";
 import type { EventFormReadiness } from "../../worker/lib/event-readiness";
 import { isChecklistFieldVisible, isFullWidthChecklistField } from "../lib/checklist-visibility";
-import { parseChecklistItemOptions } from "../lib/checklist-cache";
+import { parseChecklistItemOptions, rollupChecklistSectionStatus } from "../lib/checklist-cache";
 import {
   getCurrentPendingInstalmentNumber,
   instalmentExpectedDateStatus,
@@ -1504,9 +1504,15 @@ function ChecklistModuleView({
       {entries.map(([section, items]) => {
         const visibleItems = items.filter((item) => isChecklistFieldVisible(item, itemByKey));
         if (!visibleItems.length) return null;
+        const sectionStatus = rollupChecklistSectionStatus(visibleItems);
         return (
           <section key={section} className="carved-card rounded-2xl bg-marble-highlight/50 p-5">
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-sage etched">{section}</h3>
+              <span className={"rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider " + statusClass(sectionStatus)}>
+                {sectionStatus.replace(/_/g, " ")}
+              </span>
+            </div>
             {section === "Financials" && currentPendingInstalment != null && (
               <div className="mb-4 rounded-xl border border-status-awaitingApproval/35 bg-status-awaitingApproval/10 px-3 py-2 text-xs text-ink-secondary etched">
                 <span className="font-semibold text-status-awaitingApproval">

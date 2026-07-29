@@ -4,6 +4,7 @@ import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions"
 import {
   applyOptimisticChecklistUpdate,
   OPTIMISTIC_GATE_CONTROLLERS,
+  optimisticFieldStatus,
   patchEventDetailCache,
   parseChecklistItemOptions,
   mergeChecklistItem,
@@ -58,7 +59,7 @@ describe("applyOptimisticChecklistUpdate", () => {
       "Yes",
     );
     const items = next.checklist.operations["Onstage/Emailer"]!;
-    expect(items.find((i) => i.field_key === "emailer")?.status).toBe("completed");
+    expect(items.find((i) => i.field_key === "emailer")?.status).toBe("in_progress");
     expect(items.find((i) => i.field_key === "emailer_asked_client")?.status).toBe("not_started");
   });
 
@@ -150,6 +151,38 @@ describe("applyOptimisticChecklistUpdate", () => {
       "Completed",
     );
     expect(patched.event.payment_status).toBe("Completed");
+  });
+
+  it("marks past checklist dates completed in optimistic badges", () => {
+    expect(optimisticFieldStatus("date", "2026-06-01")).toBe("completed");
+    expect(optimisticFieldStatus("date", "2099-06-01")).toBe("in_progress");
+  });
+
+  it("heals approval gate badges when approval is received", () => {
+    const data: ChecklistCacheResponse = {
+      ...sampleChecklist(),
+      checklist: {
+        operations: {
+          Approval: [
+            { id: "req", module: "operations", section: "Approval", field_key: "approval_required", label: "Approval Required?", status: "in_progress", value: "Required", due_date: null, field_type: "dropdown", options: ["Not Required", "Required"], is_computed: 0 },
+            { id: "recv", module: "operations", section: "Approval", field_key: "approval_received_on", label: "Approval Received On", status: "not_started", value: null, due_date: null, field_type: "date", options: null, is_computed: 0, visibility_rule: "onlyWhen(approval_required == Required)" },
+            { id: "genre", module: "operations", section: "Approval", field_key: "genre_head", label: "Genre Head", status: "in_progress", value: "Theatre", due_date: null, field_type: "dropdown", options: ["Theatre"], is_computed: 0, visibility_rule: "onlyWhen(approval_required == Required)" },
+          ],
+        },
+        accounts: {},
+      },
+      lifecycle: sampleChecklist().lifecycle,
+      poc: null,
+    };
+    const next = applyOptimisticChecklistUpdate(
+      data,
+      { id: "recv", field_key: "approval_received_on", field_type: "date" },
+      "2026-06-05",
+    );
+    const approval = next.checklist.operations.Approval!;
+    expect(approval.find((item) => item.field_key === "approval_required")?.status).toBe("completed");
+    expect(approval.find((item) => item.field_key === "genre_head")?.status).toBe("completed");
+    expect(approval.find((item) => item.field_key === "approval_received_on")?.status).toBe("completed");
   });
 
   it("parses stringified options from PATCH responses", () => {
