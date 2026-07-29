@@ -323,23 +323,33 @@ calendarRoutes.get("/", requireUser, async (c) => {
   const seBinds: unknown[] = [from, to, ...commonBinds];
   if (venue) { seWhere.push("vb.venue = ?"); seBinds.push(venue); }
 
-  // ---- Set 2: date-anchored rows for events with no schedule entries ----
+  // ---- Set 2: date-anchored rows when this month has no schedule cards ----
   // An event's operating window must overlap the viewed [from, to] range. If a
   // confirmed import has no operating date, fall back to the date it entered
   // its current confirmed lifecycle state, then to creation date. That keeps
   // confirmed lifecycle records visible on the Show Calendar while the team
   // fills in the final show metadata.
+  //
+  // Suppress date-anchored rows only when a *normalised* schedule date already
+  // falls in the viewed month (avoids double-counting with set 1). Events whose
+  // only schedule rows are outside this month — or have unparseable imported
+  // dates — must still earn an operating-window card so search deep-links to
+  // event_start_date are not empty.
   const showDateExpr = `COALESCE(${normalisedDateSql("e.event_start_date")}, ${normalisedDateSql("substr(sh.changed_at, 1, 10)")}, date(e.created_at))`;
   const eventEndExpr = `COALESCE(${normalisedDateSql("e.event_end_date")}, ${showDateExpr})`;
+  const scheduleDateInRangeExists = `EXISTS (
+      SELECT 1 FROM schedule_entries se2
+      WHERE se2.event_id = e.id
+        AND ${normalisedDateSql("se2.activity_date")} >= ?
+        AND ${normalisedDateSql("se2.activity_date")} <= ?
+    )`;
   const evWhere = [
     `${eventEndExpr} >= ?`,
     `${showDateExpr} <= ?`,
     ...commonWhere,
-    // Only events that have NO schedule entries at all belong in this set —
-    // otherwise they'd be double-counted with set 1.
-    "NOT EXISTS (SELECT 1 FROM schedule_entries se2 WHERE se2.event_id = e.id)",
+    `NOT ${scheduleDateInRangeExists}`,
   ];
-  const evBinds: unknown[] = [from, to, ...commonBinds];
+  const evBinds: unknown[] = [from, to, ...commonBinds, from, to];
   if (venue) { evWhere.push("vb.venue = ?"); evBinds.push(venue); }
 
   const columnList = `se.id, se.activity_type, ${scheduleActivityDateExpr} AS activity_date, se.start_time, se.end_time,
@@ -358,11 +368,11 @@ calendarRoutes.get("/", requireUser, async (c) => {
       vb.requirements, vb.notes AS venue_notes`;
 
   // Set 2: one card per (event × venue_booking) for confirmed events with no
-  // schedule entries. activity_date is the best available show date clamped
-  // into the viewed range. This avoids a recursive date spine — simpler and
-  // robust on D1 — while still surfacing the event under its show month. `from`
-  // is a validated yyyy-mm-dd string, so it is inlined as a quoted literal
-  // (single statement bind order stays simple).
+  // in-range schedule cards. activity_date is the best available show date
+  // clamped into the viewed range. This avoids a recursive date spine —
+  // simpler and robust on D1 — while still surfacing the event under its show
+  // month. `from` is a validated yyyy-mm-dd string, so it is inlined as a
+  // quoted literal (single statement bind order stays simple).
   const fromLit = `'${from}'`;
   const sql = `SELECT NULL AS id, 'show' AS activity_type,
       MAX(${fromLit}, ${showDateExpr}) AS activity_date,

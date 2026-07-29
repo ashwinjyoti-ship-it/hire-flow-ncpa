@@ -26,6 +26,13 @@ type LifecycleSearchEntry = {
   milestone_date: string;
 };
 
+type EventDetailForAnchor = {
+  event: { event_start_date: string | null };
+  venue_bookings: Array<{
+    schedule_entries: Array<{ activity_type: string; activity_date: string }>;
+  }>;
+};
+
 /** Confirmed events belong on the Show calendar; everything else stays on Lifecycle. */
 export function calendarViewForEvent(event: SearchEvent | undefined, fallback: CalendarView): CalendarView {
   return event?.status === "confirmed" ? "show" : fallback;
@@ -56,7 +63,38 @@ export function matchesSearchTerm(term: string, ...fields: Array<string | null |
   return fields.some((field) => (field ?? "").toLowerCase().includes(needle));
 }
 
-/** Lifecycle grids anchor on milestone dates; Show calendar anchors on event start dates. */
+/** Prefer show-activity dates, then any schedule date, then operating-window start. */
+export function pickShowCalendarAnchorDate(
+  eventStartDate: string | null | undefined,
+  scheduleEntries: Array<{ activity_type: string; activity_date: string }>,
+): string | null {
+  const normalised = scheduleEntries
+    .map((entry) => ({
+      type: entry.activity_type,
+      date: normaliseCalendarDate(entry.activity_date),
+    }))
+    .filter((entry): entry is { type: string; date: string } => Boolean(entry.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const firstShow = normalised.find((entry) => entry.type === "show");
+  if (firstShow) return firstShow.date;
+  if (normalised[0]) return normalised[0].date;
+  return normaliseCalendarDate(eventStartDate ?? null);
+}
+
+async function resolveShowAnchorFromEventDetail(
+  eventId: string,
+  fallbackStart: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const detail = await apiGet<EventDetailForAnchor>(`/events/${eventId}`);
+    const scheduleEntries = detail.venue_bookings.flatMap((booking) => booking.schedule_entries ?? []);
+    return pickShowCalendarAnchorDate(detail.event.event_start_date ?? fallbackStart, scheduleEntries);
+  } catch {
+    return normaliseCalendarDate(fallbackStart ?? null);
+  }
+}
+
+/** Lifecycle grids anchor on milestone dates; Show calendar anchors on schedule / show dates. */
 export async function resolveCalendarAnchorDate(
   term: string,
   view: CalendarView,
@@ -64,12 +102,13 @@ export async function resolveCalendarAnchorDate(
 ): Promise<string | null> {
   const statusQuery = options?.statusQuery ?? "";
   if (view === "show") {
+    if (options?.eventId) {
+      return resolveShowAnchorFromEventDetail(options.eventId, null);
+    }
     const res = await apiGet<{ events: SearchEvent[] }>(`/events?q=${encodeURIComponent(term)}${statusQuery}`);
-    const match = options?.eventId
-      ? res.events.find((event) => event.id === options.eventId)
-      : res.events[0];
-    const date = normaliseCalendarDate(match?.event_start_date ?? null);
-    return date ?? null;
+    const match = res.events[0];
+    if (!match) return null;
+    return resolveShowAnchorFromEventDetail(match.id, match.event_start_date);
   }
 
   const res = await apiGet<{ entries: LifecycleSearchEntry[] }>(
