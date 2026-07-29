@@ -4,6 +4,7 @@ import {
   calendarViewForEvent,
   matchesSearchTerm,
   monthStartFromIsoDate,
+  pickShowCalendarAnchorDate,
   resolveCalendarAnchorDate,
   searchContextFromPath,
 } from "./global-search";
@@ -40,22 +41,45 @@ describe("global-search", () => {
     expect(matchesSearchTerm("acme", "Blue Banyan Media")).toBe(false);
   });
 
+  it("picks show schedule dates ahead of the operating window", () => {
+    expect(pickShowCalendarAnchorDate("2026-08-09", [
+      { activity_type: "setup", activity_date: "2026-09-26" },
+      { activity_type: "show", activity_date: "09-Aug-2026" },
+    ])).toBe("2026-08-09");
+    expect(pickShowCalendarAnchorDate("09-Aug-2026", [])).toBe("2026-08-09");
+  });
   it("normalizes imported show dates when resolving calendar anchors", async () => {
     vi.mocked(apiGet).mockResolvedValue({
-      events: [
-        {
-          id: "ev_er2",
-          title: "ER2 Entertainment - Play - Is there room on the broom",
-          event_start_date: "09-Aug-2026",
-          status: "confirmed",
-        },
-      ],
+      event: {
+        event_start_date: "09-Aug-2026",
+      },
+      venue_bookings: [],
     });
 
     await expect(resolveCalendarAnchorDate("ER2 Entertainment", "show", {
       statusQuery: "&status=confirmed",
       eventId: "ev_er2",
     })).resolves.toBe("2026-08-09");
+  });
+
+  it("prefers schedule show dates over the operating-window start for show anchors", async () => {
+    vi.mocked(apiGet).mockResolvedValue({
+      event: {
+        event_start_date: "2026-08-09",
+      },
+      venue_bookings: [
+        {
+          schedule_entries: [
+            { activity_type: "setup", activity_date: "2026-09-26" },
+            { activity_type: "show", activity_date: "27-Sep-2026" },
+          ],
+        },
+      ],
+    });
+
+    await expect(resolveCalendarAnchorDate("broom", "show", {
+      eventId: "ev_broom",
+    })).resolves.toBe("2026-09-27");
   });
 
   it("builds show-calendar URLs from normalized imported dates", () => {

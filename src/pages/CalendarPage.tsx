@@ -12,7 +12,7 @@ import { can } from "../lib/can";
 import { getEventOperationsLink } from "../lib/task-workflows";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS } from "../../worker/lib/state-machine";
-import { monthStartFromIsoDate } from "../lib/global-search";
+import { monthStartFromIsoDate, pickShowCalendarAnchorDate } from "../lib/global-search";
 import { normaliseCalendarDate } from "../lib/lifecycle-calendar-links";
 import { shouldShowLifecycleStepCountBadge } from "../lib/lifecycle-calendar-display";
 
@@ -309,12 +309,25 @@ export function CalendarPage() {
             .find((date): date is string => Boolean(date)) ?? null;
         } else {
           const statusQuery = `&status=${encodeURIComponent(filters.status || "confirmed")}`;
-          const res = await apiGet<{ events: Array<{ event_start_date: string | null }> }>(
+          const res = await apiGet<{ events: Array<{ id: string; event_start_date: string | null }> }>(
             `/events?q=${encodeURIComponent(term)}${statusQuery}`,
           );
-          firstDate = res.events
-            .map((event) => normaliseCalendarDate(event.event_start_date))
-            .find((date): date is string => Boolean(date)) ?? null;
+          const match = res.events[0];
+          if (match) {
+            try {
+              const detail = await apiGet<{
+                event: { event_start_date: string | null };
+                venue_bookings: Array<{ schedule_entries: Array<{ activity_type: string; activity_date: string }> }>;
+              }>(`/events/${match.id}`);
+              const scheduleEntries = detail.venue_bookings.flatMap((booking) => booking.schedule_entries ?? []);
+              firstDate = pickShowCalendarAnchorDate(
+                detail.event.event_start_date ?? match.event_start_date,
+                scheduleEntries,
+              );
+            } catch {
+              firstDate = normaliseCalendarDate(match.event_start_date);
+            }
+          }
         }
         if (cancelled) return;
         if (!firstDate) return;

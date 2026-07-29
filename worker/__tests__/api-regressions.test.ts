@@ -948,11 +948,14 @@ describe("API regressions", () => {
         expect(sql).toContain("lower(substr(e.event_end_date, 4, 3))");
         expect(sql).toContain("date(e.created_at)) <= ?");
         expect(sql).toContain("WHEN 'jun' THEN '06'");
-        expect(sql).toContain("NOT EXISTS (SELECT 1 FROM schedule_entries se2");
+        expect(sql).toContain("FROM schedule_entries se2");
         expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
         expect(sql).toContain("UNION ALL");
         // The status gate must still default to confirmed-only.
         expect(sql).toContain("e.status = ?");
+        // Date-anchored cards are suppressed only when a schedule date already
+        // falls in the viewed month — not merely because any schedule row exists.
+        expect(sql).toMatch(/NOT EXISTS \([\s\S]*schedule_entries se2[\s\S]*activity_date[\s\S]*>= \?[\s\S]*<= \?/);
         return {
           all: () => ({
             results: [
@@ -988,6 +991,49 @@ describe("API regressions", () => {
     expect(body.entries[0]).toMatchObject({ title: "Ankh", status: "confirmed", venue: "JBT" });
     // The date-anchored card must be grouped under the show month.
     expect(body.byDate["2026-09-10"]).toBeTruthy();
+  });
+
+  it("keeps date-anchored show cards when schedule rows exist only outside the viewed month", async () => {
+    // Searching a confirmed event can land on its operating-window month while
+    // schedule rows live elsewhere. Those out-of-range rows must not suppress
+    // the date-anchored card, or the Show Calendar comes up empty.
+    let capturedSql = "";
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM schedule_entries se")) {
+        capturedSql = sql;
+        expect(sql).toMatch(/NOT EXISTS \([\s\S]*schedule_entries se2[\s\S]*>= \?[\s\S]*<= \?/);
+        return {
+          all: () => ({
+            results: [
+              {
+                id: null,
+                activity_type: "show",
+                activity_date: "2026-08-09",
+                title: "ER2 Entertainment - Play - Is there room on the broom",
+                status: "confirmed",
+                event_id: "ev_broom",
+                venue: "GDT",
+              },
+            ],
+          }),
+        };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/calendar?from=2026-08-01&to=2026-08-31&q=broom",
+      { headers: { Cookie: `${SESSION_COOKIE}=sess_test` } },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedSql).toContain("FROM schedule_entries se2");
+    await expect(res.json()).resolves.toMatchObject({
+      entries: [{ event_id: "ev_broom", activity_date: "2026-08-09" }],
+    });
   });
 
   it("surfaces confirmed lifecycle records on the show calendar even when show metadata is incomplete", async () => {

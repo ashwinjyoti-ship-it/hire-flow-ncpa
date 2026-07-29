@@ -9,13 +9,11 @@ import { formatDate } from "../../lib/use-lookups";
 import {
   buildCalendarSearchUrl,
   buildOrganisationSearchUrl,
-  calendarUrlForSearch,
   calendarViewForEvent,
   resolveSearchNavigation,
   type SearchEvent,
   type SearchOrg,
 } from "../../lib/global-search";
-import { normaliseCalendarDate } from "../../lib/lifecycle-calendar-links";
 import { StickyNotesLauncher } from "../sticky-notes/StickyNotesLauncher";
 
 type NotificationRow = {
@@ -318,14 +316,10 @@ function GlobalSearch() {
   async function openEventSearch(event: SearchEvent) {
     const targetView = calendarViewForEvent(event, calendarView);
     const statusQuery = targetView === "show" ? "&status=confirmed" : "";
-    const directAnchor = targetView === "show" ? normaliseCalendarDate(event.event_start_date) : null;
-    const url = directAnchor
-      ? calendarUrlForSearch(event.title, targetView, directAnchor)
-      : await buildCalendarSearchUrl(event.title, targetView, {
-          statusQuery,
-          eventId: event.id,
-        });
-    navigate(url);
+    navigate(await buildCalendarSearchUrl(event.title, targetView, {
+      statusQuery,
+      eventId: event.id,
+    }));
     setOpen(false);
   }
 
