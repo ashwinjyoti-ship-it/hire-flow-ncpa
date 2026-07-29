@@ -72,7 +72,7 @@ export function emailerGateStatus(
   emailerSentOn: string | null | undefined,
 ): string {
   const gate = normalise(emailer);
-  if (!gate || gate === "no") return "not_started";
+  if (!gate || gate === "no") return "not_applicable";
   if (gate === "yes") {
     return (emailerSentOn ?? "").trim() ? "completed" : "in_progress";
   }
@@ -84,7 +84,7 @@ export function instalmentGateStatus(
   values: ChecklistFieldValues,
 ): string {
   const gate = normalise(instalment);
-  if (!gate || gate === "no") return "not_started";
+  if (!gate || gate === "no") return "not_applicable";
   if (gate !== "yes") return "not_started";
 
   let hasAnyExpected = false;
