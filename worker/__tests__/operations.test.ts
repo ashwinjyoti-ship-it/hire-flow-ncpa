@@ -2034,12 +2034,21 @@ describe("VFH approval Not Required skips dependent checklist fields", () => {
             return this;
           },
           async all() {
-            if (sql.includes("approval_sent_on")) {
+            if (sql.includes("approval_sent_on") && sql.includes("JOIN checklist_definitions")) {
               return {
                 results: [
                   { id: "cli_sent", value: null, field_type: "date", is_computed: 0 },
                   { id: "cli_recv", value: "2026-07-01", field_type: "date", is_computed: 0 },
                   { id: "cli_genre", value: null, field_type: "dropdown", is_computed: 0 },
+                ],
+              };
+            }
+            if (sql.includes("SELECT field_key, value")) {
+              return {
+                results: [
+                  { field_key: "approval_required", value: "Required" },
+                  { field_key: "approval_received_on", value: "2026-07-01" },
+                  { field_key: "genre_head", value: null },
                 ],
               };
             }
@@ -2056,11 +2065,16 @@ describe("VFH approval Not Required skips dependent checklist fields", () => {
 
     await syncApprovalDependentChecklist(db, "ev_vfh", "Required");
 
-    expect(updates).toHaveLength(3);
-    const byId = Object.fromEntries(updates.map((u) => [u.binds[2], u.binds[0]]));
+    const dependentUpdates = updates.filter((u) => u.sql.includes("WHERE id = ?"));
+    expect(dependentUpdates).toHaveLength(3);
+    const byId = Object.fromEntries(dependentUpdates.map((u) => [u.binds[2], u.binds[0]]));
     expect(byId.cli_sent).toBe("not_started");
     expect(byId.cli_recv).toBe("completed");
     expect(byId.cli_genre).toBe("not_started");
+
+    const gateUpdates = updates.filter((u) => u.sql.includes("field_key = ?"));
+    const gateByKey = Object.fromEntries(gateUpdates.map((u) => [u.binds[3], u.binds[0]]));
+    expect(gateByKey.approval_required).toBe("completed");
   });
 });
 

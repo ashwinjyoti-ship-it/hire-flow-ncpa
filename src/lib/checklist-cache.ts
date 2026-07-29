@@ -9,6 +9,12 @@ import {
   TDS_DEPENDENT_FIELD_KEYS,
   type EventLifecycleRow,
 } from "../../worker/lib/operations";
+import {
+  gateControllerStatus,
+  GATE_CONTROLLER_STATUS_FIELD_KEYS,
+  rollupChecklistSectionStatus,
+  type ChecklistSectionRollupStatus,
+} from "../../worker/lib/checklist-field-status";
 import type { EventStatus } from "../../worker/lib/state-machine";
 import {
   instalmentExpectedDateFieldKey,
@@ -125,7 +131,7 @@ export function optimisticFieldStatus(
 ): string {
   if (status) return status;
   if (fieldType === "dropdown" || fieldType === "status") return optimisticDropdownStatus(value);
-  if (fieldType === "date" && value) return value <= todayIso() ? "in_progress" : "in_progress";
+  if (fieldType === "date" && value) return value <= todayIso() ? "completed" : "in_progress";
   if (fieldType === "checkbox") return value === "true" ? "completed" : "not_started";
   return value ? "completed" : "not_started";
 }
@@ -244,6 +250,27 @@ export function recomputeOptimisticLifecycle(
   return buildLifecycleReadiness(event);
 }
 
+function checklistValuesByKey(data: ChecklistCacheResponse): Record<string, string | null | undefined> {
+  const values: Record<string, string | null | undefined> = {};
+  forEachChecklistItem(data, (item) => {
+    values[item.field_key] = item.value;
+  });
+  return values;
+}
+
+function syncOptimisticGateControllerStatuses(data: ChecklistCacheResponse): void {
+  const values = checklistValuesByKey(data);
+  forEachChecklistItem(data, (item) => {
+    if (!GATE_CONTROLLER_STATUS_FIELD_KEYS.includes(item.field_key as typeof GATE_CONTROLLER_STATUS_FIELD_KEYS[number])) {
+      return;
+    }
+    const status = gateControllerStatus(item.field_key, values);
+    if (status) item.status = status;
+  });
+}
+
+export { rollupChecklistSectionStatus, type ChecklistSectionRollupStatus };
+
 function forEachChecklistItem(
   data: ChecklistCacheResponse,
   fn: (item: ChecklistCacheItem) => void,
@@ -344,6 +371,8 @@ export function applyOptimisticChecklistUpdate(
       next,
     );
   }
+
+  syncOptimisticGateControllerStatuses(next);
 
   if (eventSnapshot) {
     const patched = patchEventSnapshotFromChecklistField(eventSnapshot, item.field_key, value);
