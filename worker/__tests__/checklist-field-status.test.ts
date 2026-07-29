@@ -30,13 +30,13 @@ describe("checklist gate controller status", () => {
   });
 
   it("keeps emailer in progress until the emailer is sent", () => {
-    expect(emailerGateStatus("No", null)).toBe("not_started");
+    expect(emailerGateStatus("No", null)).toBe("not_applicable");
     expect(emailerGateStatus("Yes", null)).toBe("in_progress");
     expect(emailerGateStatus("Yes", "2026-06-10")).toBe("completed");
   });
 
   it("tracks instalment gate status from configured installments", () => {
-    expect(instalmentGateStatus("No", {})).toBe("not_started");
+    expect(instalmentGateStatus("No", {})).toBe("not_applicable");
     expect(instalmentGateStatus("Yes", {})).toBe("in_progress");
     expect(
       instalmentGateStatus("Yes", {
@@ -75,6 +75,30 @@ describe("checklist gate controller status", () => {
         { status: "in_progress" },
       ]),
     ).toBe("in_progress");
+  });
+
+  it("marks Financials complete when instalments are not in use", () => {
+    expect(
+      rollupChecklistSectionStatus([
+        { status: "completed" },
+        { status: "not_applicable" },
+        { status: "not_applicable" },
+        { status: "completed" },
+      ]),
+    ).toBe("completed");
+  });
+
+  it("marks Onstage/Emailer complete when emailer is not required", () => {
+    expect(
+      rollupChecklistSectionStatus([
+        { status: "completed" },
+        { status: "completed" },
+        { status: "completed" },
+        { status: "completed" },
+        { status: "completed" },
+        { status: "not_applicable" },
+      ]),
+    ).toBe("completed");
   });
 });
 
