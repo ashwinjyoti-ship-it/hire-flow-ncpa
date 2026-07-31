@@ -22,6 +22,7 @@ import {
   validateUpload,
   type DocumentCategory,
 } from "../lib/documents";
+import { publishEventChange, realtimeClientId } from "../lib/realtime";
 
 export const eventDocumentRoutes = new Hono<AuthEnv>();
 export const documentRoutes = new Hono<AuthEnv>();
@@ -84,6 +85,7 @@ eventDocumentRoutes.post("/:eventId/documents", requirePermission("document.uplo
     ipHint: ipHint(c.req.raw),
   });
   await eventActivity(db, eventId, "document_uploaded", user.id, { documentId: docId, fileName, category });
+  await publishEventChange(c.env, eventId, realtimeClientId(c.req.raw), ["event", "documents"]);
 
   return c.json({ id: docId, file_name: fileName, category }, 201);
 });
@@ -162,5 +164,6 @@ documentRoutes.delete("/:id", requirePermission("document.delete"), async (c) =>
   if (doc.event_id) {
     await eventActivity(db, doc.event_id, "document_archived", user.id, { documentId: doc.id, fileName: doc.file_name });
   }
+  await publishEventChange(c.env, doc.event_id, realtimeClientId(c.req.raw), ["event", "documents"]);
   return c.json({ ok: true, archived: true });
 });

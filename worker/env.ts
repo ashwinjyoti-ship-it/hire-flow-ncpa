@@ -10,6 +10,9 @@ export interface Env {
   DB: D1Database;
   // R2 binding (FILES)
   FILES: R2Bucket;
+  // Per-event and dashboard WebSocket rooms, hosted by ncpa-hire-realtime.
+  // Optional keeps local Pages development usable when that worker is not running.
+  EVENT_ROOMS?: DurableObjectNamespace;
 
   // Non-secret vars
   APP_URL: string;

@@ -15,6 +15,7 @@ import { reportRoutes } from "./routes/reports";
 import { analyticsRoutes } from "./routes/analytics";
 import { announcementRoutes } from "./routes/announcements";
 import { stickyNoteRoutes } from "./routes/sticky-notes";
+import { realtimeRoutes } from "./routes/realtime";
 
 /**
  * Builds the Hono API app, bound to the given environment.
@@ -86,6 +87,9 @@ export function buildApp(env: Env): Hono<AuthEnv> {
 
   // Shared call-capture corkboard (all authenticated team accounts).
   app.route("/sticky-notes", stickyNoteRoutes);
+
+  // Authenticated, scoped WebSocket subscriptions (no database polling).
+  app.route("/realtime", realtimeRoutes);
 
   return app;
 }

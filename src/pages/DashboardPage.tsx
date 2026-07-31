@@ -13,6 +13,7 @@ import { eventDisplayName } from "../lib/event-display";
 import { getDaysOverdue, getEventOperationsLink, getTaskWorkLink } from "../lib/task-workflows";
 import { BLOCKER_TARGETS, resolveBlockerWorkHref } from "../lib/lifecycle-blocker-targets";
 import { formatDate } from "../lib/use-lookups";
+import { useDashboardRealtime } from "../lib/realtime";
 import type { EventStatus } from "../../worker/lib/state-machine";
 
 type LifecycleEntry = {
@@ -64,6 +65,7 @@ const DASHBOARD_LIST_MAX_HEIGHT = `${DASHBOARD_VISIBLE_EVENTS * 6.75 + (DASHBOAR
 const DASHBOARD_LIST_STYLE = { "--dashboard-list-height": DASHBOARD_LIST_MAX_HEIGHT } as CSSProperties;
 
 export function DashboardPage() {
+  useDashboardRealtime();
   const [searchParams] = useSearchParams();
   const searchQuery = (searchParams.get("q") ?? "").trim();
   const today = new Date();

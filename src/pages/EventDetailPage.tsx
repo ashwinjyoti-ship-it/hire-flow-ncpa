@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEventRealtime } from "../lib/realtime";
 import { GoToTopButton } from "../components/GoToTopButton";
 import { PageHeader } from "../components/PageHeader";
 import { EventReadinessPanel } from "../components/EventReadinessPanel";
@@ -199,6 +200,7 @@ export function EventDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const qc = useQueryClient();
+  useEventRealtime(id);
   const [tab, setTab] = useState<EventDetailTab>(() => parseEventDetailTab(searchParams.get("tab")) ?? "tasks");
   const [statusModal, setStatusModal] = useState<EventStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -320,6 +322,19 @@ export function EventDetailPage() {
       await apiPost(`/events/${id}/status`, { to_status: args.to, reason: args.reason, note: args.note });
       return fetchFreshEventState();
     },
+    onMutate: async (args) => {
+      const eventKey = ["event", id] as const;
+      await qc.cancelQueries({ queryKey: eventKey });
+      const previous = qc.getQueryData<DetailResponse>(eventKey);
+      if (previous) {
+        qc.setQueryData<DetailResponse>(eventKey, {
+          ...previous,
+          event: { ...previous.event, status: args.to },
+        });
+      }
+      setStatusModal(null);
+      return { previous };
+    },
     onSuccess: (fresh) => {
       setStatusModal(null);
       setReason("");
@@ -328,6 +343,9 @@ export function EventDetailPage() {
       setCloseOutNote("");
       applyFreshEventState(fresh);
       scrollEventToTop();
+    },
+    onError: (_error, _args, context) => {
+      if (context?.previous) qc.setQueryData(["event", id], context.previous);
     },
   });
 

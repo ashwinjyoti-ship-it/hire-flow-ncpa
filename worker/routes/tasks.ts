@@ -7,6 +7,7 @@ import { makeId } from "../lib/id";
 import { can } from "../lib/rbac";
 import { IsoDate } from "../lib/types";
 import { calculateEventFormReadiness } from "../lib/event-readiness";
+import { publishEventChange, realtimeClientId } from "../lib/realtime";
 
 export const taskRoutes = new Hono<AuthEnv>();
 
@@ -109,6 +110,7 @@ taskRoutes.post("/", requirePermission("task.create"), async (c) => {
     await eventActivity(c.env.DB, d.event_id, "task_created", user.id, { taskId: id, title: d.title });
   }
   await audit({ db: c.env.DB, actor: actorFrom(user), action: "task.created", targetType: "task", targetId: id });
+  await publishEventChange(c.env, d.event_id, realtimeClientId(c.req.raw), ["event", "tasks"]);
   return c.json({ id }, 201);
 });
 
@@ -167,5 +169,6 @@ taskRoutes.patch("/:id", requireUser, async (c) => {
     await eventActivity(c.env.DB, task.event_id, "task_completed", user.id, { taskId: task.id, note: d.completion_note ?? null });
   }
   await audit({ db: c.env.DB, actor: actorFrom(user), action: "task.updated", targetType: "task", targetId: task.id, detail: d });
+  await publishEventChange(c.env, task.event_id, realtimeClientId(c.req.raw), ["event", "tasks"]);
   return c.json({ ok: true });
 });

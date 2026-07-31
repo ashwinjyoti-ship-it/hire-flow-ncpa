@@ -23,7 +23,8 @@
     "db:demo:local": "tsx scripts/seed/demo-events.ts --env=local",
     "db:demo:remote": "tsx scripts/seed/demo-events.ts --env=remote --allow-remote-demo",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name ncpa-hire",
+    "deploy": "npm run deploy:realtime && npm run build && wrangler pages deploy dist --project-name ncpa-hire",
+    "deploy:realtime": "wrangler deploy --config realtime/wrangler.jsonc",
     "deploy:scheduler": "wrangler deploy --config scheduler/wrangler.jsonc"
   },
   "dependencies": {
