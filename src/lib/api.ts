@@ -1,4 +1,12 @@
 /** Lightweight typed fetch helpers for the API. All include credentials. */
+import { realtimeClientId } from "./realtime";
+
+function mutationHeaders(contentType = true): HeadersInit {
+  return {
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    "X-Realtime-Client": realtimeClientId(),
+  };
+}
 
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`, { credentials: "include" });
@@ -12,7 +20,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -24,7 +32,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     credentials: "include",
     body: JSON.stringify(body),
   });
@@ -36,7 +44,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     credentials: "include",
     body: JSON.stringify(body),
   });
@@ -49,6 +57,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "POST",
+    headers: mutationHeaders(false),
     credentials: "include",
     body: form,
   });
@@ -60,7 +69,7 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "DELETE",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: mutationHeaders(Boolean(body)),
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });

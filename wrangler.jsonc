@@ -19,6 +19,15 @@
       "bucket_name": "ncpa-hire-files"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EVENT_ROOMS",
+        "class_name": "EventRoom",
+        "script_name": "ncpa-hire-realtime"
+      }
+    ]
+  },
   "vars": {
     "APP_URL": "https://ncpa-hire.pages.dev",
     "MAIL_FROM": "NCPA Venue Hire <noreply@ncpa-hire.pages.dev>",

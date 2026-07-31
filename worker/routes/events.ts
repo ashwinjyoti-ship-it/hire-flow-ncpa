@@ -15,6 +15,7 @@ import { EventInput, StatusTransitionInput, type ScheduleEntryInputT, type Venue
 import { getEventDateIssues } from "../lib/event-date-policy";
 import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
+import { publishEventChange, realtimeClientId } from "../lib/realtime";
 import { calculateEventFormReadiness } from "../lib/event-readiness";
 import { parseVenueBookingsForReadiness, VENUE_BOOKINGS_FOR_READINESS_SQL, normalizeVenueBookingsForReadiness } from "../lib/venue-schedule-readiness";
 import { validateCloseOutReasonInput, requiresStructuredCloseOutReason } from "../lib/close-out-reasons";
@@ -592,6 +593,7 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
   await reconcilePocTaskForEvent(db, id);
   await reconcileTentativeVenuePaymentTasksForEvent(db, id);
   await reconcileReadinessTasksForEvent(db, id);
+  await publishEventChange(c.env, id, realtimeClientId(c.req.raw), ["event", "checklist", "tasks"]);
   return c.json({ ok: true });
 });
 
@@ -713,6 +715,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
     ipHint: ipHint(c.req.raw),
   });
   await eventActivity(db, id, "status_changed", actorFrom(user).id, { from, to, reason: lifecycleReason, note: lifecycleNote });
+  await publishEventChange(c.env, id, realtimeClientId(c.req.raw), ["event", "checklist", "tasks"]);
   return c.json({ ok: true, status: to });
 });
 
@@ -798,6 +801,7 @@ eventRoutes.delete("/:id", requirePermission("event.archive"), async (c) => {
     ipHint: ipHint(c.req.raw),
   });
   await eventActivity(db, id, "event_archived", user.id, { keepOrganisationAndPoc: true });
+  await publishEventChange(c.env, id, realtimeClientId(c.req.raw), ["event", "tasks"]);
   return c.json({ ok: true, archived: true, keptOrganisationAndPoc: true });
 });
 
@@ -814,6 +818,7 @@ eventRoutes.patch("/:id/checklist/:itemId", requirePermission("checklist.update"
       status: parsed.data.status,
       user: c.get("user")!,
     });
+    await publishEventChange(c.env, c.req.param("id"), realtimeClientId(c.req.raw), ["event", "checklist", "tasks"]);
     return c.json({
       item: {
         ...result.item,

@@ -35,6 +35,9 @@ Browser (React SPA)  ──►  Cloudflare Pages  ──►  Pages Functions (/a
                               │                        └── R2 (files)   — binding: FILES
                               │
 Cron Worker (ncpa-hire-scheduler) ──► D1 (shared)     scheduled jobs: tasks, notifications, overdue, post-event
+Realtime Worker (ncpa-hire-realtime) ◄── WebSockets ── event detail / dashboard viewers
+                              ▲
+                              └── Durable Object rooms receive successful API-change notifications
 ```
 
 | Layer | Technology |
@@ -46,6 +49,7 @@ Cron Worker (ncpa-hire-scheduler) ──► D1 (shared)     scheduled jobs: task
 | Auth | email + password (scrypt) + TOTP MFA + RBAC + sessions |
 | Email | Resend (graceful no-op until configured) |
 | Scheduler | Cloudflare Cron Triggers |
+| Realtime | Cloudflare Durable Objects + hibernating WebSockets |
 
 See **ARCHITECTURE.md** for the full design.
 
@@ -57,6 +61,7 @@ See **ARCHITECTURE.md** for the full design.
 | D1 database | `ncpa-hire-db` | `DB` |
 | R2 bucket | `ncpa-hire-files` | `FILES` |
 | Cron Worker | `ncpa-hire-scheduler` | — |
+| Durable Object Worker | `ncpa-hire-realtime` | `EVENT_ROOMS` |
 
 Production URL: **https://ncpa-hire.pages.dev**
 
@@ -108,7 +113,8 @@ Open http://localhost:5173.
 | `npm run db:seed:local` | Seed local D1 from the Excel workbook |
 | `npm run db:seed:preview` | Seed preview environment (opt-in, never auto on prod) |
 | `npm run bootstrap:admin` | One-time first-Admin creation |
-| `npm run deploy` | Build + deploy SPA to Cloudflare Pages |
+| `npm run deploy` | Deploy realtime Worker, then build + deploy SPA to Cloudflare Pages |
+| `npm run deploy:realtime` | Deploy the Durable Object WebSocket Worker |
 | `npm run deploy:scheduler` | Deploy the cron Worker |
 
 ## Local secrets
@@ -127,7 +133,7 @@ In production, secrets are set via the Cloudflare dashboard or `wrangler pages s
 Production deploys via GitHub Actions on push to `main` (`.github/workflows/ci.yml`):
 
 1. **Validate** — typecheck, lint, test, build
-2. **Deploy** (runs only after validate passes on `main`) — apply D1 migrations, deploy Pages, deploy scheduler
+2. **Deploy** (runs only after validate passes on `main`) — apply D1 migrations, deploy realtime Worker, deploy Pages, deploy scheduler
 
 Manual production deploy: Actions → **CI** → **Run workflow** (branch: `main`).
 

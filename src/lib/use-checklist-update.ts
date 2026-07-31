@@ -44,10 +44,14 @@ export function useChecklistUpdate(
         status: args.status,
       });
     },
-    onMutate: (args) => {
+    onMutate: async (args) => {
       if (!eventId) return { previous: undefined, previousEvent: undefined };
       const queryKey = ["event", eventId, "checklist"] as const;
       const eventKey = ["event", eventId] as const;
+      await Promise.all([
+        qc.cancelQueries({ queryKey }),
+        qc.cancelQueries({ queryKey: eventKey }),
+      ]);
       const previous = qc.getQueryData<ChecklistUpdateResponse>(queryKey);
       const previousEvent = qc.getQueryData<EventDetailCache>(eventKey);
       const eventSnapshot = previousEvent
@@ -74,8 +78,6 @@ export function useChecklistUpdate(
       if (previousEvent) {
         qc.setQueryData(eventKey, patchEventDetailCache(previousEvent, args.item.field_key, args.value));
       }
-
-      void qc.cancelQueries({ queryKey });
 
       return { previous, previousEvent };
     },
