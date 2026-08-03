@@ -2331,3 +2331,125 @@ describe("instalment task reconciliation", () => {
     expect(writes.some((write) => write.binds.includes("Cancelled automatically because the installment follow-up is not due yet."))).toBe(true);
   });
 });
+
+describe("Payment Status completion closes outstanding instalment follow-ups", () => {
+  it("completes open instalment tasks when Payment Status is marked Completed", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const paymentItem = {
+      id: "cli_payment",
+      event_id: "ev_pay",
+      definition_id: "def_payment",
+      module: "operations",
+      section: "Financials",
+      field_key: "payment_status",
+      label: "Payment Status",
+      status: "not_started",
+      value: "Incomplete",
+      due_date: null,
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "dropdown",
+      options: JSON.stringify(["Incomplete", "Completed"]),
+      is_computed: 0,
+      triggers_task: null,
+      visibility_rule: null,
+      sort_order: 0,
+    } satisfies ChecklistItemRow;
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("JOIN checklist_definitions")) return paymentItem;
+            return null;
+          },
+          async all() {
+            if (sql.includes("'costing_email', 'proforma_invoice', 'payment_status'")) {
+              return {
+                results: [
+                  { field_key: "costing_email", value: "Yes" },
+                  { field_key: "proforma_invoice", value: "Sent" },
+                  { field_key: "payment_status", value: "Completed" },
+                ],
+              };
+            }
+            return { results: [] };
+          },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 1 } }; },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await updateChecklistItem({
+      db,
+      itemId: "cli_payment",
+      value: "Completed",
+      user: { id: "user_1", email: "ops@example.test", name: "Ops", permissions: [], organisation: null },
+    });
+
+    const instalmentCompletion = writes.find((write) =>
+      write.sql.includes("SET status = 'completed'")
+      && write.sql.includes("source_rule = ?")
+      && write.binds.includes("instalment"));
+    expect(instalmentCompletion).toBeDefined();
+    expect(instalmentCompletion?.binds).toContain("ev_pay");
+  });
+
+  it("does not touch instalment tasks when Payment Status is left Incomplete", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const paymentItem = {
+      id: "cli_payment",
+      event_id: "ev_pay",
+      definition_id: "def_payment",
+      module: "operations",
+      section: "Financials",
+      field_key: "payment_status",
+      label: "Payment Status",
+      status: "not_started",
+      value: "Incomplete",
+      due_date: null,
+      completed_at: null,
+      completed_by: null,
+      last_updated_at: null,
+      last_updated_by: null,
+      field_type: "dropdown",
+      options: JSON.stringify(["Incomplete", "Completed"]),
+      is_computed: 0,
+      triggers_task: null,
+      visibility_rule: null,
+      sort_order: 0,
+    } satisfies ChecklistItemRow;
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("JOIN checklist_definitions")) return paymentItem;
+            return null;
+          },
+          async all() { return { results: [] }; },
+          async run() { writes.push({ sql, binds: [...this.binds] }); return { meta: { changes: 1 } }; },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await updateChecklistItem({
+      db,
+      itemId: "cli_payment",
+      value: "Incomplete",
+      user: { id: "user_1", email: "ops@example.test", name: "Ops", permissions: [], organisation: null },
+    });
+
+    const instalmentCompletion = writes.find((write) =>
+      write.sql.includes("SET status = 'completed'")
+      && write.sql.includes("source_rule = ?")
+      && write.binds.includes("instalment"));
+    expect(instalmentCompletion).toBeUndefined();
+  });
+});

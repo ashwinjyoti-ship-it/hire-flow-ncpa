@@ -2139,6 +2139,22 @@ export async function maybeCreateTaskForChecklistItem(db: D1Database, item: Chec
 async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: string, fieldKey: string, value: string | null | undefined, userId: string): Promise<void> {
   await maybeCompleteAccountsFileTasks(db, eventId, fieldKey, value, userId);
 
+  // Payment Status = Completed means the whole payment is settled, so any
+  // outstanding per-instalment follow-up tasks are moot even if their
+  // "Received" checkbox was never individually ticked.
+  if (fieldKey === "payment_status") {
+    if (isPaymentMarkedCompleted(value)) {
+      await completeTasksForSourceRules(
+        db,
+        eventId,
+        ["instalment"],
+        userId,
+        "Completed automatically because Payment Status was marked Completed.",
+      );
+    }
+    return;
+  }
+
   if (isInstalmentReceivedField(fieldKey)) {
     const number = instalmentNumberFromFieldKey(fieldKey);
     if (!number) return;
