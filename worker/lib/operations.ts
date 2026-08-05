@@ -1253,6 +1253,20 @@ export async function reconcileInstalmentTasksForEvent(
   today = todayIso(),
 ): Promise<void> {
   const now = new Date().toISOString();
+  const paymentRow = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'payment_status' LIMIT 1",
+  ).bind(eventId).first<{ value: string | null }>();
+  if (isPaymentMarkedCompleted(paymentRow?.value)) {
+    await completeTasksForSourceRules(
+      db,
+      eventId,
+      ["instalment"],
+      createdBy ?? "system",
+      PAYMENT_STATUS_TASK_COMPLETION_NOTE,
+    );
+    return;
+  }
+
   const instalment = await db.prepare(
     "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'instalment'"
   ).bind(eventId).first<{ value: string | null }>();
