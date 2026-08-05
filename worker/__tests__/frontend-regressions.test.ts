@@ -842,6 +842,19 @@ describe("frontend regression guards", () => {
     expect(helpers).toContain("SENSITIVE_POC_FIELD_KEYS");
   });
 
+  it("nudges staff to confirm tentative venues after payment and confirmation letter", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const banner = readFileSync(resolve(root, "src/components/ConfirmVenueAfterPaymentBanner.tsx"), "utf8");
+    const helpers = readFileSync(resolve(root, "src/lib/venue-confirm-nudge.ts"), "utf8");
+
+    expect(detail).toContain("ConfirmVenueAfterPaymentBanner");
+    expect(detail).toContain("shouldShowConfirmVenueNudge");
+    expect(banner).toContain("getVenueScheduleEditLink");
+    expect(banner).toContain("Dismiss");
+    expect(helpers).toContain("isConfirmationLetterSent");
+    expect(helpers).toContain("getVenueScheduleEditLink");
+  });
+
   it("centres review labels and values instead of right-justifying them", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
