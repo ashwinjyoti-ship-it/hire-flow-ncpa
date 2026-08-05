@@ -2222,6 +2222,44 @@ describe("reconcilePocTaskForEvent", () => {
     expect(insert!.binds).toContain("poc_incomplete");
     expect(insert!.sql).toContain("'high'");
   });
+
+  it("creates or reopens a POC task for confirmed events when POC is still incomplete", async () => {
+    const updates: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("SELECT id, status, event_owner_id FROM events")) {
+              return { id: "ev_confirmed_poc", status: "confirmed", event_owner_id: "user_1" };
+            }
+            if (sql.includes("SELECT requirements FROM events")) return { requirements: "{}" };
+            if (sql.includes("SELECT id FROM checklist_items")) return { id: "cli_poc" };
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM checklist_items")) return { results: [] };
+            if (sql.includes("FROM checklist_definitions")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            updates.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcilePocTaskForEvent(db, "ev_confirmed_poc");
+
+    const insert = updates.find((u) => u.sql.includes("INSERT INTO tasks"));
+    expect(insert).toBeDefined();
+    expect(insert!.binds).toContain("Complete Point of Contact");
+    expect(insert!.sql).toContain("WHEN tasks.status IN ('open','in_progress','cancelled') THEN 'open'");
+    expect(updates.some((u) => u.sql.includes("SET status = 'cancelled'"))).toBe(false);
+  });
 });
 
 describe("reconcileTentativeVenuePaymentTasksForEvent", () => {
