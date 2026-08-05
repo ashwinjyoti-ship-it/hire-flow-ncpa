@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { RequirementsFields } from "../components/event-form/RequirementsFields";
 import { PocFields } from "../components/event-form/PocFields";
+import { PocSuggestionBanner } from "../components/event-form/PocSuggestionBanner";
 import { VenueScheduleFields } from "../components/event-form/VenueScheduleFields";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import { scrollAppMainToElement } from "../lib/scroll-app-main";
@@ -23,6 +24,12 @@ import {
   withDefaultVenueRequirements,
 } from "../lib/event-edit-form";
 import { buildReviewItems } from "../lib/event-review";
+import {
+  applyPocSuggestion,
+  countApplicablePocSuggestionFields,
+  hasAnyPocSuggestionValues,
+  type PocSuggestionResponse,
+} from "../lib/org-poc-suggestion";
 import { useLookups, formatDate } from "../lib/use-lookups";
 import { deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import { ORG_TYPES } from "../components/orgs/types";
@@ -188,6 +195,9 @@ export function EventEditPage() {
   const saveNoticeTimerRef = useRef<number | null>(null);
   const [newOrganisationType, setNewOrganisationType] = useState("");
   const [selectedOrganisation, setSelectedOrganisation] = useState<OrgListItem | null>(null);
+  const [pocLookupOrgId, setPocLookupOrgId] = useState<string | null>(null);
+  const [pocSuggestionDismissed, setPocSuggestionDismissed] = useState(false);
+  const [pocSuggestionApplied, setPocSuggestionApplied] = useState(false);
 
   // Form state
   const [form, setForm] = useState<EventInputT>({
@@ -283,6 +293,9 @@ export function EventEditPage() {
   useEffect(() => {
     if (!form.organisation_id || form.organisation_id.startsWith("new:")) {
       setSelectedOrganisation(null);
+      setPocLookupOrgId(null);
+      setPocSuggestionDismissed(false);
+      setPocSuggestionApplied(false);
     }
   }, [form.organisation_id]);
 
@@ -422,6 +435,25 @@ export function EventEditPage() {
     }));
   };
 
+  const pocSuggestionReady = Boolean(
+    pocLookupOrgId
+      && form.organisation_id === pocLookupOrgId
+      && !pocSuggestionDismissed
+      && !pocSuggestionApplied,
+  );
+  const { data: pocSuggestionData } = useQuery<PocSuggestionResponse>({
+    queryKey: ["organisation-poc-suggestion", pocLookupOrgId],
+    queryFn: () => apiGet<PocSuggestionResponse>(`/organisations/${pocLookupOrgId}/poc-suggestion`),
+    enabled: pocSuggestionReady,
+    staleTime: 30_000,
+  });
+  const showPocSuggestionBanner = Boolean(
+    pocSuggestionReady
+      && pocSuggestionData
+      && hasAnyPocSuggestionValues(pocSuggestionData.suggestion)
+      && countApplicablePocSuggestionFields(reqs, pocSuggestionData.suggestion) > 0,
+  );
+
   const canSave = canCreateEvent(form) && !hasDuplicateWarning && !dateError;
 
   // In edit mode, wait for the existing event before rendering the form so the
@@ -478,6 +510,11 @@ export function EventEditPage() {
                 onSelectOrganisation={(org) => {
                   setSelectedOrganisation(org);
                   setNewOrganisationType(org.org_type ?? "");
+                }}
+                onUserSelectOrganisation={(org) => {
+                  setPocLookupOrgId(org.id);
+                  setPocSuggestionDismissed(false);
+                  setPocSuggestionApplied(false);
                 }}
               />
             </Field>
@@ -602,6 +639,21 @@ export function EventEditPage() {
             </Field>
           </div>
 
+          {showPocSuggestionBanner && pocSuggestionData ? (
+            <PocSuggestionBanner
+              organisationName={selectedOrganisation?.name ?? reviewOrganisationName ?? "this organisation"}
+              currentRequirements={reqs}
+              data={pocSuggestionData}
+              onApply={() => {
+                update({
+                  requirements: applyPocSuggestion(reqs, pocSuggestionData.suggestion),
+                });
+                setPocSuggestionApplied(true);
+              }}
+              onDismiss={() => setPocSuggestionDismissed(true)}
+            />
+          ) : null}
+
           <PocFields value={reqs} onChange={(next) => update({ requirements: next })} />
 
           <p className="text-[11px] text-ink-muted etched">
@@ -709,10 +761,12 @@ function OrganisationCombobox({
   value,
   onChange,
   onSelectOrganisation,
+  onUserSelectOrganisation,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSelectOrganisation: (org: OrgListItem) => void;
+  onUserSelectOrganisation?: (org: OrgListItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -784,6 +838,7 @@ function OrganisationCombobox({
                 e.preventDefault();
                 onChange(o.id);
                 onSelectOrganisation(o);
+                onUserSelectOrganisation?.(o);
                 setQuery(o.name);
                 setOpen(false);
               }}

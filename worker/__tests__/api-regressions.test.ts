@@ -129,6 +129,69 @@ describe("API regressions", () => {
     });
   });
 
+  it("serves organisation POC suggestions from the latest event", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM organisations WHERE id = ? AND is_archived = 0")) {
+        return {
+          first: () => ({
+            id: "org_test",
+            name: "Test Organisation",
+            gst_number: null,
+            pan_number: null,
+            tan_number: null,
+            bank_details: null,
+          }),
+        };
+      }
+      if (sql.includes("FROM events e")) {
+        return {
+          all: () => ({
+            results: [
+              {
+                id: "ev_test",
+                title: "Annual Day",
+                event_start_date: "2026-07-12",
+                requirements: JSON.stringify({
+                  poc_name: "Ada Lovelace",
+                  poc_email: "ada@example.test",
+                }),
+              },
+            ],
+          }),
+        };
+      }
+      if (sql.includes("FROM contacts")) return { first: () => null };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/organisations/org_test/poc-suggestion",
+      {
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test` },
+      },
+      { DB: db } as never,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      source: {
+        type: "event",
+        event_id: "ev_test",
+        event_title: "Annual Day",
+      },
+      suggestion: {
+        poc_name: "Ada Lovelace",
+        poc_email: "ada@example.test",
+      },
+      preview: {
+        poc_name: "Ada Lovelace",
+        poc_email: "ada@example.test",
+      },
+    });
+  });
+
   it("includes event date, venue, and owner context on task rows", async () => {
     const db = fakeDb((sql) => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
