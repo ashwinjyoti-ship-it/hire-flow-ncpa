@@ -13,6 +13,7 @@ import { requireUser, requirePermission, actorFrom } from "../middleware/auth";
 import { OrganisationInput, ContactInput } from "../lib/types";
 import { audit } from "../lib/audit";
 import { makeId } from "../lib/id";
+import { getOrgPocSuggestion } from "../lib/org-poc-suggestion";
 
 export const organisationRoutes = new Hono<AuthEnv>();
 
@@ -106,6 +107,13 @@ const MONTHS: Record<string, string> = {
   jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
   jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
 };
+
+// GET /:id/poc-suggestion — latest event POC for an org (+ directory fallbacks)
+organisationRoutes.get("/:id/poc-suggestion", requireUser, async (c) => {
+  const id = c.req.param("id");
+  const result = await getOrgPocSuggestion(c.env.DB, id);
+  return c.json(result);
+});
 
 // GET /:id
 organisationRoutes.get("/:id", requireUser, async (c) => {

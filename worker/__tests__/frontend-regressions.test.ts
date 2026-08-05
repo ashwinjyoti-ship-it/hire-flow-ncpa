@@ -827,6 +827,21 @@ describe("frontend regression guards", () => {
     expect(eventForm).not.toContain("}, [resolvedOrg, onSelectOrganisation]);");
   });
 
+  it("offers permission-based POC autofill when an existing organisation is selected", () => {
+    const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
+    const banner = readFileSync(resolve(root, "src/components/event-form/PocSuggestionBanner.tsx"), "utf8");
+    const helpers = readFileSync(resolve(root, "src/lib/org-poc-suggestion.ts"), "utf8");
+
+    expect(eventForm).toContain("onUserSelectOrganisation");
+    expect(eventForm).toContain("organisation-poc-suggestion");
+    expect(eventForm).toContain("PocSuggestionBanner");
+    expect(eventForm).toContain("applyPocSuggestion");
+    expect(banner).toContain("Apply POC");
+    expect(banner).toContain("nothing you have already entered will be overwritten");
+    expect(helpers).toContain("applyPocSuggestion");
+    expect(helpers).toContain("SENSITIVE_POC_FIELD_KEYS");
+  });
+
   it("centres review labels and values instead of right-justifying them", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
