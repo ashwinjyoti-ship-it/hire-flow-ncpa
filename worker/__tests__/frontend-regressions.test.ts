@@ -855,6 +855,21 @@ describe("frontend regression guards", () => {
     expect(helpers).toContain("getVenueScheduleEditLink");
   });
 
+  it("confirms payment completion when instalments or payment tasks are still open", () => {
+    const detail = readFileSync(resolve(root, "src/pages/EventDetailPage.tsx"), "utf8");
+    const helpers = readFileSync(resolve(root, "src/lib/payment-complete-confirm.ts"), "utf8");
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
+    const checklistUpdate = readFileSync(resolve(root, "src/lib/use-checklist-update.ts"), "utf8");
+
+    expect(helpers).toContain("buildPaymentCompleteConfirmState");
+    expect(helpers).toContain("hasOutOfOrderInstalments");
+    expect(detail).toContain("paymentCompleteConfirm");
+    expect(detail).toContain("handleChecklistUpdate");
+    expect(detail).toContain("Mark completed anyway");
+    expect(operations).toMatch(/reconcileInstalmentTasksForEvent[\s\S]*isPaymentMarkedCompleted/);
+    expect(checklistUpdate).toContain('queryKey: ["tasks"], exact: false');
+  });
+
   it("centres review labels and values instead of right-justifying them", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 

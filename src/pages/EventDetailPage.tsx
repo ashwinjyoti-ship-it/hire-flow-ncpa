@@ -89,6 +89,10 @@ import {
   isVenueConfirmNudgeDismissed,
   shouldShowConfirmVenueNudge,
 } from "../lib/venue-confirm-nudge";
+import {
+  buildPaymentCompleteConfirmState,
+  type PaymentCompleteConfirmState,
+} from "../lib/payment-complete-confirm";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -225,6 +229,12 @@ export function EventDetailPage() {
   const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
   const [lifecycleRegressionMessage, setLifecycleRegressionMessage] = useState<string | null>(null);
+  const [paymentCompleteConfirm, setPaymentCompleteConfirm] = useState<{
+    item: ChecklistItem;
+    value: string | null;
+    status?: string;
+    warnings: PaymentCompleteConfirmState;
+  } | null>(null);
   const [venueConfirmNudgeDismissed, setVenueConfirmNudgeDismissed] = useState(() =>
     id ? isVenueConfirmNudgeDismissed(id) : false,
   );
@@ -296,6 +306,15 @@ export function EventDetailPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [momMissingPrompt]);
+
+  useEffect(() => {
+    if (!paymentCompleteConfirm) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPaymentCompleteConfirm(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [paymentCompleteConfirm]);
 
   async function fetchFreshEventState(): Promise<EventPageFreshState> {
     const [detail, checklist, tasks] = await Promise.all([
@@ -418,6 +437,7 @@ export function EventDetailPage() {
   if (isLoading) return <div className="text-sm text-ink-muted">Loading...</div>;
   const e = data?.event;
   if (!e) return <div className="text-sm text-ink-muted">Event not found.</div>;
+  const eventPaymentStatus = e.payment_status as string | null;
 
   const canChangeStatus = can(user?.permissions, "event.status.change");
   const canUpdateChecklist = can(user?.permissions, "checklist.update");
@@ -487,6 +507,30 @@ export function EventDetailPage() {
     showAllWorkflowTasks,
   );
   const pendingTasks = workflowScopedTasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
+  const allChecklistItems = [
+    ...Object.values(opsSections).flat(),
+    ...Object.values(accountsSections).flat(),
+  ];
+
+  function handleChecklistUpdate(item: ChecklistItem, value: string | null, status?: string) {
+    if (item.field_key === "payment_status") {
+      const warnings = buildPaymentCompleteConfirmState({
+        currentPaymentStatus: eventPaymentStatus,
+        nextPaymentStatus: value,
+        checklistItems: allChecklistItems,
+        openTasks: allEventTasks.map((task) => ({
+          title: String(task.title ?? ""),
+          source_rule: (task.source_rule as string | null) ?? null,
+          status: String(task.status ?? "open"),
+        })),
+      });
+      if (warnings.shouldConfirm) {
+        setPaymentCompleteConfirm({ item, value, status, warnings });
+        return;
+      }
+    }
+    checklistUpdate.mutate({ item, value, status });
+  }
   const readiness = checklistData?.readiness ?? e.event_readiness;
   const eventPrepOpsItems = Object.values(eventPrepOpsSections).flat();
   const eventPrepOpsByKey = new Map(eventPrepOpsItems.map((item) => [item.field_key, item]));
@@ -747,7 +791,7 @@ export function EventDetailPage() {
                 finalShowDate={e.event_end_date ?? e.event_start_date}
                 showGoToTop
                 onGoToTop={clearFocusedField}
-                onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
+                onUpdate={handleChecklistUpdate}
               />
             </div>
           </div>
@@ -773,7 +817,7 @@ export function EventDetailPage() {
               finalShowDate={e.event_end_date ?? e.event_start_date}
               showGoToTop
               onGoToTop={clearFocusedField}
-              onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
+              onUpdate={handleChecklistUpdate}
             />
           </div>
         )}
@@ -865,6 +909,68 @@ export function EventDetailPage() {
                 className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
               >
                 Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentCompleteConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-primary/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="payment-complete-title"
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-marble-highlight p-6 shadow-xl">
+            <h2 id="payment-complete-title" className="text-sm font-semibold uppercase tracking-wider text-sage etched">
+              Mark payment as completed?
+            </h2>
+            <p className="mt-3 text-sm text-ink-secondary etched">
+              Payment will be treated as fully settled. Outstanding payment follow-up tasks will be closed.
+            </p>
+            {paymentCompleteConfirm.warnings.instalmentIssues.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Instalments</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary etched">
+                  {paymentCompleteConfirm.warnings.instalmentIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {paymentCompleteConfirm.warnings.openPaymentTasks.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted etched">Open payment tasks</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary etched">
+                  {paymentCompleteConfirm.warnings.openPaymentTasks.map((task) => (
+                    <li key={`${task.source_rule ?? "manual"}:${task.title}`}>{task.title}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentCompleteConfirm(null)}
+                className="carved-btn rounded-full bg-neutral-btn px-4 py-2 text-sm font-medium text-ink-secondary etched"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const pending = paymentCompleteConfirm;
+                  setPaymentCompleteConfirm(null);
+                  checklistUpdate.mutate({
+                    item: pending.item,
+                    value: pending.value,
+                    status: pending.status,
+                  });
+                }}
+                className="carved-btn-sage rounded-full bg-sage-btn px-4 py-2 text-sm font-semibold text-sage-text etched"
+              >
+                Mark completed anyway
               </button>
             </div>
           </div>
@@ -995,7 +1101,7 @@ export function EventDetailPage() {
           fileClosedItem={fileClosedItem}
           fileActionError={fileActionError}
           checklistPending={checklistUpdate.isPending}
-          onUpdate={(item, value, status) => checklistUpdate.mutate({ item, value, status })}
+          onUpdate={handleChecklistUpdate}
           onCloseFile={closeFile}
           onReopenFile={reopenFile}
           onGoToTop={clearFocusedField}

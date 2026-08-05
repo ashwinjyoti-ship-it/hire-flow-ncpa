@@ -2346,6 +2346,7 @@ describe("instalment task reconciliation", () => {
             return this;
           },
           async first() {
+            if (sql.includes("field_key = 'payment_status'")) return { value: "Incomplete" };
             if (sql.includes("field_key = 'instalment'")) return { value: "Yes" };
             if (sql.includes("event_owner_id")) return { event_owner_id: null };
             return null;
@@ -2367,6 +2368,43 @@ describe("instalment task reconciliation", () => {
 
     expect(writes.some((write) => write.sql.includes("INSERT INTO tasks"))).toBe(false);
     expect(writes.some((write) => write.binds.includes("Cancelled automatically because the installment follow-up is not due yet."))).toBe(true);
+  });
+
+  it("closes open instalment tasks without creating new ones when payment is already Completed", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        const statement = {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) {
+            this.binds = values;
+            return this;
+          },
+          async first() {
+            if (sql.includes("field_key = 'payment_status'")) return { value: "Completed" };
+            return null;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { success: true };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+
+    await reconcileInstalmentTasksForEvent(db, "ev_paid", "user_1", "2026-07-23");
+
+    const instalmentCompletion = writes.find((write) =>
+      write.sql.includes("SET status = 'completed'")
+      && write.sql.includes("source_rule = ?")
+      && write.binds.includes("instalment"));
+    expect(instalmentCompletion).toBeDefined();
+    expect(instalmentCompletion?.binds).toContain(PAYMENT_STATUS_TASK_COMPLETION_NOTE);
+    expect(writes.some((write) => write.sql.includes("INSERT INTO tasks"))).toBe(false);
   });
 });
 

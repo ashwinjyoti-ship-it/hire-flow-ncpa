@@ -110,6 +110,7 @@ export function useChecklistUpdate(
         qc.setQueryData(queryKey, freshChecklist);
         qc.invalidateQueries({ queryKey: eventKey });
         qc.invalidateQueries({ queryKey: ["tasks", eventId] });
+        qc.invalidateQueries({ queryKey: ["tasks"], exact: false });
         qc.invalidateQueries({ queryKey: ["calendar-lifecycle"], exact: false });
         if (response?.lifecycle_regression) {
           qc.invalidateQueries({ queryKey: ["calendar"], exact: false });
