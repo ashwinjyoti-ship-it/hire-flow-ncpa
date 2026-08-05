@@ -1789,6 +1789,7 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
 }
 
 export const TENTATIVE_VENUE_PAYMENT_TASK_RULE = "venue_booking_payment_followup";
+export const PAYMENT_STATUS_TASK_COMPLETION_NOTE = "Completed automatically because Payment Status was marked Completed.";
 const TENTATIVE_VENUE_PAYMENT_COMPLETED_NOTE = "Completed automatically because the venue booking was confirmed.";
 const TENTATIVE_VENUE_PAYMENT_CANCELLED_NOTE = "Cancelled automatically because the tentative venue booking no longer applies.";
 
@@ -1820,6 +1821,10 @@ export async function reconcileTentativeVenuePaymentTasksForEvent(
 
   const currentBookingIds = new Set((bookings ?? []).map((booking) => booking.id));
   const eventInactive = Boolean(event.is_archived) || event.status === "cancelled" || event.status === "regret";
+  const paymentRow = await db.prepare(
+    "SELECT value FROM checklist_items WHERE event_id = ? AND field_key = 'payment_status' LIMIT 1",
+  ).bind(eventId).first<{ value: string | null }>();
+  const paymentSettled = isPaymentMarkedCompleted(paymentRow?.value);
   const now = new Date().toISOString();
   let changed = 0;
 
@@ -1840,6 +1845,16 @@ export async function reconcileTentativeVenuePaymentTasksForEvent(
         now,
         idempotency,
       ).run();
+      changed += result.meta?.changes ?? 0;
+      continue;
+    }
+
+    if (paymentSettled) {
+      const result = await db.prepare(
+        `UPDATE tasks
+         SET status = 'completed', completed_at = COALESCE(completed_at, ?), completion_note = ?, updated_at = ?
+         WHERE idempotency_key = ? AND status IN ('open','in_progress')`,
+      ).bind(now, PAYMENT_STATUS_TASK_COMPLETION_NOTE, now, idempotency).run();
       changed += result.meta?.changes ?? 0;
       continue;
     }
@@ -2147,9 +2162,9 @@ async function maybeCompleteTasksForChecklistUpdate(db: D1Database, eventId: str
       await completeTasksForSourceRules(
         db,
         eventId,
-        ["instalment"],
+        ["instalment", TENTATIVE_VENUE_PAYMENT_TASK_RULE],
         userId,
-        "Completed automatically because Payment Status was marked Completed.",
+        PAYMENT_STATUS_TASK_COMPLETION_NOTE,
       );
     }
     return;

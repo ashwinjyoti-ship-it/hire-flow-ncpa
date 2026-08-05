@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, formatConfirmationBlockerRegressionMessage, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileApprovalFollowupTasksForEvent, reconcileConfirmedStatusForBlockers, reconcileConfirmationLetterTasksForEvent, reconcileFeedbackTasksForEvent, reconcileFollowUpTasksForEvent, reconcileInstalmentTasksForEvent, reconcileOnstageTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
+import { blockersForTransition, buildLifecycleReadiness, ensureChecklistForEvent, formatConfirmationBlockerRegressionMessage, itemStatusForValue, maybeCompleteAccountsFileTasks, maybeCreateTaskForChecklistItem, reconcileApprovalFollowupTasksForEvent, reconcileConfirmedStatusForBlockers, reconcileConfirmationLetterTasksForEvent, reconcileFeedbackTasksForEvent, reconcileFollowUpTasksForEvent, reconcileInstalmentTasksForEvent, reconcileOnstageTasksForEvent, updateChecklistItem, recalculateEventCompletion, reconcileConfirmationLetterAgainstFinancials, reconcileConfirmationLetterDeliveryChain, reconcileFileToAccountsReminderForEvent, reconcileFinancialSequenceForEvent, reconcilePocTaskForEvent, reconcileTasksForLifecycleTransition, reconcileTechnicalMeetingTasksForEvent, reconcileTentativeVenuePaymentTasksForEvent, rescheduleAllAutomaticTasks, syncAdditionalRequirementsChecklist, syncApprovalDependentChecklist, syncEmailerDependentChecklist, syncEventReferenceChecklist, syncInstalmentDependentChecklist, syncNocDependentChecklist, syncOnstageDependentChecklist, syncPocChecklist, syncPocFromChecklistItem, mergePocRequirementsForRead, syncRequirementsFromChecklistItem, syncTdsDependentChecklist, taskRulesCompletedByLifecycleTransition, TENTATIVE_VENUE_PAYMENT_TASK_RULE, PAYMENT_STATUS_TASK_COMPLETION_NOTE, type ChecklistItemRow, type EventLifecycleRow } from "../lib/operations";
 import { CHECKLIST_DEFINITIONS } from "../../scripts/seed/checklist-definitions";
 
 function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
@@ -2282,6 +2282,44 @@ describe("reconcileTentativeVenuePaymentTasksForEvent", () => {
     expect(update?.binds).toContain("venue-booking:vb_1:payment-follow-up");
     expect(update?.binds).toContain("Completed automatically because the venue booking was confirmed.");
   });
+
+  it("completes tentative venue payment follow-ups when Payment Status is already Completed", async () => {
+    const writes: Array<{ sql: string; binds: unknown[] }> = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          binds: [] as unknown[],
+          bind(...values: unknown[]) { this.binds = values; return this; },
+          async first() {
+            if (sql.includes("field_key = 'payment_status'")) return { value: "Completed" };
+            if (sql.includes("SELECT id, status, event_owner_id, is_archived")) {
+              return { id: "ev_1", status: "tentative", event_owner_id: "user_owner", is_archived: 0 };
+            }
+            return null;
+          },
+          async all() {
+            if (sql.includes("FROM venue_bookings")) {
+              return { results: [{ id: "vb_1", venue: "JBT", booking_status: "tentative" }] };
+            }
+            if (sql.includes("FROM tasks")) return { results: [] };
+            return { results: [] };
+          },
+          async run() {
+            writes.push({ sql, binds: [...this.binds] });
+            return { meta: { changes: 1 } };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await reconcileTentativeVenuePaymentTasksForEvent(db, "ev_1", "2026-07-21");
+
+    expect(writes.some((write) => write.sql.includes("INSERT INTO tasks"))).toBe(false);
+    const completion = writes.find((write) =>
+      write.sql.includes("UPDATE tasks") && write.binds.includes(PAYMENT_STATUS_TASK_COMPLETION_NOTE));
+    expect(completion).toBeDefined();
+    expect(completion?.binds).toContain("venue-booking:vb_1:payment-follow-up");
+  });
 });
 
 describe("instalment task reconciliation", () => {
@@ -2333,7 +2371,7 @@ describe("instalment task reconciliation", () => {
 });
 
 describe("Payment Status completion closes outstanding instalment follow-ups", () => {
-  it("completes open instalment tasks when Payment Status is marked Completed", async () => {
+  it("completes open instalment and venue payment follow-up tasks when Payment Status is marked Completed", async () => {
     const writes: Array<{ sql: string; binds: unknown[] }> = [];
     const paymentItem = {
       id: "cli_payment",
@@ -2397,6 +2435,13 @@ describe("Payment Status completion closes outstanding instalment follow-ups", (
       && write.binds.includes("instalment"));
     expect(instalmentCompletion).toBeDefined();
     expect(instalmentCompletion?.binds).toContain("ev_pay");
+
+    const venuePaymentCompletion = writes.find((write) =>
+      write.sql.includes("SET status = 'completed'")
+      && write.sql.includes("source_rule = ?")
+      && write.binds.includes(TENTATIVE_VENUE_PAYMENT_TASK_RULE));
+    expect(venuePaymentCompletion).toBeDefined();
+    expect(venuePaymentCompletion?.binds).toContain(PAYMENT_STATUS_TASK_COMPLETION_NOTE);
   });
 
   it("does not touch instalment tasks when Payment Status is left Incomplete", async () => {
