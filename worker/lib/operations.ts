@@ -232,6 +232,7 @@ async function cancelOpenTasksOutsidePhase(
   const now = new Date().toISOString();
   let changed = 0;
   for (const task of results ?? []) {
+    if (task.source_rule === POC_TASK_RULE) continue;
     if (canGenerateTaskForPhase(task.source_rule, activePhase)) continue;
     // Only cancel rules we explicitly phase-map; leave unknown automatic tasks alone.
     if (!workflowPhaseForTaskRule(task.source_rule)) continue;
@@ -1749,7 +1750,7 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
   const now = new Date().toISOString();
   const terminal = event.status === "cancelled" || event.status === "regret";
 
-  if (terminal || event.status === "confirmed") {
+  if (terminal) {
     await db.prepare(
       `UPDATE tasks
        SET status = 'cancelled', completion_note = ?, updated_at = ?
@@ -1781,9 +1782,9 @@ export async function reconcilePocTaskForEvent(db: D1Database, eventId: string, 
        description = excluded.description,
        assignee_id = excluded.assignee_id,
        priority = excluded.priority,
-       status = CASE WHEN tasks.status IN ('open','in_progress') THEN 'open' ELSE tasks.status END,
-       completion_note = CASE WHEN tasks.status IN ('open','in_progress') THEN NULL ELSE tasks.completion_note END,
-       completed_at = CASE WHEN tasks.status IN ('open','in_progress') THEN NULL ELSE tasks.completed_at END,
+       status = CASE WHEN tasks.status IN ('open','in_progress','cancelled') THEN 'open' ELSE tasks.status END,
+       completion_note = CASE WHEN tasks.status IN ('open','in_progress','cancelled') THEN NULL ELSE tasks.completion_note END,
+       completed_at = CASE WHEN tasks.status IN ('open','in_progress','cancelled') THEN NULL ELSE tasks.completed_at END,
        updated_at = excluded.updated_at`
   ).bind(
     makeId("task"),
@@ -2062,7 +2063,7 @@ export async function reconcileAllReadinessTasks(db: D1Database): Promise<number
 export async function reconcileAllPocTasks(db: D1Database, today = todayIso()): Promise<number> {
   const { results } = await db.prepare(
     `SELECT id FROM events
-     WHERE is_archived = 0 AND status IN ('enquiry','tentative','approved')`
+     WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')`
   ).all<{ id: string }>();
   let changed = 0;
   for (const row of results ?? []) {
@@ -2923,6 +2924,7 @@ export async function reconcileConfirmedStatusForBlockers(
   await reconcileTasksForLifecycleTransition(db, eventId, "confirmed", toStatus, userId);
   await reconcileTentativeVenuePaymentTasksForEvent(db, eventId);
   await reconcileReadinessTasksForEvent(db, eventId);
+  await reconcilePocTaskForEvent(db, eventId);
   await reconcileWorkflowPhaseTasksForEvent(db, eventId);
   await eventActivity(db, eventId, "status_changed", userId, {
     from: "confirmed",

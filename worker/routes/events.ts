@@ -707,6 +707,7 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   await reconcileTentativeVenuePaymentTasksForEvent(db, id);
   await reconcileReadinessTasksForEvent(db, id);
   await reconcileFileToAccountsReminderForEvent(db, id);
+  await reconcilePocTaskForEvent(db, id);
   await reconcileWorkflowPhaseTasksForEvent(db, id);
 
   await audit({

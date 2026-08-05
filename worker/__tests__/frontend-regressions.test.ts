@@ -870,6 +870,14 @@ describe("frontend regression guards", () => {
     expect(checklistUpdate).toContain('queryKey: ["tasks"], exact: false');
   });
 
+  it("keeps POC tasks outside workflow-phase auto-cancel", () => {
+    const operations = readFileSync(resolve(root, "worker/lib/operations.ts"), "utf8");
+
+    expect(operations).toMatch(/cancelOpenTasksOutsidePhase[\s\S]*POC_TASK_RULE/);
+    expect(operations).toMatch(/reconcileAllPocTasks[\s\S]*status NOT IN \('cancelled','regret'\)/);
+    expect(readFileSync(resolve(root, "worker/routes/events.ts"), "utf8")).toContain("await reconcilePocTaskForEvent(db, id);");
+  });
+
   it("centres review labels and values instead of right-justifying them", () => {
     const eventForm = readFileSync(resolve(root, "src/pages/EventEditPage.tsx"), "utf8");
 
