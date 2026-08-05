@@ -11,6 +11,7 @@ import {
   type WorkflowSnapshot,
 } from "../components/LifecycleWorkflowStack";
 import { PocIncompleteBanner } from "../components/PocIncompleteBanner";
+import { ConfirmVenueAfterPaymentBanner } from "../components/ConfirmVenueAfterPaymentBanner";
 import { StatusBadge } from "../components/StatusBadge";
 import { EVENT_CLOSE_OUT_COPY } from "../lib/event-close-out-copy";
 import { apiDelete, apiGet, apiPost, apiUpload } from "../lib/api";
@@ -82,6 +83,12 @@ import {
 } from "../lib/venue-schedule-view";
 import { countScheduledShowsByDate, deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { VENUES_SCHEDULE_ANCHOR_ID, VENUES_SCHEDULE_READINESS_KEY } from "../../worker/lib/venue-schedule-readiness";
+import {
+  dismissVenueConfirmNudge,
+  getTentativeVenueNames,
+  isVenueConfirmNudgeDismissed,
+  shouldShowConfirmVenueNudge,
+} from "../lib/venue-confirm-nudge";
 
 type DetailResponse = {
   event: Record<string, unknown> & {
@@ -218,6 +225,9 @@ export function EventDetailPage() {
   const [showAllWorkflowTasks, setShowAllWorkflowTasks] = useState(false);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
   const [lifecycleRegressionMessage, setLifecycleRegressionMessage] = useState<string | null>(null);
+  const [venueConfirmNudgeDismissed, setVenueConfirmNudgeDismissed] = useState(() =>
+    id ? isVenueConfirmNudgeDismissed(id) : false,
+  );
   // Only auto-scroll to a deep-linked field once; checklist refetches must not yank the viewport back.
   const scrolledToFieldRef = useRef<string | null>(null);
 
@@ -378,6 +388,32 @@ export function EventDetailPage() {
       navigate("/calendar");
     },
   });
+
+  useEffect(() => {
+    if (id) setVenueConfirmNudgeDismissed(isVenueConfirmNudgeDismissed(id));
+  }, [id]);
+
+  const venueBookingsForNudge = useMemo(
+    () => (data?.venue_bookings ?? []).map((vb) => ({
+      venue: (vb.venue as string | null) ?? null,
+      booking_status: (vb.booking_status as string | null) ?? null,
+    })),
+    [data?.venue_bookings],
+  );
+  const tentativeVenues = useMemo(
+    () => getTentativeVenueNames(venueBookingsForNudge),
+    [venueBookingsForNudge],
+  );
+  const showVenueConfirmNudge = useMemo(() => {
+    if (!data?.event || !id) return false;
+    return shouldShowConfirmVenueNudge({
+      eventStatus: data.event.status,
+      paymentStatus: data.event.payment_status as string | null,
+      confirmationStatus: data.event.confirmation_status as string | null,
+      venueBookings: venueBookingsForNudge,
+      dismissed: venueConfirmNudgeDismissed,
+    });
+  }, [data?.event, id, venueBookingsForNudge, venueConfirmNudgeDismissed]);
 
   if (isLoading) return <div className="text-sm text-ink-muted">Loading...</div>;
   const e = data?.event;
@@ -638,6 +674,17 @@ export function EventDetailPage() {
 
       {showPocAlert && pocCompletion && (
         <PocIncompleteBanner poc={pocCompletion} eventId={e.id} />
+      )}
+
+      {showVenueConfirmNudge && (
+        <ConfirmVenueAfterPaymentBanner
+          eventId={e.id}
+          tentativeVenues={tentativeVenues}
+          onDismiss={() => {
+            dismissVenueConfirmNudge(e.id);
+            setVenueConfirmNudgeDismissed(true);
+          }}
+        />
       )}
 
       <div className="carved-card mb-5 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/50 p-5 md:grid-cols-5">
