@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { blockersForFileClose, formatFileCloseBlockedMessage } from "../lib/file-close";
 
-function tracking(field_key: string, label: string, value: string | null) {
+function tracking(field_key: string, label: string, value: string | null, status?: string) {
   return {
     module: "accounts",
     section: "File Tracking",
     field_key,
     label,
-    status: value ? "completed" : "not_started",
+    status: status ?? (value ? "completed" : "not_started"),
     value,
   };
 }
@@ -21,9 +21,9 @@ const FILE_TRACKING_LABELS: Record<string, string> = {
   final_file_received: "Final File Received — Date",
 };
 
-function fileTracking(values: Record<string, string | null>) {
+function fileTracking(values: Record<string, string | null>, statuses?: Record<string, string>) {
   return Object.entries(FILE_TRACKING_LABELS).map(([field_key, label]) =>
-    tracking(field_key, label, values[field_key] ?? null),
+    tracking(field_key, label, values[field_key] ?? null, statuses?.[field_key]),
   );
 }
 
@@ -129,6 +129,24 @@ describe("file close gate", () => {
       final_file_received: "2026-08-03",
     }))).toEqual([
       "File Tracking: File Sent to Accounts — Date",
+    ]);
+  });
+
+  it("blocks future-dated File Sent or Final File Received even when a value is present", () => {
+    expect(blockersForFileClose(fileTracking({
+      file_sent_to_accounts: "2099-01-01",
+      file_received_back_edit_1: "2026-08-02",
+      final_file_received: "2026-08-03",
+    }, { file_sent_to_accounts: "in_progress" }))).toEqual([
+      "File Tracking: File Sent to Accounts — Date",
+    ]);
+
+    expect(blockersForFileClose(fileTracking({
+      file_sent_to_accounts: "2026-08-01",
+      file_received_back_edit_1: "2026-08-02",
+      final_file_received: "2099-01-01",
+    }, { final_file_received: "in_progress" }))).toEqual([
+      "File Tracking: Final File Received — Date",
     ]);
   });
 

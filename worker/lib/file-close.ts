@@ -27,11 +27,6 @@ const FILE_TRACKING_RECEIVED_EDIT_KEYS = new Set([
   "file_received_back_edit_2",
 ]);
 
-const FILE_TRACKING_REQUIRED_DATE_KEYS = new Set([
-  "file_sent_to_accounts",
-  "final_file_received",
-]);
-
 function isFilledDate(value: string | null | undefined): boolean {
   return Boolean(value?.trim());
 }
@@ -58,7 +53,6 @@ export function blockersForFileClose(items: FileCloseGateItem[]): string[] {
     if (item.module !== "accounts" && item.section !== POST_EVENT_CHECKLIST_SECTION) continue;
     if (!isChecklistFieldVisible(item, visibilityByKey)) continue;
     if (FILE_TRACKING_OPTIONAL_ROUND_KEYS.has(item.field_key)) continue;
-    if (FILE_TRACKING_REQUIRED_DATE_KEYS.has(item.field_key) && isFilledDate(item.value)) continue;
     if (item.status === "completed" || item.status === "not_applicable") continue;
     blockers.push(`${item.section}: ${item.label}`);
   }
