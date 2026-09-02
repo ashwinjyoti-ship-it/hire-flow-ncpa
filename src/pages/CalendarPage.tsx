@@ -896,7 +896,7 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         {entry.organisation_name ?? entry.title}
       </div>
       {noShowDate && (
-        <span className="mt-0.5 inline-block max-w-full truncate rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">
+        <span className="mt-0.5 inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">
           {showDateMissingLabel(true)}
         </span>
       )}
