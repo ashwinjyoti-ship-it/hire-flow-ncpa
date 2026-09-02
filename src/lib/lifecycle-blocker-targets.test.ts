@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blockersForTransition, type EventLifecycleRow } from "../../worker/lib/operations";
+import { SHOW_DATE_REQUIRED_BLOCKER } from "../../worker/lib/event-date-policy";
 import {
   ACTIONABLE_LIFECYCLE_BLOCKERS,
   BLOCKER_TARGETS,
@@ -11,6 +12,7 @@ function event(overrides: Partial<EventLifecycleRow> = {}): EventLifecycleRow {
     id: "ev_1",
     title: "Test",
     event_type: "VFH",
+    event_start_date: "2026-07-10",
     status: "tentative",
     approval_status: "pending",
     confirmation_status: "none",
@@ -24,11 +26,11 @@ function event(overrides: Partial<EventLifecycleRow> = {}): EventLifecycleRow {
 }
 
 describe("BLOCKER_TARGETS", () => {
-  it("maps every actionable lifecycle blocker to an Operations field", () => {
+  it("maps every actionable lifecycle blocker to a work target", () => {
     for (const blocker of ACTIONABLE_LIFECYCLE_BLOCKERS) {
       const target = BLOCKER_TARGETS[blocker];
       expect(target, `missing target for: ${blocker}`).toBeDefined();
-      expect(target!.tab).toBe("operations");
+      expect(target!.tab === "operations" || target!.tab === "event_form").toBe(true);
       expect(target!.fieldKey.length).toBeGreaterThan(0);
     }
   });
@@ -57,6 +59,9 @@ describe("BLOCKER_TARGETS", () => {
     )) {
       emitted.add(blocker);
     }
+    for (const blocker of blockersForTransition(event({ event_start_date: null }), "confirmed")) {
+      emitted.add(blocker);
+    }
 
     const informational = "Approved is only used for VFH events.";
     for (const blocker of emitted) {
@@ -76,5 +81,10 @@ describe("BLOCKER_TARGETS", () => {
   it("routes the POC confirmation blocker to the event form POC section", () => {
     expect(resolveBlockerWorkHref("ev_1", BLOCKER_TARGETS["POC not filled, cannot confirm."]!))
       .toBe("/events/ev_1/edit?step=0&section=poc");
+  });
+
+  it("routes the missing show-date blocker to the event form dates", () => {
+    expect(resolveBlockerWorkHref("ev_1", BLOCKER_TARGETS[SHOW_DATE_REQUIRED_BLOCKER]!))
+      .toBe("/events/ev_1/edit?step=0&section=dates");
   });
 });

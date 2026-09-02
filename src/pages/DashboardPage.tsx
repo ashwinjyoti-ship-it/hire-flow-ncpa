@@ -182,7 +182,11 @@ export function DashboardPage() {
                         {entry.decision_blocker ?? (entry.decision_status ? `${pipelineMilestoneLabel(entry.decision_status)} is ready` : "Review lifecycle status")}
                       </span>
                       <span className="mt-1 block text-[11px] text-ink-muted etched">
-                        {usablePipelineDate(entry.event_start_date) ? `Event ${formatDate(entry.event_start_date!)}` : `Entered ${formatDate(entry.milestone_date)}`} · {entry.venues && entry.venues !== "0" ? entry.venues : "No venue"}
+                        {usablePipelineDate(entry.event_start_date) ? `Event ${formatDate(entry.event_start_date!)}` : `Entered ${formatDate(entry.milestone_date)}`}
+                        {!usablePipelineDate(entry.event_start_date) && (
+                          <span className="ml-1 rounded-full bg-status-awaitingApproval/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-status-awaitingApproval">No date of show</span>
+                        )}
+                        {" · "}{entry.venues && entry.venues !== "0" ? entry.venues : "No venue"}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">

@@ -56,6 +56,7 @@ export type ChecklistCacheResponse = {
 export type OptimisticEventSnapshot = {
   status: EventStatus;
   event_type: string | null;
+  event_start_date?: string | null;
   approval_status: string | null;
   confirmation_status: string | null;
   poc_complete?: boolean;
@@ -163,6 +164,7 @@ export function eventSnapshotFromDetail(event: Record<string, unknown>): Optimis
   return {
     status: event.status as EventStatus,
     event_type: (event.event_type as string | null) ?? null,
+    event_start_date: (event.event_start_date as string | null) ?? null,
     approval_status: (event.approval_status as string | null) ?? null,
     confirmation_status: (event.confirmation_status as string | null) ?? null,
     poc_complete: (event.poc_completion as { complete?: boolean } | undefined)?.complete
@@ -238,6 +240,7 @@ export function recomputeOptimisticLifecycle(
     title: "",
     status: snapshot.status,
     event_type: snapshot.event_type,
+    event_start_date: snapshot.event_start_date ?? null,
     approval_status: snapshot.approval_status,
     confirmation_status: snapshot.confirmation_status,
     poc_complete: snapshot.poc_complete,

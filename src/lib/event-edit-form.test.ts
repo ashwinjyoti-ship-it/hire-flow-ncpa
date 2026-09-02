@@ -7,6 +7,7 @@ import {
   createDefaultVenueRequirements,
   getEventFormDateError,
   getScheduleValidationError,
+  nextAvailableScheduleDate,
   hydrateVenueRequirements,
   organisationValueFromName,
   prepareVenueBookingsForSave,
@@ -16,12 +17,11 @@ import {
 import type { VenueBookingInputT } from "../../worker/lib/types";
 
 describe("canCreateEvent", () => {
-  it("allows submission when organisation, event name, and date are filled", () => {
+  it("allows submission when organisation and event name are filled", () => {
     expect(
       canCreateEvent({
         title: "A New Event",
         organisation_id: "org_1",
-        event_start_date: "2026-07-10",
       }),
     ).toBe(true);
   });
@@ -31,23 +31,37 @@ describe("canCreateEvent", () => {
       canCreateEvent({
         title: "A New Event",
         organisation_id: "new:Typed Organisation",
-        event_start_date: "2026-07-10",
       }),
     ).toBe(true);
   });
 
-  it("blocks submission when the date is missing", () => {
+  it("allows submission when the date is missing", () => {
     expect(
       canCreateEvent({
         title: "A New Event",
         organisation_id: "org_1",
-        event_start_date: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
+  });
+});
+
+describe("nextAvailableScheduleDate", () => {
+  it("leaves the day undated when the event has no show date", () => {
+    expect(nextAvailableScheduleDate(null, new Set())).toBe("");
+    expect(nextAvailableScheduleDate("", new Set([""]))).toBe("");
+  });
+
+  it("walks forward from the operating window start", () => {
+    expect(nextAvailableScheduleDate("2026-07-10", new Set(["2026-07-10"]))).toBe("2026-07-11");
   });
 });
 
 describe("getEventFormDateError", () => {
+  it("rejects an end date without a start date", () => {
+    expect(getEventFormDateError({ event_start_date: null, event_end_date: "2026-07-10", venue_bookings: [] }))
+      .toBe("The event end date cannot be set without a start date.");
+  });
+
   it("rejects an end date before the start date", () => {
     expect(getEventFormDateError({ event_start_date: "2026-07-10", event_end_date: "2026-07-01", venue_bookings: [] }))
       .toBe("The event end date cannot be before the start date.");

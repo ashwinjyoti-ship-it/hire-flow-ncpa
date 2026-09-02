@@ -2,7 +2,7 @@ import { isCateringMealPaxKey } from "../../worker/lib/catering-meals";
 import { deriveVenueShowCount } from "../../worker/lib/show-schedule";
 import { applyScheduleDaysToEntries, deriveScheduleDaysFromEntries } from "../../worker/lib/schedule-days";
 import type { EventInputT, VenueBookingInputT } from "../../worker/lib/types";
-import { getEventDateIssues } from "../../worker/lib/event-date-policy";
+import { getEventDateIssues, usableShowDate } from "../../worker/lib/event-date-policy";
 
 type VenueBookingLike = Pick<EventInputT["venue_bookings"][number], "venue">;
 type RequirementsRecord = Record<string, unknown>;
@@ -233,11 +233,20 @@ export function getScheduleValidationError(venueBookings: EventInputT["venue_boo
   return null;
 }
 
-export function canCreateEvent(form: Pick<EventInputT, "title" | "organisation_id" | "event_start_date">): boolean {
-  return form.title.trim().length > 0
-    && form.organisation_id.trim().length > 0
-    && form.event_start_date != null
-    && form.event_start_date.trim().length > 0;
+export function canCreateEvent(form: Pick<EventInputT, "title" | "organisation_id">): boolean {
+  return form.title.trim().length > 0 && form.organisation_id.trim().length > 0;
+}
+
+export function hasShowDate(form: Pick<EventInputT, "event_start_date">): boolean {
+  return usableShowDate(form.event_start_date);
+}
+
+/** Next free operating-window day, or blank when the event has no show date yet. */
+export function nextAvailableScheduleDate(startDate: string | null | undefined, usedDates: Set<string>): string {
+  if (!usableShowDate(startDate)) return "";
+  const date = new Date(`${startDate}T00:00:00.000Z`);
+  while (usedDates.has(date.toISOString().slice(0, 10))) date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 export function getEventFormDateError(form: Pick<EventInputT, "event_start_date" | "event_end_date" | "venue_bookings">): string | null {

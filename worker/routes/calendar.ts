@@ -218,6 +218,7 @@ calendarRoutes.get("/lifecycle", requireUser, async (c) => {
       title: entry.title,
       status: entry.status,
       event_type: entry.event_type,
+      event_start_date: (row as { event_start_date?: string | null }).event_start_date ?? null,
       approval_status: entry.approval_status,
       confirmation_status: entry.confirmation_status,
       costing_email: entry.costing_email,
@@ -324,18 +325,17 @@ calendarRoutes.get("/", requireUser, async (c) => {
   if (venue) { seWhere.push("vb.venue = ?"); seBinds.push(venue); }
 
   // ---- Set 2: date-anchored rows when this month has no schedule cards ----
-  // An event's operating window must overlap the viewed [from, to] range. If a
-  // confirmed import has no operating date, fall back to the date it entered
-  // its current confirmed lifecycle state, then to creation date. That keeps
-  // confirmed lifecycle records visible on the Show Calendar while the team
-  // fills in the final show metadata.
+  // An event's operating window must overlap the viewed [from, to] range.
+  // A missing show date must not fall back to created/status-changed — that
+  // would invent a show day for undated enquiries. Unparseable imported dates
+  // still resolve through normalisedDateSql when a real start date is stored.
   //
   // Suppress date-anchored rows only when a *normalised* schedule date already
   // falls in the viewed month (avoids double-counting with set 1). Events whose
   // only schedule rows are outside this month — or have unparseable imported
   // dates — must still earn an operating-window card so search deep-links to
   // event_start_date are not empty.
-  const showDateExpr = `COALESCE(${normalisedDateSql("e.event_start_date")}, ${normalisedDateSql("substr(sh.changed_at, 1, 10)")}, date(e.created_at))`;
+  const showDateExpr = normalisedDateSql("e.event_start_date");
   const eventEndExpr = `COALESCE(${normalisedDateSql("e.event_end_date")}, ${showDateExpr})`;
   const scheduleDateInRangeExists = `EXISTS (
       SELECT 1 FROM schedule_entries se2
@@ -344,6 +344,7 @@ calendarRoutes.get("/", requireUser, async (c) => {
         AND ${normalisedDateSql("se2.activity_date")} <= ?
     )`;
   const evWhere = [
+    `${showDateExpr} IS NOT NULL`,
     `${eventEndExpr} >= ?`,
     `${showDateExpr} <= ?`,
     ...commonWhere,

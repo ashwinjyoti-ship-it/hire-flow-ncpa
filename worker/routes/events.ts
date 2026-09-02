@@ -12,7 +12,8 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../middleware/auth";
 import { requireUser, requirePermission, actorFrom, ipHint } from "../middleware/auth";
 import { EventInput, StatusTransitionInput, type ScheduleEntryInputT, type VenueBookingInputT } from "../lib/types";
-import { getEventDateIssues } from "../lib/event-date-policy";
+import { getEventDateIssues, usableShowDate } from "../lib/event-date-policy";
+import { istToday } from "../lib/daily-report";
 import { evaluatePocCompletionForEvent } from "../lib/poc-completion";
 import { getPostShowDateWarning } from "../lib/checklist-date-policy";
 import { publishEventChange, realtimeClientId } from "../lib/realtime";
@@ -430,35 +431,38 @@ eventRoutes.post("/", requirePermission("event.create"), async (c) => {
   const now = new Date().toISOString();
   const d = parsed.data;
 
-  if (!d.event_start_date) return c.json({ error: "Event start date is required", field: "event_start_date" }, 422);
+  const startDate = usableShowDate(d.event_start_date) ? d.event_start_date : null;
+  const endDate = startDate ? (d.event_end_date ?? null) : null;
 
-  const dateIssue = getEventDateIssues(d)[0];
+  const dateIssue = getEventDateIssues({ ...d, event_start_date: startDate, event_end_date: endDate })[0];
   if (dateIssue) return c.json({ error: dateIssue.message, field: dateIssue.path }, 422);
 
-  const duplicates = await findLikelyDuplicateEvents(db, {
-    orgId: d.organisation_id,
-    title: d.title,
-    date: d.event_start_date ?? "",
-    venues: d.venue_bookings.map((booking) => booking.venue),
-  });
-  if (duplicates.length > 0) {
-    return c.json({
-      error: "A possible duplicate already exists for this organisation on that date. Open the existing record or change the event name or venue before saving.",
-      duplicates,
-    }, 409);
+  if (startDate) {
+    const duplicates = await findLikelyDuplicateEvents(db, {
+      orgId: d.organisation_id,
+      title: d.title,
+      date: startDate,
+      venues: d.venue_bookings.map((booking) => booking.venue),
+    });
+    if (duplicates.length > 0) {
+      return c.json({
+        error: "A possible duplicate already exists for this organisation on that date. Open the existing record or change the event name or venue before saving.",
+        duplicates,
+      }, 409);
+    }
   }
 
   const insertEvent = db.prepare(
     `INSERT INTO events (id, event_code, title, description, organisation_id, primary_contact_id,
        event_type, program_officer, event_owner, event_owner_id,
-       event_start_date, event_end_date, status, form_status, approval_status, confirmation_status,
+       event_start_date, event_end_date, enquiry_date, status, form_status, approval_status, confirmation_status,
        enquiry_source, priority, requirements, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'enquiry', 'published', ?, 'none', ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, makeId("code"), d.title, d.description ?? null, d.organisation_id, d.primary_contact_id ?? null,
     d.event_type ?? null,
     d.program_officer ?? null, d.event_owner ?? null, d.event_owner_id ?? null,
-    d.event_start_date ?? null, d.event_end_date ?? null,
+    startDate, endDate, istToday(),
     // Approval status default: not_required for all types. VFH events seed the
     // `approval_required` dropdown as "Not Required" by default, and that
     // drives approval_status via syncEventFieldsFromChecklist — so start
@@ -521,21 +525,26 @@ eventRoutes.put("/:id", requirePermission("event.edit"), async (c) => {
     event_end_date: d.event_end_date !== undefined ? d.event_end_date : current.event_end_date as string | null,
     venue_bookings: validationBookings,
   };
-  if (d.event_start_date === null) return c.json({ error: "Event start date cannot be cleared", field: "event_start_date" }, 422);
+  if (!usableShowDate(merged.event_start_date)) {
+    merged.event_start_date = null;
+    merged.event_end_date = null;
+  }
   const dateIssue = getEventDateIssues(merged)[0];
   if (dateIssue) return c.json({ error: dateIssue.message, field: dateIssue.path }, 422);
   const mergedVenues = d.venue_bookings !== undefined
     ? d.venue_bookings.map((booking) => booking.venue)
     : (await db.prepare("SELECT venue FROM venue_bookings WHERE event_id = ?").bind(id).all<{ venue: string }>()).results.map((row) => row.venue);
-  const duplicates = await findLikelyDuplicateEvents(db, {
-    orgId: String(nextValueFrom(current, d, "organisation_id") ?? ""),
-    title: String(nextValueFrom(current, d, "title") ?? ""),
-    date: String(merged.event_start_date ?? ""),
-    venues: mergedVenues,
-    excludeEventId: id,
-  });
-  if (duplicates.length > 0) {
-    return c.json({ error: "A possible duplicate already exists for this organisation on that date.", duplicates }, 409);
+  if (usableShowDate(merged.event_start_date)) {
+    const duplicates = await findLikelyDuplicateEvents(db, {
+      orgId: String(nextValueFrom(current, d, "organisation_id") ?? ""),
+      title: String(nextValueFrom(current, d, "title") ?? ""),
+      date: String(merged.event_start_date ?? ""),
+      venues: mergedVenues,
+      excludeEventId: id,
+    });
+    if (duplicates.length > 0) {
+      return c.json({ error: "A possible duplicate already exists for this organisation on that date.", duplicates }, 409);
+    }
   }
   if (d.event_start_date !== undefined || d.event_end_date !== undefined) {
     const finalShowDate = merged.event_end_date ?? merged.event_start_date ?? null;
@@ -606,9 +615,10 @@ eventRoutes.post("/:id/status", requirePermission("event.status.change"), async 
   const id = c.req.param("id");
   const to = parsed.data.to_status as EventStatus;
 
-  const event = await db.prepare("SELECT status, event_type, approval_status, confirmation_status FROM events WHERE id = ?").bind(id).first<{
+  const event = await db.prepare("SELECT status, event_type, event_start_date, approval_status, confirmation_status FROM events WHERE id = ?").bind(id).first<{
     status: EventStatus;
     event_type: string | null;
+    event_start_date: string | null;
     approval_status: string | null;
     confirmation_status: string | null;
   }>();

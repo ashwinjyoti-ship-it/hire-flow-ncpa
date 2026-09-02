@@ -2,6 +2,7 @@ import {
   COSTING_EMAIL_BLOCKER,
   PAYMENT_COMPLETED_BLOCKER,
 } from "../../worker/lib/financial-sequence";
+import { SHOW_DATE_REQUIRED_BLOCKER } from "../../worker/lib/event-date-policy";
 import { getEventPocEditLink } from "./event-edit-form";
 
 /**
@@ -13,7 +14,7 @@ import { getEventPocEditLink } from "./event-edit-form";
  */
 export const BLOCKER_TARGETS: Record<
   string,
-  { tab: "operations" | "accounts"; fieldKey: string; label: string }
+  { tab: "operations" | "accounts" | "event_form"; fieldKey: string; label: string }
 > = {
   [COSTING_EMAIL_BLOCKER]: {
     tab: "operations",
@@ -55,6 +56,11 @@ export const BLOCKER_TARGETS: Record<
     fieldKey: "poc_name",
     label: "POC Name",
   },
+  [SHOW_DATE_REQUIRED_BLOCKER]: {
+    tab: "event_form",
+    fieldKey: "event_start_date",
+    label: "Date of show",
+  },
 };
 
 /** Every actionable blocker string emitted by `blockersForTransition`. */
@@ -67,13 +73,15 @@ export const ACTIONABLE_LIFECYCLE_BLOCKERS = [
   "VFH approval must be received or approved.",
   "VFH approval must be received before marking the event approved.",
   "POC not filled, cannot confirm.",
+  SHOW_DATE_REQUIRED_BLOCKER,
 ] as const;
 
 /** Resolve a lifecycle blocker target to the page the user should open. */
 export function resolveBlockerWorkHref(
   eventId: string,
-  target: { tab: "operations" | "accounts"; fieldKey: string },
+  target: { tab: "operations" | "accounts" | "event_form"; fieldKey: string },
 ): string {
   if (target.fieldKey === "poc_name") return getEventPocEditLink(eventId);
+  if (target.tab === "event_form") return `/events/${eventId}/edit?step=0&section=dates`;
   return `/events/${eventId}?tab=${target.tab}&field=${encodeURIComponent(target.fieldKey)}`;
 }

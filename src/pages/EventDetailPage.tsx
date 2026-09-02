@@ -661,7 +661,7 @@ export function EventDetailPage() {
     openEventFormPrintable(eventFormPrintInput);
   }
 
-  function focusChecklistField(target: { tab: "operations" | "accounts"; fieldKey: string }) {
+  function focusChecklistField(target: { tab: "operations" | "accounts" | "event_form"; fieldKey: string }) {
     navigate(resolveBlockerWorkHref(id, target));
   }
 
@@ -733,7 +733,7 @@ export function EventDetailPage() {
 
       <div className="carved-card mb-5 grid grid-cols-2 gap-4 rounded-2xl bg-marble-highlight/50 p-5 md:grid-cols-5">
         <SummaryItem label="Type" value={formatEventType(e.event_type)} />
-        <SummaryItem label="Dates" value={e.event_start_date ? `${formatDate(e.event_start_date)}${e.event_end_date && e.event_end_date !== e.event_start_date ? " to " + formatDate(e.event_end_date) : ""}` : "-"} />
+        <SummaryItem label="Dates" value={e.event_start_date ? `${formatDate(e.event_start_date)}${e.event_end_date && e.event_end_date !== e.event_start_date ? " to " + formatDate(e.event_end_date) : ""}` : "No date of show"} />
         <SummaryItem label="Owner" value={e.event_owner ?? "-"} />
         <SummaryItem label="Approval" value={prettyState(e.approval_status)} />
         <SummaryItem label="Payment status" value={prettyState(e.payment_status)} />
@@ -1433,7 +1433,7 @@ function LifecyclePanel({
   canShowStatusActions: boolean;
   canArchiveEvent: boolean;
   savingFieldKey?: string | null;
-  onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
+  onOpenBlocker: (target: { tab: "operations" | "accounts" | "event_form"; fieldKey: string }) => void;
   onGenerateMom: () => void;
   onOpenEventFormPrintable: () => void;
   onArchiveEvent: () => void;
@@ -2671,7 +2671,7 @@ function LifecycleTrack({
   actions: LifecycleAction[];
   canChangeStatus: boolean;
   onChoose: (status: EventStatus) => void;
-  onOpenBlocker: (target: { tab: "operations" | "accounts"; fieldKey: string }) => void;
+  onOpenBlocker: (target: { tab: "operations" | "accounts" | "event_form"; fieldKey: string }) => void;
 }) {
   // Terminal decline states — show a banner instead of the track.
   if (current === "regret" || current === "cancelled") {

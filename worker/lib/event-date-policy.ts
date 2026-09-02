@@ -3,6 +3,12 @@ type VenueLike = { schedule_entries: ScheduleLike[] };
 
 export type EventDateIssue = { path: string; message: string };
 
+export const SHOW_DATE_REQUIRED_BLOCKER = "Add a date of show before moving this enquiry on.";
+
+export function usableShowDate(value: string | null | undefined): boolean {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
 export function getEventDateIssues(input: {
   event_start_date?: string | null;
   event_end_date?: string | null;
@@ -11,6 +17,10 @@ export function getEventDateIssues(input: {
   const start = input.event_start_date ?? null;
   const end = input.event_end_date ?? start;
   const issues: EventDateIssue[] = [];
+
+  if (!start && input.event_end_date) {
+    issues.push({ path: "event_end_date", message: "The event end date cannot be set without a start date." });
+  }
 
   if (start && end && end < start) {
     issues.push({ path: "event_end_date", message: "The event end date cannot be before the start date." });

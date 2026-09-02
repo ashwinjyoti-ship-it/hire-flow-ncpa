@@ -29,7 +29,7 @@ function titleCaseWords(value: string): string {
 }
 
 function formatOperatingWindow(start: string | null | undefined, end: string | null | undefined): string {
-  if (!start) return "—";
+  if (!start) return "No date of show";
   return end ? `${formatDate(start)} to ${formatDate(end)}` : formatDate(start);
 }
 
