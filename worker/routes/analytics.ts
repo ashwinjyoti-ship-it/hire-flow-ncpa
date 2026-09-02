@@ -108,7 +108,8 @@ analyticsRoutes.get("/payment-tracking", async (c) => {
      FROM events e
      LEFT JOIN checklist_items ci ON ci.event_id = e.id AND ci.field_key = 'payment_status'
      WHERE e.is_archived = 0 AND e.status = 'confirmed'
-       AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?
+       AND e.event_start_date IS NOT NULL
+       AND e.event_start_date BETWEEN ? AND ?
      GROUP BY 1 ORDER BY count DESC`
   ).bind(range.from, range.to).all<{ payment_status: string; count: number }>();
 
@@ -121,7 +122,8 @@ analyticsRoutes.get("/payment-tracking", async (c) => {
      FROM events e
      JOIN checklist_items ci ON ci.event_id = e.id AND ci.field_key = 'payment_status'
      WHERE e.is_archived = 0 AND e.status = 'confirmed'
-       AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?`
+       AND e.event_start_date IS NOT NULL
+       AND e.event_start_date BETWEEN ? AND ?`
   ).bind(range.from, range.to).first<{ received: number | null; total: number }>();
 
   const openInstalments = await c.env.DB.prepare(
@@ -160,13 +162,15 @@ analyticsRoutes.get("/operational-performance", async (c) => {
             COUNT(*) AS active_events
      FROM events e
      WHERE e.is_archived = 0 AND e.status NOT IN ('cancelled','regret')
-       AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?`
+       AND e.event_start_date IS NOT NULL
+       AND e.event_start_date BETWEEN ? AND ?`
   ).bind(range.from, range.to).first<{ ops: number | null; accounts: number | null; overall: number | null; active_events: number }>();
 
   const { results: readinessEvents } = await c.env.DB.prepare(
     `SELECT requirements FROM events
      WHERE is_archived = 0 AND status NOT IN ('cancelled','regret')
-       AND COALESCE(event_start_date, date(created_at)) BETWEEN ? AND ?`
+       AND event_start_date IS NOT NULL
+       AND event_start_date BETWEEN ? AND ?`
   ).bind(range.from, range.to).all<{ requirements: string | null }>();
   const readinessTotal = readinessEvents.reduce(
     (sum, event) => sum + calculateEventFormReadiness(event.requirements).percentage,
@@ -203,7 +207,7 @@ analyticsRoutes.get("/operational-performance", async (c) => {
 // 5. Client & event profile: who books, what they book, repeat behaviour.
 analyticsRoutes.get("/client-profile", async (c) => {
   const range = parseRange(c.req.query());
-  const windowSql = `e.is_archived = 0 AND COALESCE(e.event_start_date, date(e.created_at)) BETWEEN ? AND ?`;
+  const windowSql = `e.is_archived = 0 AND e.event_start_date IS NOT NULL AND e.event_start_date BETWEEN ? AND ?`;
 
   const { results: byEventType } = await c.env.DB.prepare(
     `SELECT COALESCE(NULLIF(TRIM(e.event_type), ''), 'Unspecified') AS event_type, COUNT(*) AS count

@@ -110,6 +110,7 @@ describe("applyOptimisticChecklistUpdate", () => {
     const snapshot: OptimisticEventSnapshot = {
       status: "tentative",
       event_type: "Free Event",
+      event_start_date: "2026-07-10",
       approval_status: "not_required",
       confirmation_status: "signed_received",
       poc_complete: true,

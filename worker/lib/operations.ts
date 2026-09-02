@@ -18,6 +18,7 @@ import { isChecklistFieldVisible, type ChecklistVisibilityItem } from "./checkli
 import { dueAfterDaysForRule, getChecklistIntervals } from "./checklist-intervals";
 import { getPostShowDateWarning } from "./checklist-date-policy";
 import { calculateEventFormReadiness, readinessTaskCopy, readinessTaskRule } from "./event-readiness";
+import { SHOW_DATE_REQUIRED_BLOCKER, usableShowDate } from "./event-date-policy";
 import { parseVenueBookingsForReadiness, VENUE_BOOKINGS_FOR_READINESS_SQL } from "./venue-schedule-readiness";
 import {
   areFinancialsReadyForConfirmationLetterDelivery,
@@ -120,6 +121,7 @@ export type EventLifecycleRow = {
   title: string;
   status: EventStatus;
   event_type: string | null;
+  event_start_date?: string | null;
   approval_status: string | null;
   confirmation_status: string | null;
   poc_complete?: boolean;
@@ -2943,7 +2945,7 @@ export async function reconcileConfirmedStatusForBlockers(
 
 export async function getEventLifecycle(db: D1Database, eventId: string): Promise<{ event: EventLifecycleRow; readiness: LifecycleReadiness; poc: import("./poc-completion").PocCompletionStatus }> {
   const event = await db.prepare(
-    `SELECT id, title, status, event_type, approval_status, confirmation_status,
+    `SELECT id, title, status, event_type, event_start_date, approval_status, confirmation_status,
             ops_completion, accounts_completion, overall_completion
      FROM events WHERE id = ?`
   ).bind(eventId).first<EventLifecycleRow>();
@@ -3053,6 +3055,9 @@ export async function rescheduleAutomaticTasksForEvent(
 
 export function blockersForTransition(event: EventLifecycleRow, to: EventStatus): string[] {
   const blockers: string[] = [];
+  if ((to === "approved" || to === "confirmed") && !usableShowDate(event.event_start_date)) {
+    blockers.push(SHOW_DATE_REQUIRED_BLOCKER);
+  }
   if (to === "approved") {
     if (event.event_type !== "VFH") {
       blockers.push("Approved is only used for VFH events.");

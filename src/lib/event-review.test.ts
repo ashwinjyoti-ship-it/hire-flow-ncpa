@@ -96,6 +96,11 @@ describe("buildReviewItems", () => {
     expect(items.some((item) => item.label === "AC Hours")).toBe(false);
   });
 
+  it("labels an undated enquiry on the review step", () => {
+    const items = buildReviewItems({ ...baseForm, event_start_date: null, event_end_date: null }, "Test", { organisationType: "Corporate" });
+    expect(items.find((item) => item.label === "Operating Window")?.value).toBe("No date of show");
+  });
+
   it("shows requirements under each venue, not only at event level", () => {
     const form = {
       ...baseForm,

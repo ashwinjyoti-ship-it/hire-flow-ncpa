@@ -278,6 +278,8 @@ describe("API regressions", () => {
                 title: "Annual Day",
                 status: "tentative",
                 event_type: "VFH",
+                event_start_date: "2026-07-10",
+                approval_status: "pending",
                 organisation_name: "Test Org",
                 event_owner: "Aditi Rao",
                 venues: "JBT",
@@ -551,6 +553,7 @@ describe("API regressions", () => {
           first: () => ({
             status: "tentative",
             event_type: "EE",
+            event_start_date: "2026-07-10",
             approval_status: "not_required",
             confirmation_status: "signed_received",
             organisation_id: "org_test",
@@ -764,6 +767,99 @@ describe("API regressions", () => {
     expect(capturedBinds).toContain("demo_user_aditi");
   });
 
+  it("creates an enquiry without a date of show and stores enquiry_date", async () => {
+    let eventsSql = "";
+    let capturedBinds: unknown[] = [];
+    const db = bindCapturingDb([
+      { match: "FROM sessions", first: sessionRow },
+      { match: "INSERT INTO events", onSql: (sql) => { eventsSql = sql; }, run: () => ({ success: true }) },
+    ], (b) => { capturedBinds = b; });
+
+    const app = buildApp({ DB: db } as never);
+    await app.request(
+      "/events",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Undated enquiry",
+          organisation_id: "org_1",
+          event_start_date: null,
+        }),
+      },
+      { DB: db } as never
+    );
+
+    expect(eventsSql).toContain("enquiry_date");
+    expect(capturedBinds[10]).toBeNull();
+    expect(capturedBinds[11]).toBeNull();
+    expect(capturedBinds[12]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("allows clearing the show date on update", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("SELECT * FROM events WHERE id = ?")) {
+        return { first: () => ({ id: "ev_1", title: "Event", organisation_id: "org_1", event_start_date: "2026-07-01", event_end_date: "2026-07-02", is_archived: 0 }) };
+      }
+      if (sql.includes("SELECT activity_type, activity_date FROM schedule_entries")) {
+        return { all: () => ({ results: [] }) };
+      }
+      if (sql.includes("SELECT venue FROM venue_bookings")) return { all: () => ({ results: [] }) };
+      if (sql.startsWith("UPDATE events SET title")) return { run: () => ({ success: true }) };
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request("/events/ev_1", {
+      method: "PUT",
+      headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+      body: JSON.stringify({ event_start_date: null, event_end_date: null }),
+    }, { DB: db } as never);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("blocks confirm when the enquiry has no date of show", async () => {
+    const db = fakeDb((sql) => {
+      if (sql.includes("FROM sessions")) return { first: sessionRow };
+      if (sql.includes("FROM events WHERE id")) {
+        return {
+          first: () => ({
+            status: "enquiry",
+            event_type: "EE",
+            event_start_date: null,
+            approval_status: "not_required",
+            confirmation_status: "signed_received",
+          }),
+        };
+      }
+      if (sql.includes("field_key IN ('costing_email', 'payment_status')")) {
+        return { all: () => ({ results: [{ field_key: "costing_email", value: "Yes" }, { field_key: "payment_status", value: "Completed" }] }) };
+      }
+      if (sql.includes("field_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+        return { all: () => ({ results: [] }) };
+      }
+      return {};
+    });
+
+    const app = buildApp({ DB: db } as never);
+    const res = await app.request(
+      "/events/ev_undated/status",
+      {
+        method: "POST",
+        headers: { Cookie: `${SESSION_COOKIE}=sess_test`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to_status: "confirmed" }),
+      },
+      { DB: db } as never
+    );
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringContaining("date of show"),
+    });
+  });
+
   it("archives an event record while keeping organisation and POC details", async () => {
     const touchedSql: string[] = [];
     const db = fakeDb((sql) => {
@@ -910,6 +1006,7 @@ describe("API regressions", () => {
           first: () => ({
             status: "enquiry",
             event_type: "VFH",
+            event_start_date: "2026-07-10",
             approval_status: "pending",
             confirmation_status: "none",
           }),
@@ -956,6 +1053,7 @@ describe("API regressions", () => {
           first: () => ({
             status: "tentative",
             event_type: "VFH",
+            event_start_date: "2026-07-10",
             approval_status: "sent",
             confirmation_status: "none",
           }),
@@ -1009,7 +1107,9 @@ describe("API regressions", () => {
         capturedSql = sql;
         expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
         expect(sql).toContain("lower(substr(e.event_end_date, 4, 3))");
-        expect(sql).toContain("date(e.created_at)) <= ?");
+        expect(sql).toContain("event_start_date");
+        expect(sql).not.toContain("date(e.created_at)) <= ?");
+        expect(sql).toContain("IS NOT NULL");
         expect(sql).toContain("WHEN 'jun' THEN '06'");
         expect(sql).toContain("FROM schedule_entries se2");
         expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
@@ -1105,10 +1205,9 @@ describe("API regressions", () => {
       if (sql.includes("FROM sessions")) return { first: sessionRow };
       if (sql.includes("FROM schedule_entries se")) {
         capturedSql = sql;
-        expect(sql).toContain("LEFT JOIN event_status_history sh ON sh.id =");
         expect(sql).toContain("lower(substr(e.event_start_date, 4, 3))");
-        expect(sql).toContain("lower(substr(substr(sh.changed_at, 1, 10), 4, 3))");
-        expect(sql).toContain("date(e.created_at)");
+        expect(sql).not.toContain("lower(substr(substr(sh.changed_at, 1, 10), 4, 3))");
+        expect(sql).not.toContain("date(e.created_at)");
         expect(sql).toContain("LEFT JOIN venue_bookings vb ON vb.event_id = e.id");
         expect(sql).toContain("COALESCE(vb.venue, 'No venue') AS venue");
         expect(sql).not.toContain("\n    JOIN venue_bookings vb ON vb.event_id = e.id");
@@ -1144,7 +1243,7 @@ describe("API regressions", () => {
     expect(res.status).toBe(200);
     expect(body.entries).toHaveLength(1);
     expect(body.byDate["2026-09-10"]).toBeTruthy();
-    expect(capturedSql).toContain("MAX('2026-09-01', COALESCE(CASE");
+    expect(capturedSql).toContain("MAX('2026-09-01', CASE");
   });
 
   it("normalizes imported schedule entry dates before filtering the show calendar", async () => {

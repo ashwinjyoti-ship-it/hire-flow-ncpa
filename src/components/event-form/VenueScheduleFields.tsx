@@ -9,7 +9,7 @@ import {
   type ScheduleEntryInputT,
   type VenueBookingInputT,
 } from "../../../worker/lib/types";
-import { createDefaultVenueRequirements, prepareVenueBookingsForSave } from "../../lib/event-edit-form";
+import { createDefaultVenueRequirements, nextAvailableScheduleDate, prepareVenueBookingsForSave } from "../../lib/event-edit-form";
 import { formatDuration } from "../../lib/use-lookups";
 
 type VenueOption = { value: string };
@@ -32,13 +32,6 @@ function diffMinutes(start: string | null | undefined, end: string | null | unde
   let minutes = eh * 60 + em - (sh * 60 + sm);
   if (minutes < 0) minutes += 24 * 60;
   return minutes;
-}
-
-function nextAvailableScheduleDate(startDate: string | null | undefined, usedDates: Set<string>): string {
-  const candidate = /^\d{4}-\d{2}-\d{2}$/.test(startDate ?? "") ? startDate! : new Date().toISOString().slice(0, 10);
-  const date = new Date(`${candidate}T00:00:00.000Z`);
-  while (usedDates.has(date.toISOString().slice(0, 10))) date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 export function VenueScheduleFields({
@@ -318,7 +311,7 @@ export function VenueScheduleFields({
                   const withoutMinutes = day.without_ac_minutes ?? diffMinutes(day.without_ac_start, day.without_ac_end);
                   const totalMinutes = (withMinutes ?? 0) + (withoutMinutes ?? 0);
                   return (
-                    <section data-testid={`schedule-day-${venueIndex}-${dayIndex}`} key={day.activity_date} className="rounded-xl border border-marble-shadow/30 bg-marble-shadow/15 p-3 sm:p-4">
+                    <section data-testid={`schedule-day-${venueIndex}-${dayIndex}`} key={`${dayIndex}-${day.activity_date}`} className="rounded-xl border border-marble-shadow/30 bg-marble-shadow/15 p-3 sm:p-4">
                       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-marble-shadow/30 pb-3">
                         <div className="w-full sm:w-auto sm:min-w-48">
                           <Field label="Date">

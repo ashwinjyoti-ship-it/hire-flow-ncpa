@@ -228,6 +228,7 @@ export function EventEditPage() {
   // Single-day toggle: when checked, end date is hidden and submitted as null.
   // Defaults ON (most events are single-day). Synced from existing form data on edit.
   const [singleDay, setSingleDay] = useState(true);
+  const [dateUnknown, setDateUnknown] = useState(false);
   const [requirementsVenueTab, setRequirementsVenueTab] = useState(0);
   const focusedRequirementRef = useRef<string | null>(null);
   const [focusedRequirementField, setFocusedRequirementField] = useState<string | null>(null);
@@ -248,6 +249,7 @@ export function EventEditPage() {
     const hydratedForm = hydrateEventFormFromDetail(existing);
     setForm(hydratedForm.form);
     setSingleDay(hydratedForm.singleDay);
+    setDateUnknown(!hydratedForm.form.event_start_date);
     setHydrated(true);
   }, [isEdit, existing, hydrated]);
 
@@ -263,9 +265,10 @@ export function EventEditPage() {
     if (!hydrated || (!section && !field) || focusedRequirementRef.current === focusKey) return;
 
     const isPocDeepLink = section === "poc" || Boolean(field?.startsWith("poc_"));
-    const requiredStep = isPocDeepLink ? 0 : 2;
+    const isDatesDeepLink = section === "dates";
+    const requiredStep = isPocDeepLink || isDatesDeepLink ? 0 : 2;
     if (step !== requiredStep) {
-      if (isPocDeepLink) setStep(0);
+      if (isPocDeepLink || isDatesDeepLink) setStep(0);
       return;
     }
     if (!isPocDeepLink && requestedVenue < form.venue_bookings.length && requirementsVenueTab !== requestedVenue) {
@@ -274,7 +277,9 @@ export function EventEditPage() {
     }
     let focusTimer: number | undefined;
     const frame = window.requestAnimationFrame(() => {
-      const target = document.getElementById(field ? `requirement-field-${field}` : `requirement-${section}`);
+      const target = isDatesDeepLink
+        ? document.getElementById("event-operating-window")
+        : document.getElementById(field ? `requirement-field-${field}` : `requirement-${section}`);
       if (!target) return;
       focusedRequirementRef.current = focusKey;
       setFocusedRequirementField(field);
@@ -315,7 +320,8 @@ export function EventEditPage() {
       const payload = {
         ...form,
         organisation_id: orgId,
-        event_end_date: singleDay ? null : form.event_end_date,
+        event_start_date: dateUnknown ? null : form.event_start_date,
+        event_end_date: dateUnknown || singleDay ? null : form.event_end_date,
         requirements: Object.keys(requirements).length > 0 ? requirements : null,
         venue_bookings: venueBookings,
       };
@@ -336,6 +342,7 @@ export function EventEditPage() {
         const hydratedForm = hydrateEventFormFromDetail(fresh);
         setForm(hydratedForm.form);
         setSingleDay(hydratedForm.singleDay);
+        setDateUnknown(!hydratedForm.form.event_start_date);
         setError(null);
         setSaveNotice("Saved");
         if (saveNoticeTimerRef.current != null) window.clearTimeout(saveNoticeTimerRef.current);
@@ -531,26 +538,57 @@ export function EventEditPage() {
           <Field label="Event Name *">
             <input type="text" value={form.title} onChange={(e) => update({ title: e.target.value })} className="carved input" placeholder="e.g. Symphony Concert Series" />
           </Field>
-          {/* Operating window — start date is the core required date for a new event. */}
-          <div>
-            <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-sage etched">
-              <input
-                type="checkbox"
-                checked={singleDay}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setSingleDay(next);
-                  if (next) update({ event_end_date: null });
-                }}
-                className="h-3.5 w-3.5 rounded border-ink-muted"
-              />
-              Single-day event
-            </label>
-            <div className={"mt-2 grid gap-4 " + (singleDay ? "grid-cols-1" : "md:grid-cols-2")}>
-              <Field label="Operating Window — Start Date *">
-                <input type="date" lang="en-GB" value={form.event_start_date ?? ""} onChange={(e) => update({ event_start_date: e.target.value || null })} className="carved input" />
+          <div id="event-operating-window">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-sage etched">
+                <input
+                  type="checkbox"
+                  checked={singleDay}
+                  disabled={dateUnknown}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setSingleDay(next);
+                    if (next) update({ event_end_date: null });
+                  }}
+                  className="h-3.5 w-3.5 rounded border-ink-muted"
+                />
+                Single-day event
+              </label>
+              <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-sage etched">
+                <input
+                  type="checkbox"
+                  checked={dateUnknown}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setDateUnknown(next);
+                    if (next) update({ event_start_date: null, event_end_date: null });
+                  }}
+                  className="h-3.5 w-3.5 rounded border-ink-muted"
+                />
+                Date of show not known
+              </label>
+            </div>
+            {dateUnknown && (
+              <p className="mt-2 text-[11px] text-ink-muted etched">
+                This enquiry will appear on the Lifecycle calendar on the date it is registered. Add a show date later before confirming.
+              </p>
+            )}
+            <div className={"mt-2 grid gap-4 " + (singleDay || dateUnknown ? "grid-cols-1" : "md:grid-cols-2")}>
+              <Field label={dateUnknown ? "Operating Window — Start Date" : "Operating Window — Start Date *"}>
+                <input
+                  type="date"
+                  lang="en-GB"
+                  value={form.event_start_date ?? ""}
+                  disabled={dateUnknown}
+                  onChange={(e) => {
+                    const next = e.target.value || null;
+                    setDateUnknown(false);
+                    update({ event_start_date: next });
+                  }}
+                  className="carved input disabled:opacity-50"
+                />
               </Field>
-              {!singleDay && (
+              {!singleDay && !dateUnknown && (
                 <Field label="Operating Window — End Date">
                   <input type="date" lang="en-GB" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
                 </Field>

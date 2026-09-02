@@ -8,6 +8,7 @@ function event(overrides: Partial<EventLifecycleRow>): EventLifecycleRow {
     title: "Lifecycle Test",
     status: "tentative",
     event_type: "VFH",
+    event_start_date: "2026-07-10",
     approval_status: "sent",
     confirmation_status: "none",
     // Default: financials gate satisfied (costing = Yes + payment = Completed)
@@ -57,6 +58,13 @@ describe("operational lifecycle readiness", () => {
       "Confirmation letter must be made.",
       "VFH approval must be received or approved.",
     ]);
+  });
+
+  it("blocks approve and confirm when the enquiry has no date of show", () => {
+    const undated = event({ status: "enquiry", event_start_date: null, approval_status: "received" });
+    expect(blockersForTransition(undated, "approved")[0]).toBe("Add a date of show before moving this enquiry on.");
+    expect(blockersForTransition(undated, "confirmed")[0]).toBe("Add a date of show before moving this enquiry on.");
+    expect(blockersForTransition(undated, "tentative")).toEqual([]);
   });
 
   it("walks confirmation blockers in order", () => {
@@ -348,12 +356,13 @@ describe("operational lifecycle readiness", () => {
             if (sql.includes("SELECT id, status, event_type FROM events WHERE id = ?")) {
               return { id: "ev_confirmed", status: "confirmed", event_type: "Free Event" };
             }
-            if (sql.includes("SELECT id, title, status, event_type, approval_status, confirmation_status")) {
+            if (sql.includes("SELECT id, title, status, event_type, event_start_date, approval_status, confirmation_status")) {
               return {
                 id: "ev_confirmed",
                 title: "Annual Day",
                 status: "confirmed",
                 event_type: "Free Event",
+                event_start_date: "2026-07-10",
                 approval_status: "not_required",
                 confirmation_status: "signed_received",
                 ops_completion: 0.5,
@@ -444,12 +453,13 @@ describe("operational lifecycle readiness", () => {
             if (sql.includes("SELECT id, status, event_type FROM events WHERE id = ?")) {
               return { id: "ev_confirmed", status: "confirmed", event_type: "Free Event" };
             }
-            if (sql.includes("SELECT id, title, status, event_type, approval_status, confirmation_status")) {
+            if (sql.includes("SELECT id, title, status, event_type, event_start_date, approval_status, confirmation_status")) {
               return {
                 id: "ev_confirmed",
                 title: "Annual Day",
                 status: "confirmed",
                 event_type: "Free Event",
+                event_start_date: "2026-07-10",
                 approval_status: "not_required",
                 confirmation_status: "signed_received",
                 ops_completion: 1,

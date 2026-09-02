@@ -14,7 +14,7 @@ import type { EventStatus } from "../../worker/lib/state-machine";
 import { STATUS_LABELS } from "../../worker/lib/state-machine";
 import { monthStartFromIsoDate, pickShowCalendarAnchorDate } from "../lib/global-search";
 import { normaliseCalendarDate } from "../lib/lifecycle-calendar-links";
-import { shouldShowLifecycleStepCountBadge } from "../lib/lifecycle-calendar-display";
+import { shouldShowLifecycleStepCountBadge, showDateMissing, showDateMissingLabel } from "../lib/lifecycle-calendar-display";
 
 type CalEntry = {
   id: string;
@@ -858,7 +858,7 @@ function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOver
                 <div className="mt-1 text-sm text-ink-secondary etched">{entry.title}</div>
               )}
               <div className="mt-2 text-xs text-ink-secondary etched">
-                {formatScheduledShowDate(entry.event_start_date, entry.event_end_date) ?? "Show date not set"}
+                {formatScheduledShowDate(entry.event_start_date, entry.event_end_date) ?? showDateMissingLabel()}
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-ink-secondary etched">
                 {entry.event_code && <span>{entry.event_code}</span>}
@@ -876,10 +876,11 @@ function LifecycleOverflowPanel({ overflow, onClose }: { overflow: LifecycleOver
 
 function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
   const surface = getEventStatusSurface(entry.status);
+  const noShowDate = showDateMissing(entry.event_start_date);
   return (
     <Link
       to={`/events/${entry.event_id}`}
-      title={`${entry.organisation_name ?? entry.title} · ${LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}`}
+      title={`${entry.organisation_name ?? entry.title} · ${LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}${noShowDate ? ` · ${showDateMissingLabel()}` : ""}`}
       className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
       <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
@@ -887,8 +888,11 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
+        {noShowDate && (
+          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">{showDateMissingLabel(true)}</span>
+        )}
         {entry.poc_complete === false && (
-          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">POC</span>
+          <span className={`${noShowDate ? "" : "ml-auto "}shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval`}>POC</span>
         )}
       </div>
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
@@ -954,7 +958,8 @@ function MobileLifecycleAgenda({ byDate, cursor }: { byDate: Record<string, Life
                 <div className="flex items-center gap-2">
                   <span className={"h-2 w-2 shrink-0 rounded-full " + lifecycleDot(entry.milestone_type)} />
                   <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">{LIFECYCLE_LABELS[entry.milestone_type]}</span>
-                  {entry.poc_complete === false && <span className="ml-auto rounded-full bg-status-awaitingApproval/15 px-1.5 py-0.5 text-[9px] font-bold text-status-awaitingApproval">POC</span>}
+                  {showDateMissing(entry.event_start_date) && <span className="ml-auto rounded-full bg-status-awaitingApproval/15 px-1.5 py-0.5 text-[9px] font-bold text-status-awaitingApproval">{showDateMissingLabel(true)}</span>}
+                  {entry.poc_complete === false && <span className={`${showDateMissing(entry.event_start_date) ? "" : "ml-auto "}rounded-full bg-status-awaitingApproval/15 px-1.5 py-0.5 text-[9px] font-bold text-status-awaitingApproval`}>POC</span>}
                 </div>
                 <div className="mt-1.5 truncate text-sm font-semibold text-ink-primary etched-deep">{entry.organisation_name ?? entry.title}</div>
                 {entry.organisation_name && entry.organisation_name !== entry.title && <div className="mt-0.5 truncate text-xs text-ink-secondary">{entry.title}</div>}

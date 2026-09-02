@@ -273,7 +273,7 @@ describe("frontend regression guards", () => {
     expect(blockerTargets).toContain("getEventPocEditLink(eventId)");
     expect(pocFields).toContain('id="requirement-poc"');
     expect(edit).toContain('section === "poc"');
-    expect(edit).toContain("const requiredStep = isPocDeepLink ? 0 : 2");
+    expect(edit).toContain("const requiredStep = isPocDeepLink || isDatesDeepLink ? 0 : 2");
     expect(operations).toContain("isChecklistFieldVisible");
     expect(operations).toContain('if (item.status === "not_applicable") continue');
     expect(operations).toContain("syncInstalmentDependentChecklist");
@@ -570,7 +570,9 @@ describe("frontend regression guards", () => {
     const calendar = readFileSync(resolve(root, "src/pages/CalendarPage.tsx"), "utf8");
 
     expect(calendar).toContain("formatScheduledShowDate(entry.event_start_date, entry.event_end_date)");
-    expect(calendar).toContain("Show date not set");
+    expect(calendar).toContain("showDateMissingLabel()");
+    expect(calendar).toContain("showDateMissingLabel(true)");
+    expect(calendar).not.toContain("Show date not set");
     expect(calendar).not.toContain("formatDate(entry.milestone_date)");
   });
 
@@ -622,6 +624,7 @@ describe("frontend regression guards", () => {
     expect(eventForm).toContain("same organisation and start date");
     expect(eventForm).toContain("const hasDuplicateWarning = duplicates.length > 0");
     expect(eventForm).toContain("canCreateEvent(form) && !hasDuplicateWarning");
+    expect(eventForm).toContain("Date of show not known");
   });
 
   it("keeps dashboard task rows tied to a specific event", () => {
