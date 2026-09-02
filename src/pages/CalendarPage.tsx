@@ -881,23 +881,29 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
     <Link
       to={`/events/${entry.event_id}`}
       title={`${entry.organisation_name ?? entry.title} · ${LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}${noShowDate ? ` · ${showDateMissingLabel()}` : ""}`}
-      className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
+      className={"carved-card block min-w-0 rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
       <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
         <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + lifecycleDot(entry.milestone_type)} />
-        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
+        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wide text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
-        {noShowDate && (
-          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">{showDateMissingLabel(true)}</span>
-        )}
-        {entry.poc_complete === false && (
-          <span className={`${noShowDate ? "" : "ml-auto "}shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval`}>POC</span>
-        )}
       </div>
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
         {entry.organisation_name ?? entry.title}
       </div>
+      {(noShowDate || entry.poc_complete === false) && (
+        <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5">
+          {noShowDate && (
+            <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">
+              {showDateMissingLabel(true)}
+            </span>
+          )}
+          {entry.poc_complete === false && (
+            <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">POC</span>
+          )}
+        </div>
+      )}
     </Link>
   );
 }
