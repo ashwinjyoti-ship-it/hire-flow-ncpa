@@ -888,16 +888,16 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
-        {noShowDate && (
-          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">{showDateMissingLabel(true)}</span>
-        )}
         {entry.poc_complete === false && (
-          <span className={`${noShowDate ? "" : "ml-auto "}shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval`}>POC</span>
+          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">POC</span>
         )}
       </div>
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
         {entry.organisation_name ?? entry.title}
       </div>
+      {noShowDate && (
+        <div className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-wider text-status-awaitingApproval">{showDateMissingLabel(true)}</div>
+      )}
     </Link>
   );
 }
