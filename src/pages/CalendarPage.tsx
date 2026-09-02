@@ -881,11 +881,11 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
     <Link
       to={`/events/${entry.event_id}`}
       title={`${entry.organisation_name ?? entry.title} · ${LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}${noShowDate ? ` · ${showDateMissingLabel()}` : ""}`}
-      className={"carved-card block min-w-0 overflow-hidden rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
+      className={"carved-card block min-w-0 rounded-md px-1.5 py-1 text-left sm:px-2 " + surface.chip}
     >
       <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
         <span className={"h-1.5 w-1.5 shrink-0 rounded-full evt-dot " + lifecycleDot(entry.milestone_type)} />
-        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-ink-muted etched sm:text-[10px]">
+        <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wide text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
         {entry.poc_complete === false && (
@@ -896,7 +896,9 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         {entry.organisation_name ?? entry.title}
       </div>
       {noShowDate && (
-        <div className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-wider text-status-awaitingApproval">{showDateMissingLabel(true)}</div>
+        <span className="mt-0.5 inline-block max-w-full truncate rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">
+          {showDateMissingLabel(true)}
+        </span>
       )}
     </Link>
   );
