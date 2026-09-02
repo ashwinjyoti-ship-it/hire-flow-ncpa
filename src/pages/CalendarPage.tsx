@@ -888,17 +888,21 @@ function LifecycleChip({ entry }: { entry: LifecycleEntry }) {
         <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wide text-ink-muted etched sm:text-[10px]">
           {LIFECYCLE_LABELS[entry.milestone_type] ?? entry.milestone_type}
         </span>
-        {entry.poc_complete === false && (
-          <span className="ml-auto shrink-0 rounded-full bg-status-awaitingApproval/15 px-1 py-0.5 text-[8px] font-bold uppercase text-status-awaitingApproval">POC</span>
-        )}
       </div>
       <div className="mt-0.5 truncate text-[11px] font-medium text-ink-primary etched-deep">
         {entry.organisation_name ?? entry.title}
       </div>
-      {noShowDate && (
-        <span className="mt-0.5 inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">
-          {showDateMissingLabel(true)}
-        </span>
+      {(noShowDate || entry.poc_complete === false) && (
+        <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5">
+          {noShowDate && (
+            <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">
+              {showDateMissingLabel(true)}
+            </span>
+          )}
+          {entry.poc_complete === false && (
+            <span className="inline-block rounded-full bg-status-awaitingApproval/20 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-status-awaitingApproval">POC</span>
+          )}
+        </div>
       )}
     </Link>
   );
