@@ -64,7 +64,7 @@ describe("getEventFormDateError", () => {
 
   it("rejects an end date before the start date", () => {
     expect(getEventFormDateError({ event_start_date: "2026-07-10", event_end_date: "2026-07-01", venue_bookings: [] }))
-      .toBe("The event end date cannot be before the start date.");
+      .toBe("The event end date (01/07/2026) is before the start date (10/07/2026). Check the month and year of the end date.");
   });
 
   it("rejects a post-show zero show in schedule details", () => {
