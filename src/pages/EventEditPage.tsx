@@ -548,7 +548,8 @@ export function EventEditPage() {
                   onChange={(e) => {
                     const next = e.target.checked;
                     setSingleDay(next);
-                    if (next) update({ event_end_date: null });
+                    // Seed the end date with the start date so the picker opens in the right month.
+                    update({ event_end_date: next ? null : form.event_end_date ?? form.event_start_date });
                   }}
                   className="h-3.5 w-3.5 rounded border-ink-muted"
                 />
@@ -583,14 +584,17 @@ export function EventEditPage() {
                   onChange={(e) => {
                     const next = e.target.value || null;
                     setDateUnknown(false);
-                    update({ event_start_date: next });
+                    const end = form.event_end_date;
+                    update(!singleDay && next && (!end || end < next)
+                      ? { event_start_date: next, event_end_date: next }
+                      : { event_start_date: next });
                   }}
                   className="carved input disabled:opacity-50"
                 />
               </Field>
               {!singleDay && !dateUnknown && (
                 <Field label="Operating Window — End Date">
-                  <input type="date" lang="en-GB" value={form.event_end_date ?? ""} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
+                  <input type="date" lang="en-GB" value={form.event_end_date ?? ""} min={form.event_start_date ?? undefined} onChange={(e) => update({ event_end_date: e.target.value || null })} className="carved input" />
                 </Field>
               )}
             </div>

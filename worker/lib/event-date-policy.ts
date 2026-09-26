@@ -5,6 +5,11 @@ export type EventDateIssue = { path: string; message: string };
 
 export const SHOW_DATE_REQUIRED_BLOCKER = "Add a date of show before moving this enquiry on.";
 
+function formatDmy(value: string): string {
+  const [y, m, d] = value.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : value;
+}
+
 export function usableShowDate(value: string | null | undefined): boolean {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
@@ -23,7 +28,7 @@ export function getEventDateIssues(input: {
   }
 
   if (start && end && end < start) {
-    issues.push({ path: "event_end_date", message: "The event end date cannot be before the start date." });
+    issues.push({ path: "event_end_date", message: `The event end date (${formatDmy(end)}) is before the start date (${formatDmy(start)}). Check the month and year of the end date.` });
   }
 
   for (const [venueIndex, booking] of (input.venue_bookings ?? []).entries()) {
